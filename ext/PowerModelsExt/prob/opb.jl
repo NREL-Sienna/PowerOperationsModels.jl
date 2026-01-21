@@ -1,13 +1,3 @@
-""
-function solve_nfa_opb(file, optimizer; kwargs...)
-    return solve_opb(file, NFAPowerModel, optimizer; kwargs...)
-end
-
-"the optimal power balance problem"
-function solve_opb(file, model_type::Type, optimizer; kwargs...)
-    return solve_model(file, model_type, optimizer, build_opb; ref_extensions=[ref_add_connected_components!], kwargs...)
-end
-
 """
     build_opb(pm::AbstractPowerModel)
 """

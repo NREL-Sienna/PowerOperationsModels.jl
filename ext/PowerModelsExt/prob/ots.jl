@@ -4,10 +4,6 @@
 # - the network will be maintained as one connected component (i.e. at least n-1 edges)
 #
 
-function solve_ots(file, model_type::Type, optimizer; kwargs...)
-    return solve_model(file, model_type, optimizer, build_ots; ref_extensions=[ref_add_on_off_va_bounds!], kwargs...)
-end
-
 """
     build_ots(pm::AbstractPowerModel)
 """

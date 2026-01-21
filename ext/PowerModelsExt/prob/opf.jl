@@ -1,16 +1,3 @@
-""
-function solve_ac_opf(file, optimizer; kwargs...)
-    return solve_opf(file, ACPPowerModel, optimizer; kwargs...)
-end
-
-function solve_dc_opf(file, optimizer; kwargs...)
-    return solve_opf(file, DCPPowerModel, optimizer; kwargs...)
-end
-
-function solve_opf(file, model_type::Type, optimizer; kwargs...)
-    return solve_model(file, model_type, optimizer, build_opf; kwargs...)
-end
-
 """
     build_opf(pm::AbstractPowerModel)
 """
@@ -49,13 +36,10 @@ end
 
 
 
-"a toy example of how to model with multi-networks"
-function solve_mn_opf(file, model_type::Type, optimizer; kwargs...)
-    return solve_model(file, model_type, optimizer, build_mn_opf; multinetwork=true, kwargs...)
-end
-
 """
     build_mn_opf(pm::AbstractPowerModel)
+
+A toy example of how to model with multi-networks.
 """
 function build_mn_opf(pm::AbstractPowerModel)
     for (n, network) in nws(pm)
@@ -93,13 +77,10 @@ function build_mn_opf(pm::AbstractPowerModel)
 end
 
 
-"a toy example of how to model with multi-networks and storage"
-function solve_mn_opf_strg(file, model_type::Type, optimizer; kwargs...)
-    return solve_model(file, model_type, optimizer, build_mn_opf_strg; multinetwork=true, kwargs...)
-end
-
 """
     build_mn_opf_strg(pm::AbstractPowerModel)
+
+A toy example of how to model with multi-networks and storage.
 """
 function build_mn_opf_strg(pm::AbstractPowerModel)
     for (n, network) in nws(pm)
@@ -159,20 +140,6 @@ end
 
 
 
-
-"""
-Solves an opf using ptdfs with no explicit voltage or line flow variables.
-
-This formulation is most often used when a small subset of the line flow
-constraints are active in the data model.
-"""
-function solve_opf_ptdf(file, model_type::Type, optimizer; full_inverse=false, kwargs...)
-    if !full_inverse
-        return solve_model(file, model_type, optimizer, build_opf_ptdf; ref_extensions=[ref_add_connected_components!,ref_add_sm!], kwargs...)
-    else
-        return solve_model(file, model_type, optimizer, build_opf_ptdf; ref_extensions=[ref_add_connected_components!,ref_add_sm_inv!], kwargs...)
-    end
-end
 
 function build_opf_ptdf(pm::AbstractPowerModel)
     error( "build_opf_ptdf is only valid for DCPPowerModels")

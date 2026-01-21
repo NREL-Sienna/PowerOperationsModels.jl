@@ -1,12 +1,3 @@
-""
-function solve_opf_bf(file, model_type::Type{T}, optimizer; kwargs...) where T <: AbstractBFModel
-    return solve_model(file, model_type, optimizer, build_opf_bf; kwargs...)
-end
-
-function solve_mn_opf_bf_strg(file, model_type::Type{T}, optimizer; kwargs...) where T <: AbstractBFModel
-    return solve_model(file, model_type, optimizer, build_mn_opf_bf_strg; multinetwork=true, kwargs...)
-end
-
 """
     build_opf_bf(pm::AbstractPowerModel)
 """

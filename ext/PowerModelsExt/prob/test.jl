@@ -7,10 +7,6 @@
 
 
 "opf using current limits instead of thermal limits, tests constraint_current_limit"
-function _solve_opf_cl(file, model_type::Type, optimizer; kwargs...)
-    return solve_model(file, model_type, optimizer, _build_opf_cl; kwargs...)
-end
-
 function _build_opf_cl(pm::AbstractPowerModel)
     variable_bus_voltage(pm)
     variable_gen_power(pm)
@@ -46,10 +42,6 @@ end
 
 
 "opf with fixed switches"
-function _solve_opf_sw(file, model_constructor, optimizer; kwargs...)
-    return solve_model(file, model_constructor, optimizer, _build_opf_sw; kwargs...)
-end
-
 function _build_opf_sw(pm::AbstractPowerModel)
     variable_bus_voltage(pm)
     variable_gen_power(pm)
@@ -91,10 +83,6 @@ end
 
 
 "opf with controlable switches"
-function _solve_oswpf(file, model_constructor, optimizer; kwargs...)
-    return solve_model(file, model_constructor, optimizer, _build_oswpf; ref_extensions=[ref_add_on_off_va_bounds!], kwargs...)
-end
-
 function _build_oswpf(pm::AbstractPowerModel)
     variable_bus_voltage(pm)
     variable_gen_power(pm)
@@ -139,10 +127,6 @@ end
 
 
 "opf with controlable switches, node breaker"
-function _solve_oswpf_nb(file, model_constructor, optimizer; kwargs...)
-    return solve_model(file, model_constructor, optimizer, _build_oswpf_nb; ref_extensions=[ref_add_on_off_va_bounds!], kwargs...)
-end
-
 function _build_oswpf_nb(pm::AbstractPowerModel)
     variable_bus_voltage_on_off(pm)
     variable_gen_power(pm)
@@ -218,10 +202,6 @@ end
 
 
 # a simple maximum loadability problem
-function _solve_mld(file, model_constructor, solver; kwargs...)
-    return solve_model(file, model_constructor, solver, _build_mld; kwargs...)
-end
-
 function _build_mld(pm::AbstractPowerModel)
     variable_bus_voltage(pm)
     variable_gen_power(pm)
@@ -260,10 +240,6 @@ end
 
 
 "opf with unit commitment"
-function _solve_ucopf(file, model_type::Type, solver; kwargs...)
-    return solve_model(file, model_type, solver, _build_ucopf; kwargs...)
-end
-
 function _build_ucopf(pm::AbstractPowerModel)
     variable_bus_voltage(pm)
 
@@ -319,10 +295,6 @@ function _build_ucopf(pm::AbstractPowerModel)
 end
 
 
-function _solve_mn_opb(file, model_type::Type, optimizer; kwargs...)
-    return solve_model(file, model_type, optimizer, _build_mn_opb; ref_extensions=[ref_add_connected_components!], multinetwork=true, kwargs...)
-end
-
 function _build_mn_opb(pm::AbstractPowerModel)
     for (n, network) in nws(pm)
         variable_gen_power(pm, nw=n)
@@ -335,10 +307,6 @@ function _build_mn_opb(pm::AbstractPowerModel)
     objective_min_fuel_cost(pm)
 end
 
-
-function _solve_mn_pf(file, model_type::Type, optimizer; kwargs...)
-    return solve_model(file, model_type, optimizer, _build_mn_pf; multinetwork=true, kwargs...)
-end
 
 function _build_mn_pf(pm::AbstractPowerModel)
     for (n, network) in nws(pm)
@@ -391,10 +359,6 @@ end
 
 
 "opf with storage"
-function _solve_opf_strg(file, model_type::Type, optimizer; kwargs...)
-    return solve_model(file, model_type, optimizer, _build_opf_strg; kwargs...)
-end
-
 function _build_opf_strg(pm::AbstractPowerModel)
     variable_bus_voltage(pm)
     variable_gen_power(pm)
@@ -438,10 +402,6 @@ end
 
 
 "opf with mi storage variables"
-function _solve_opf_strg_mi(file, model_type::Type, optimizer; kwargs...)
-    return solve_model(file, model_type, optimizer, _build_opf_strg_mi; kwargs...)
-end
-
 function _build_opf_strg_mi(pm::AbstractPowerModel)
     variable_bus_voltage(pm)
     variable_gen_power(pm)
