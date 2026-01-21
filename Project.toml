@@ -7,18 +7,24 @@ authors = ["NREL-Sienna"]
 Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
 DocStringExtensions = "ffbed154-4ef7-542d-bbb7-c09d3a79fcae"
 InfrastructureSystems = "2cd47ed4-ca9b-11e9-27f2-ab636a7671f1"
-JuMP = "4076af6c-e467-56ae-b986-b466b2749572"
-PowerModels = "c36e90e8-916a-50a6-bd94-075b64ef4655"
 InfrastructureOptimizationModels = "bed98974-b02a-5e2f-9ee0-a103f5c45069"
+JuMP = "4076af6c-e467-56ae-b986-b466b2749572"
 PowerSystems = "bcd98974-b02a-5e2f-9ee0-a103f5c450dd"
 TimerOutputs = "a759f4b9-e2f1-59dc-863e-4aeb61b1ea8f"
+
+[weakdeps]
+PowerModelsExt = "c36e90e8-916a-50a6-bd94-075b64ef4655"
+InfrastructureModels = "2030c09a-7f63-5d83-885d-db604e0e9cc0"
+
+[extensions]
+PowerModelsExt = "PowerModels"
 
 [compat]
 Dates = "1"
 DocStringExtensions = "~0.8, ~0.9"
+InfrastructureModels = "0.7"
 InfrastructureSystems = "3"
 JuMP = "^1.28"
-PowerModels = "^0.21.5"
 PowerSystems = "5.3"
 TimerOutputs = "~0.5"
 julia = "^1.6"
