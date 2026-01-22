@@ -6,48 +6,184 @@
 
 **Note:** NREL (National Renewable Energy Laboratory) no longer exists and has been renamed to NLR (National Laboratory of the Rockies). References to "NREL-Sienna" in the codebase refer to the organization now known as Sienna only and the official name is NLR National Laboratory of the Rockies (formerly known as NREL).
 
-### Repository Structure
+## Design Philosophy: Layered Abstractions
+
+This project implements a **three-tier abstraction hierarchy** for building operational optimization problems in power systems. Each layer has a specific responsibility and level of abstraction:
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                     ABSTRACTION HIERARCHY                               │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│  ┌───────────────────────────────────────────────────────────────────┐  │
+│  │  HIGHEST LEVEL: InfrastructureSystems.jl (IS)                     │  │
+│  │  ─────────────────────────────────────────                        │  │
+│  │  • Base infrastructure types and interfaces                       │  │
+│  │  • Optimization key types (VariableKey, ConstraintKey, etc.)      │  │
+│  │  • Time series infrastructure                                     │  │
+│  │  • Generic system component abstractions                          │  │
+│  │  • Domain-agnostic utilities                                      │  │
+│  └───────────────────────────────────────────────────────────────────┘  │
+│                              ▲                                          │
+│                              │ extends                                  │
+│  ┌───────────────────────────────────────────────────────────────────┐  │
+│  │  MID LEVEL: InfrastructureOptimizationModels.jl (IOM)             │  │
+│  │  ─────────────────────────────────────────────                    │  │
+│  │  • OptimizationContainer: JuMP model wrapper                      │  │
+│  │  • DeviceModel, ServiceModel, NetworkModel specifications         │  │
+│  │  • ProblemTemplate: optimization problem structure                │  │
+│  │  • DecisionModel, EmulationModel: execution frameworks            │  │
+│  │  • Common model construction patterns (add_variables!,            │  │
+│  │    add_constraints!, add_to_expression!, etc.)                    │  │
+│  │  • Objective function infrastructure                              │  │
+│  │  • Initial conditions handling                                    │  │
+│  │  • Power-system agnostic optimization building blocks             │  │
+│  └───────────────────────────────────────────────────────────────────┘  │
+│                              ▲                                          │
+│                              │ implements                               │
+│  ┌───────────────────────────────────────────────────────────────────┐  │
+│  │  IMPLEMENTATION LEVEL: PowerOperationsModels.jl (POM)             │  │
+│  │  ─────────────────────────────────────────────                    │  │
+│  │  • Device-specific formulations (ThermalBasicUnitCommitment,      │  │
+│  │    RenewableFullDispatch, StaticBranch, HVDCTwoTerminalDispatch)  │  │
+│  │  • Variable types (ActivePowerVariable, OnVariable, StartVariable)│  │
+│  │  • Constraint types (device-specific operational constraints)     │  │
+│  │  • Network formulations (CopperPlate, PTDF, PowerModels-based)    │  │
+│  │  • Service models (reserves, AGC, transmission interfaces)        │  │
+│  │  • Concrete implementations using IOM infrastructure              │  │
+│  └───────────────────────────────────────────────────────────────────┘  │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+### Why This Separation Matters
+
+1. **InfrastructureSystems (IS)** provides the highest-level abstractions that are reusable across any infrastructure domain—not just power systems. It defines key types, time series handling, and generic optimization interfaces.
+
+2. **InfrastructureOptimizationModels (IOM)** builds on IS to provide optimization-specific infrastructure. It defines how to construct, manage, and solve optimization models without knowing the specifics of power system devices. This layer handles the "how" of building optimization problems.
+
+3. **PowerOperationsModels (POM)** implements the actual power system device models. It defines the "what"—the specific variables, constraints, and formulations for thermal generators, renewable generators, storage, HVDC lines, loads, and network representations.
+
+This separation enables:
+- **Reusability**: IOM can be used for non-power-system optimization problems
+- **Maintainability**: Changes to device formulations don't affect the optimization infrastructure
+- **Extensibility**: New device types can be added by implementing IOM interfaces
+- **Testing**: Each layer can be tested independently
+
+## PowerModels Extension
+
+The repository includes a **PowerModels.jl extension** (`ext/PowerModelsExt/`) that contains code originally from PowerModels.jl. This was done for two key reasons:
+
+1. **Reduced Dependency Overhead**: By extracting only the necessary power flow formulations into an extension, we avoid loading the entire PowerModels.jl package when it's not needed. The extension is only loaded when PowerModels.jl is explicitly imported by the user.
+
+2. **Better Abstraction Alignment**: The extracted code has been restructured to fit the IOM abstraction patterns, providing cleaner interfaces between power flow formulations and the optimization model construction.
+
+The extension provides:
+- AC power flow formulations (ACP, ACR, ACT)
+- DC power flow formulations (DCP)
+- Linear approximations (LPAC)
+- SDP relaxations (WR, WRM)
+- Branch flow formulations (BF, IV)
+- Optimal power flow problem definitions
+
+```
+ext/PowerModelsExt/
+├── core/           # Formulation infrastructure (base, constraint, variable, etc.)
+├── form/           # Power flow formulations (acp.jl, dcp.jl, lpac.jl, etc.)
+├── prob/           # Problem definitions (opf.jl, ots.jl, pf_bf.jl, etc.)
+└── util/           # Utilities (flow_limit_cuts.jl, obbt.jl)
+```
+
+## Repository Structure
 
 This is a **dual-structure repository**:
 
 ```
-PowerOperationsModels.jl/           # Root - Wrapper package
-├── src/PowerOperationsModels.jl    # Thin wrapper module
-├── Project.toml                    # Depends on InfrastructureOptimizationModels
-├── test/                           # Integration tests
-├── docs/                           # Documentation
-└── InfrastructureOptimizationModels.jl/     # Core implementation (subpackage)
-    ├── src/                        # Main source code (~150+ files)
-    │   ├── core/                   # Fundamental data structures
-    │   ├── common_models/          # Reusable model construction methods
-    │   ├── operation/              # DecisionModel, EmulationModel execution
-    │   ├── objective_function/     # Cost function implementations
-    │   ├── initial_conditions/     # IC handling
-    │   └── utils/                  # Utilities
-    ├── test/
-    └── Project.toml
+PowerOperationsModels.jl/
+├── src/                                    # POM: Device-specific models
+│   ├── PowerOperationsModels.jl            # Main module entry point
+│   ├── core/                               # Type definitions
+│   │   ├── variables.jl                    # Variable types (ActivePowerVariable, etc.)
+│   │   ├── constraints.jl                  # Constraint types
+│   │   ├── expressions.jl                  # Expression types
+│   │   ├── parameters.jl                   # Parameter types
+│   │   ├── formulations.jl                 # Device formulation abstractions
+│   │   └── network_formulations.jl         # Network model formulations
+│   ├── static_injector_models/             # Generator, load, source models
+│   │   ├── thermal_generation.jl           # Thermal unit formulations
+│   │   ├── renewable_generation.jl         # Renewable formulations
+│   │   ├── electric_loads.jl               # Load formulations
+│   │   └── *_constructor.jl                # Construction dispatch
+│   ├── ac_transmission_models/             # AC branch models
+│   ├── twoterminal_hvdc_models/            # Two-terminal HVDC
+│   ├── mt_hvdc_models/                     # Multi-terminal HVDC
+│   ├── services_models/                    # Reserves, AGC, interfaces
+│   └── network_models/                     # Network formulations
+│
+├── ext/PowerModelsExt/                     # PowerModels.jl extension
+│   ├── core/                               # Formulation infrastructure
+│   ├── form/                               # Power flow formulations
+│   ├── prob/                               # Problem definitions
+│   └── util/                               # Utilities
+│
+├── InfrastructureOptimizationModels.jl/    # IOM: Optimization infrastructure
+│   └── src/
+│       ├── InfrastructureOptimizationModels.jl
+│       ├── core/                           # Fundamental structures
+│       │   ├── optimization_container.jl   # Central JuMP container
+│       │   ├── device_model.jl             # Device model specification
+│       │   ├── service_model.jl            # Service model specification
+│       │   ├── network_model.jl            # Network model wrapper
+│       │   └── initial_conditions.jl       # IC types
+│       ├── common_models/                  # Reusable construction patterns
+│       │   ├── add_variable.jl             # Variable addition interface
+│       │   ├── add_constraints.jl          # Constraint interface
+│       │   ├── add_to_expression.jl        # Expression building
+│       │   ├── construct_device.jl         # Device construction dispatcher
+│       │   └── objective_function.jl       # Objective interface
+│       ├── operation/                      # Model execution
+│       │   ├── decision_model.jl           # Single-shot optimization
+│       │   ├── emulation_model.jl          # Rolling-horizon simulation
+│       │   └── problem_template.jl         # Problem specification
+│       ├── objective_function/             # Cost implementations
+│       ├── initial_conditions/             # IC handling
+│       └── utils/                          # Utilities
+│
+├── InfrastructureSystems.jl/               # IS: Base infrastructure (dependency)
+│
+├── test/                                   # Integration tests
+├── docs/                                   # Documentation
+├── Project.toml                            # Package dependencies
+└── Manifest.toml                           # Locked dependencies
 ```
-
-### Package Relationships
-
-- **PowerOperationsModels.jl**: Contains device/component-specific optimization models (thermal generators, renewables, storage, HVDC, loads, etc.)
-- **InfrastructureOptimizationModels.jl**: Infrastructure library for building optimization models (containers, templates, model construction patterns). Claude CAN modify this package if needed for compatibility.
-- **PowerSimulations.jl**: Parent package from which code is being extracted to create simpler, modular packages. Both PowerOperationsModels.jl and InfrastructureOptimizationModels.jl are children of PowerSimulations. References to PSI should not exist anymore in this repository.
 
 ## Key Dependencies
 
 | Package | Purpose |
 |---------|---------|
+| `InfrastructureSystems.jl` | Base infrastructure, optimization key types (highest abstraction) |
 | `PowerSystems.jl` | Power system data structures (devices, services, networks) |
-| `PowerModels.jl` | Power flow formulations (AC, DC, PTDF models) |
-| `InfrastructureSystems.jl` | Base infrastructure, optimization key types |
 | `JuMP.jl` | Mathematical optimization modeling |
+| `PowerModels.jl` | Power flow formulations (via extension, optional) |
 | `PowerFlows.jl` | Power flow calculations |
 | `PowerNetworkMatrices.jl` | PTDF, LODF matrices |
 
+## Type Aliases
+
+```julia
+const PM = PowerModels
+const PSY = PowerSystems
+const IOM = InfrastructureOptimizationModels
+const IS = InfrastructureSystems
+const ISOPT = InfrastructureSystems.Optimization
+const MOI = MathOptInterface
+const PNM = PowerNetworkMatrices
+const PFS = PowerFlows
+```
+
 ## Architecture Patterns
 
-### Device Model Construction
+### Device Model Construction (Two-Stage Pattern)
 
 Models follow a two-stage construction pattern with `construct_device!`:
 
@@ -85,28 +221,15 @@ function construct_device!(
 end
 ```
 
-### Type Aliases
-
-```julia
-const PM = PowerModels
-const PSY = PowerSystems
-const POM = InfrastructureOptimizationModels
-const IS = InfrastructureSystems
-const ISOPT = InfrastructureSystems.Optimization
-const MOI = MathOptInterface
-const PNM = PowerNetworkMatrices
-const PFS = PowerFlows
-```
-
 ### Key Types
 
-- `OptimizationContainer`: Central container holding JuMP model, variables, constraints, parameters
-- `DeviceModel{D, F}`: Specifies device type `D` and formulation `F`
-- `ServiceModel{S, F}`: Specifies service type `S` and formulation `F`
-- `NetworkModel{N}`: Network formulation wrapper
-- `ProblemTemplate`: Defines optimization problem structure
-- `DecisionModel`: Single-shot optimization model
-- `EmulationModel`: Rolling-horizon simulation model
+- `OptimizationContainer`: Central container holding JuMP model, variables, constraints, parameters (IOM)
+- `DeviceModel{D, F}`: Specifies device type `D` and formulation `F` (IOM)
+- `ServiceModel{S, F}`: Specifies service type `S` and formulation `F` (IOM)
+- `NetworkModel{N}`: Network formulation wrapper (IOM)
+- `ProblemTemplate`: Defines optimization problem structure (IOM)
+- `DecisionModel`: Single-shot optimization model (IOM)
+- `EmulationModel`: Rolling-horizon simulation model (IOM)
 
 ## Coding Style Requirements
 
@@ -147,11 +270,6 @@ function add_constraints!(
 
 Follow [InfrastructureSystems.jl Documentation Best Practices](https://nrel-sienna.github.io/InfrastructureSystems.jl/stable/docs_best_practices/explanation/):
 
-- Use `DocStringExtensions.jl` with `@template` for consistent signatures
-- Document all public functions and types
-- Include examples in docstrings where helpful
-- Use `# Arguments` and `# Returns` sections for complex functions
-
 ```julia
 """
 $(TYPEDSIGNATURES)
@@ -175,38 +293,16 @@ end
 All code must follow Julia performance best practices:
 
 ### Type Stability
-
 - Ensure functions are type-stable (return type depends only on input types)
 - Avoid containers with abstract element types
 - Use `@code_warntype` to check for type instabilities
 
-```julia
-# Bad: Type unstable
-function get_value(x)
-    x > 0 ? 1.0 : "negative"  # Returns Float64 or String
-end
-
-# Good: Type stable
-function get_value(x)::Float64
-    x > 0 ? 1.0 : -1.0
-end
-```
-
 ### Avoid Global Variables
-
 - Never use non-const global variables in performance-critical code
 - Pass data through function arguments
-- Use closures or functors if state is needed
 
 ### Preallocate Arrays
-
 ```julia
-# Bad: Growing array in loop
-results = []
-for i in 1:n
-    push!(results, compute(i))
-end
-
 # Good: Preallocated
 results = Vector{Float64}(undef, n)
 for i in 1:n
@@ -215,62 +311,12 @@ end
 ```
 
 ### Use Views for Slices
-
 ```julia
-# Bad: Creates copy
-subarray = array[1:100]
-
 # Good: Creates view (no allocation)
 subarray = @view array[1:100]
 ```
 
-### Avoid String Interpolation in Hot Paths
-
-```julia
-# Bad in loops
-for device in devices
-    key = "device_$(get_name(device))_power"
-end
-
-# Good: Use Symbol or pre-compute
-for device in devices
-    key = Symbol(:device_, get_name(device), :_power)
-end
-```
-
-### Access Struct Fields Directly
-
-- Use direct field access in performance-critical code
-- Getter functions are fine for API but add overhead
-
-## Template Placeholders to Replace
-
-The repository was created from a template. The following placeholders need substitution:
-
-| Location | Placeholder | Replace With |
-|----------|-------------|--------------|
-| `README.md` | `SIENNA-Template` | `PowerOperationsModels.jl` |
-| `README.md` | `Sienna-PACKAGE.jl` | `PowerOperationsModels.jl` |
-| `README.md` | `SIENNA-PACKAGE` | `PowerOperationsModels` |
-| `README.md` | GitHub URLs | `NREL-Sienna/PowerOperationsModels.jl` |
-| `CONTRIBUTING.md` | CLA URL | Update to correct package name |
-| `Project.toml` | `authors = ["YOUR_NAME"]` | Actual author names |
-| `docs/src/index.md` | Placeholder text | Actual package description |
-
 ## Testing
-
-### Test Structure
-
-```
-test/
-├── runtests.jl              # Main entry point with Aqua checks
-├── includes.jl              # Test dependencies
-├── test_utils/              # Shared test utilities
-│   ├── solver_definitions.jl
-│   ├── operations_problem_templates.jl
-│   └── ...
-└── test_*.jl                # Individual test files
-```
 
 ### Running Tests
 
@@ -288,22 +334,21 @@ Pkg.test()
 - Use `HiGHS` for LP/MIP testing
 - Use `Ipopt` for nonlinear testing
 - Use `PowerSystemCaseBuilder` for test systems
-- Set `ENV["SIENNA_RANDOM_SEED"] = 1234` for reproducibility
 
 ## Common Development Tasks
 
 ### Adding a New Device Formulation
 
-1. Define the formulation type in the appropriate module
+1. Define the formulation type in `src/core/formulations.jl`
 2. Implement `construct_device!` for both `ArgumentConstructStage` and `ModelConstructStage`
-3. Add variable/constraint types if needed
+3. Add variable/constraint types if needed in `src/core/`
 4. Register exports in main module
 5. Add tests
 
 ### Adding a New Variable Type
 
 ```julia
-# In core/standard_variables_expressions.jl or appropriate file
+# In src/core/variables.jl
 struct MyNewVariable <: VariableType end
 
 # Implement add_variables! method
@@ -313,42 +358,24 @@ function add_variables!(
     devices::U,
     formulation::F,
 ) where {U, F}
-    # Implementation
+    # Implementation using IOM infrastructure
 end
 
 # Export in main module
 export MyNewVariable
 ```
 
-### Adding a New Constraint Type
-
-```julia
-struct MyNewConstraint <: ConstraintType end
-
-function add_constraints!(
-    container::OptimizationContainer,
-    ::Type{MyNewConstraint},
-    devices::U,
-    model::DeviceModel{D, F},
-    network_model::NetworkModel{N},
-) where {U, D, F, N}
-    # Implementation
-end
-
-export MyNewConstraint
-```
-
 ## Important Notes
 
-1. **Method Ambiguity**: The codebase uses extensive multiple dispatch. When adding new methods, check for ambiguity with existing methods using `Test.detect_ambiguities`.
+1. **Layer Boundaries**: Respect the abstraction hierarchy. Device-specific code belongs in POM, optimization infrastructure in IOM, base types in IS.
 
-2. **Network Model Compatibility**: Not all device formulations work with all network models. Check existing `construct_device!` signatures for compatible combinations.
+2. **Method Ambiguity**: The codebase uses extensive multiple dispatch. Check for ambiguity with `Test.detect_ambiguities`.
 
-3. **Feedforward Support**: Most device models should support feedforward patterns via `add_feedforward_arguments!` and `add_feedforward_constraints!`.
+3. **Network Model Compatibility**: Not all device formulations work with all network models. Check existing signatures.
 
-4. **Dual Variables**: Use `add_constraint_dual!` to enable dual variable extraction for constraints.
+4. **PowerModels Extension**: The PM extension is optional. Code should work with simpler network models when PM is not loaded.
 
-5. **Expression Order**: When building expressions, `add_expressions!` must come before `add_constraints!` that use those expressions.
+5. **Expression Order**: `add_expressions!` must come before `add_constraints!` that use those expressions.
 
 ## Debugging
 
