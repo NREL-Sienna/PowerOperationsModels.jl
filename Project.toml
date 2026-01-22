@@ -13,7 +13,7 @@ PowerSystems = "bcd98974-b02a-5e2f-9ee0-a103f5c450dd"
 TimerOutputs = "a759f4b9-e2f1-59dc-863e-4aeb61b1ea8f"
 
 [weakdeps]
-PowerFlows = "bcd98974-b02a-5e2f-9ee0-a103f5c450dd"
+PowerFlows = "94fada2c-0ca5-4b90-a1fb-4bc5b59ccfc7"
 
 [extensions]
 PowerFlowsExt = "PowerFlows"
@@ -21,7 +21,6 @@ PowerFlowsExt = "PowerFlows"
 [compat]
 Dates = "1"
 DocStringExtensions = "~0.8, ~0.9"
-InfrastructureModels = "0.7"
 InfrastructureSystems = "3"
 JuMP = "^1.28"
 PowerSystems = "5.3"

@@ -43,8 +43,9 @@ function get_template_basic_uc_simulation()
     set_device_model!(template, RenewableDispatch, RenewableFullDispatch)
     set_device_model!(template, PowerLoad, StaticPowerLoad)
     set_device_model!(template, InterruptiblePowerLoad, StaticPowerLoad)
-    set_device_model!(template, HydroTurbine, HydroTurbineEnergyDispatch)
-    set_device_model!(template, HydroReservoir, HydroEnergyModelReservoir)
+    # TODO: Re-enable once HydroPowerSimulations uses IOM
+    # set_device_model!(template, HydroTurbine, HydroTurbineEnergyDispatch)
+    # set_device_model!(template, HydroReservoir, HydroEnergyModelReservoir)
     return template
 end
 
@@ -60,32 +61,34 @@ function get_template_nomin_ed_simulation(network = CopperPlatePowerModel)
     set_device_model!(template, RenewableDispatch, RenewableFullDispatch)
     set_device_model!(template, PowerLoad, StaticPowerLoad)
     set_device_model!(template, InterruptiblePowerLoad, PowerLoadDispatch)
-    set_device_model!(template, HydroTurbine, HydroTurbineEnergyDispatch)
-    set_device_model!(template, HydroReservoir, HydroEnergyModelReservoir)
+    # TODO: Re-enable once HydroPowerSimulations uses IOM
+    # set_device_model!(template, HydroTurbine, HydroTurbineEnergyDispatch)
+    # set_device_model!(template, HydroReservoir, HydroEnergyModelReservoir)
     return template
 end
 
-function get_template_hydro_st_uc(network = CopperPlatePowerModel)
-    template = ProblemTemplate(network)
-    set_device_model!(template, ThermalStandard, ThermalStandardUnitCommitment),
-    set_device_model!(template, RenewableDispatch, RenewableFullDispatch),
-    set_device_model!(template, PowerLoad, StaticPowerLoad),
-    set_device_model!(template, InterruptiblePowerLoad, PowerLoadDispatch),
-    set_device_model!(template, HydroTurbine, HydroTurbineEnergyDispatch)
-    set_device_model!(template, HydroReservoir, HydroEnergyModelReservoir)
-    return template
-end
+# TODO: Re-enable once HydroPowerSimulations uses IOM
+# function get_template_hydro_st_uc(network = CopperPlatePowerModel)
+#     template = ProblemTemplate(network)
+#     set_device_model!(template, ThermalStandard, ThermalStandardUnitCommitment),
+#     set_device_model!(template, RenewableDispatch, RenewableFullDispatch),
+#     set_device_model!(template, PowerLoad, StaticPowerLoad),
+#     set_device_model!(template, InterruptiblePowerLoad, PowerLoadDispatch),
+#     set_device_model!(template, HydroTurbine, HydroTurbineEnergyDispatch)
+#     set_device_model!(template, HydroReservoir, HydroEnergyModelReservoir)
+#     return template
+# end
 
-function get_template_hydro_st_ed(network = CopperPlatePowerModel, duals = [])
-    template = ProblemTemplate(network)
-    set_device_model!(template, ThermalStandard, ThermalBasicDispatch)
-    set_device_model!(template, RenewableDispatch, RenewableFullDispatch)
-    set_device_model!(template, PowerLoad, StaticPowerLoad)
-    set_device_model!(template, InterruptiblePowerLoad, PowerLoadDispatch)
-    set_device_model!(template, HydroTurbine, HydroTurbineEnergyDispatch)
-    set_device_model!(template, HydroReservoir, HydroEnergyModelReservoir)
-    return template
-end
+# function get_template_hydro_st_ed(network = CopperPlatePowerModel, duals = [])
+#     template = ProblemTemplate(network)
+#     set_device_model!(template, ThermalStandard, ThermalBasicDispatch)
+#     set_device_model!(template, RenewableDispatch, RenewableFullDispatch)
+#     set_device_model!(template, PowerLoad, StaticPowerLoad)
+#     set_device_model!(template, InterruptiblePowerLoad, PowerLoadDispatch)
+#     set_device_model!(template, HydroTurbine, HydroTurbineEnergyDispatch)
+#     set_device_model!(template, HydroReservoir, HydroEnergyModelReservoir)
+#     return template
+# end
 
 function get_template_dispatch_with_network(network = PTDFPowerModel)
     template = ProblemTemplate(network)

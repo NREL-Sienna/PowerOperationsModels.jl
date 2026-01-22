@@ -42,23 +42,22 @@ import InfrastructureSystems.Optimization:
     AbstractPowerModel,
     AbstractHVDCNetworkModel
 
-# Import key types for re-export
-import InfrastructureSystems.Optimization:
-    VariableKey,
-    ConstraintKey,
-    ParameterKey,
-    ExpressionKey,
-    AuxVarKey,
-    OptimizationContainerKey
+#################################################################################
+# Import InfrastructureOptimizationModels early for base functions
+# These are needed before including core files that extend them
+#################################################################################
+import InfrastructureOptimizationModels
+const POM = InfrastructureOptimizationModels
 
-# Import utility functions
-import InfrastructureSystems.Optimization:
+# Import utility functions that core files will extend with new methods
+import InfrastructureOptimizationModels:
     should_write_resulting_value,
     convert_result_to_natural_units
 
 #################################################################################
 # Include core type definitions
 # These define concrete Variable, Expression, Constraint, and Parameter types
+# and extend should_write_resulting_value/convert_result_to_natural_units
 #################################################################################
 include("core/variables.jl")
 include("core/expressions.jl")
@@ -71,8 +70,6 @@ include("core/network_formulations.jl")
 # Import and re-export from InfrastructureOptimizationModels
 # Infrastructure types and functions that are not type definitions
 #################################################################################
-import InfrastructureOptimizationModels
-const POM = InfrastructureOptimizationModels
 
 using InfrastructureOptimizationModels:
     # Base Models
@@ -166,7 +163,14 @@ using InfrastructureOptimizationModels:
     get_model_base_power,
     get_optimizer_stats,
     # Constants
-    HOURS_IN_WEEK
+    HOURS_IN_WEEK,
+    # Key types (defined in IOM, not IS.Optimization)
+    VariableKey,
+    ConstraintKey,
+    ParameterKey,
+    ExpressionKey,
+    AuxVarKey,
+    OptimizationContainerKey
 
 #################################################################################
 # Exports - Base Models
