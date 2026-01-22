@@ -1,7 +1,7 @@
 module PowerModelsExt
 
-import InfrastructureModels as _IM
-import InfrastructureModels: optimize_model!, @im_fields, nw_id_default
+import .InfrastructureModelsExt as _IM
+import .InfrastructureModels: optimize_model!, @im_fields, nw_id_default
 import InfrastructureSystems
 import JuMP
 import LinearAlgebra
@@ -16,7 +16,6 @@ const pm_it_name = "pm"
 const pm_it_sym = Symbol(pm_it_name)
 
 include("core/data.jl")
-include("core/data_basic.jl")
 include("core/ref.jl")
 include("core/base.jl")
 include("core/types.jl")
