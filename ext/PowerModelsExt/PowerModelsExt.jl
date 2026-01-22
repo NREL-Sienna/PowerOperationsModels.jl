@@ -2,10 +2,14 @@ module PowerModelsExt
 
 import InfrastructureModels as _IM
 import InfrastructureModels: optimize_model!, @im_fields, nw_id_default
+import InfrastructureSystems
 import JuMP
 import LinearAlgebra
 import Logging
 import SparseArrays
+
+# Import base abstract type from InfrastructureSystems.Optimization
+const AbstractPowerModel = InfrastructureSystems.Optimization.AbstractPowerModel
 
 const _pm_global_keys = Set(["time_series", "per_unit"])
 const pm_it_name = "pm"

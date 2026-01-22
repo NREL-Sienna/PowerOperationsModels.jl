@@ -16,7 +16,6 @@ using Test
 using Logging
 
 # Dependencies for testing
-using PowerModels
 using DataFrames
 using DataFramesMeta
 using Dates
@@ -31,7 +30,6 @@ using Random
 import Serialization
 import LinearAlgebra
 
-const PM = PowerModels
 const PSY = PowerSystems
 const POM = InfrastructureOptimizationModels
 const PFS = PowerFlows

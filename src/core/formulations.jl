@@ -9,7 +9,6 @@ const POM = PowerOperationsModels
 struct MyCustomDeviceFormulation <: POM.AbstractDeviceFormulation end
 ```
 """
-abstract type AbstractDeviceFormulation end
 
 ########################### Thermal Generation Formulations ################################
 abstract type AbstractThermalFormulation <: AbstractDeviceFormulation end
@@ -214,7 +213,6 @@ Lossless Line struct formulation
 struct LosslessLine <: AbstractDCLineFormulation end
 
 ############################## HVDC Network Model Formulations ##################################
-abstract type AbstractHVDCNetworkModel end
 
 """
 Transport Lossless HVDC network model. No DC voltage variables are added and DC lines are modeled as lossless power transport elements

@@ -18,17 +18,22 @@
 ================================================#
 
 ##### Top Level Abstract Types #####
+# AbstractPowerModel is imported from InfrastructureSystems.Optimization
+# via the PowerModelsExt module header
 
-"active power only models"
+"Active power only models"
 abstract type AbstractActivePowerModel <: AbstractPowerModel end
 
-"variants that target conic solvers"
+"Variants that target conic solvers"
 abstract type AbstractConicModel <: AbstractPowerModel end
 
-"for branch flow models"
+"Branch flow models"
 abstract type AbstractBFModel <: AbstractPowerModel end
 
+"DC power flow approximation models"
+abstract type AbstractDCPModel <: AbstractActivePowerModel end
 
+##### Branch Flow Model Subtypes #####
 "for variants of branch flow models that target LP solvers"
 abstract type AbstractBFAModel <: AbstractBFModel end
 
@@ -146,11 +151,7 @@ mutable struct IVRPowerModel <: AbstractIVRModel @pm_fields end
 
 
 ##### Linear Approximations #####
-
-
-
-abstract type AbstractDCPModel <: AbstractActivePowerModel end
-
+# AbstractDCPModel is imported from IS.Optimization
 
 """
 Linearized 'DC' power flow Model with polar voltage variables.

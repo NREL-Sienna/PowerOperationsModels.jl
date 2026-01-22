@@ -1,8 +1,5 @@
 # stuff that is universal to all power models
 
-"root of the power formulation type hierarchy"
-abstract type AbstractPowerModel <: _IM.AbstractInfrastructureModel end
-
 "a macro for adding the base PowerModels fields to a type definition"
 _IM.@def pm_fields begin
     # this must be explicitly qualified, so that it works in downstream

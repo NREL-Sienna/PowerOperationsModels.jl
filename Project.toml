@@ -13,11 +13,10 @@ PowerSystems = "bcd98974-b02a-5e2f-9ee0-a103f5c450dd"
 TimerOutputs = "a759f4b9-e2f1-59dc-863e-4aeb61b1ea8f"
 
 [weakdeps]
-PowerModelsExt = "c36e90e8-916a-50a6-bd94-075b64ef4655"
 InfrastructureModels = "2030c09a-7f63-5d83-885d-db604e0e9cc0"
 
 [extensions]
-PowerModelsExt = "PowerModels"
+PowerModelsExt = "PowerModelsExt"
 
 [compat]
 Dates = "1"

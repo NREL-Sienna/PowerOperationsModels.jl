@@ -36,6 +36,12 @@ import InfrastructureSystems.Optimization:
     RightHandSideParameter,
     ObjectiveFunctionParameter
 
+# Import formulation abstract types from InfrastructureSystems.Optimization
+import InfrastructureSystems.Optimization:
+    AbstractDeviceFormulation,
+    AbstractPowerModel,
+    AbstractHVDCNetworkModel
+
 # Import key types for re-export
 import InfrastructureSystems.Optimization:
     VariableKey,
@@ -445,6 +451,10 @@ export DeviceLimitedRegulation
 #################################################################################
 # Exports - Network Formulation Types (defined in core/network_formulations.jl)
 #################################################################################
+# Power Model Abstract Type (from IS.Optimization)
+export AbstractPowerModel
+
+# Concrete Network Formulations
 export AbstractPTDFModel
 export PTDFPowerModel
 export CopperPlatePowerModel
