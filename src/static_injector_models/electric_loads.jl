@@ -83,7 +83,7 @@ function add_constraints!(
 ) where {
     V <: PSY.ElectricLoad,
     W <: AbstractControllablePowerLoadFormulation,
-    X <: PM.AbstractPowerModel,
+    X <: AbstractPowerModel,
 }
     time_steps = get_time_steps(container)
     constraint = add_constraints_container!(
@@ -110,7 +110,7 @@ function add_constraints!(
     devices::IS.FlattenIteratorWrapper{V},
     model::DeviceModel{V, W},
     ::NetworkModel{X},
-) where {V <: PSY.ControllableLoad, W <: PowerLoadDispatch, X <: PM.AbstractPowerModel}
+) where {V <: PSY.ControllableLoad, W <: PowerLoadDispatch, X <: AbstractPowerModel}
     add_parameterized_upper_bound_range_constraints(
         container,
         ActivePowerVariableTimeSeriesLimitsConstraint,
@@ -130,7 +130,7 @@ function add_constraints!(
     devices::IS.FlattenIteratorWrapper{V},
     model::DeviceModel{V, W},
     ::NetworkModel{X},
-) where {V <: PSY.ControllableLoad, W <: PowerLoadInterruption, X <: PM.AbstractPowerModel}
+) where {V <: PSY.ControllableLoad, W <: PowerLoadInterruption, X <: AbstractPowerModel}
     add_parameterized_upper_bound_range_constraints(
         container,
         ActivePowerVariableTimeSeriesLimitsConstraint,
@@ -150,7 +150,7 @@ function add_constraints!(
     devices::IS.FlattenIteratorWrapper{V},
     model::DeviceModel{V, W},
     ::NetworkModel{X},
-) where {V <: PSY.ControllableLoad, W <: PowerLoadInterruption, X <: PM.AbstractPowerModel}
+) where {V <: PSY.ControllableLoad, W <: PowerLoadInterruption, X <: AbstractPowerModel}
     time_steps = get_time_steps(container)
     constraint = add_constraints_container!(
         container,
@@ -177,7 +177,7 @@ function objective_function!(
     container::OptimizationContainer,
     devices::IS.FlattenIteratorWrapper{T},
     ::DeviceModel{T, U},
-    ::Type{<:PM.AbstractPowerModel},
+    ::Type{<:AbstractPowerModel},
 ) where {T <: PSY.ControllableLoad, U <: PowerLoadDispatch}
     add_variable_cost!(container, ActivePowerVariable(), devices, U())
     return
@@ -187,7 +187,7 @@ function objective_function!(
     container::OptimizationContainer,
     devices::IS.FlattenIteratorWrapper{T},
     ::DeviceModel{T, U},
-    ::Type{<:PM.AbstractPowerModel},
+    ::Type{<:AbstractPowerModel},
 ) where {T <: PSY.ControllableLoad, U <: PowerLoadInterruption}
     add_variable_cost!(container, ActivePowerVariable(), devices, U())
     add_proportional_cost!(container, OnVariable(), devices, U())

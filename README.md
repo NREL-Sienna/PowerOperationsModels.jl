@@ -12,7 +12,7 @@
 
 - Device-specific optimization models (thermal generators, renewables, storage, HVDC, loads, etc.)
 - Integration with PowerSystems.jl for power system data structures
-- Support for various network formulations via PowerModels.jl
+- Support for various network formulations via PowerModelsExt.jl which is code borrowed from PowerModels.jl for better integration.
 - Designed to work with InfrastructureOptimizationModels.jl infrastructure
 
 ## Development

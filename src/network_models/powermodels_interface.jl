@@ -19,7 +19,7 @@ function instantiate_nip_expr_model(data::Dict{String, Any}, model_constructor; 
 end
 
 # replicates PM.build_mn_opf
-function instantiate_nip_expr(pm::PM.AbstractPowerModel)
+function instantiate_nip_expr(pm::AbstractPowerModel)
     for n in eachindex(PM.nws(pm))
         PM.variable_bus_voltage(pm; nw = n)
         PM.variable_branch_power(pm; nw = n, bounded = false)
@@ -55,7 +55,7 @@ function instantiate_bfp_expr_model(data::Dict{String, Any}, model_constructor; 
 end
 
 # replicates PM.build_mn_opf_bf_strg
-function instantiate_bfp_expr(pm::PM.AbstractPowerModel)
+function instantiate_bfp_expr(pm::AbstractPowerModel)
     for n in eachindex(PM.nws(pm))
         PM.variable_bus_voltage(pm; nw = n)
         PM.variable_branch_power(pm; nw = n, bounded = false)
@@ -97,7 +97,7 @@ end
 # Model Extention Functions
 
 function constraint_power_balance_ni_expr(
-    pm::PM.AbstractPowerModel,
+    pm::AbstractPowerModel,
     i::Int;
     nw::Int = pm.cnw,
 )
@@ -128,7 +128,7 @@ function constraint_power_balance_ni_expr(
 end
 
 function constraint_power_balance_ni_expr(
-    pm::PM.AbstractPowerModel,
+    pm::AbstractPowerModel,
     n::Int,
     i::Int,
     bus_arcs,
@@ -156,7 +156,7 @@ end
 #=
 # VI Methdos not supported currently
 function constraint_current_balance_ni_expr(
-    pm::PM.AbstractPowerModel,
+    pm::AbstractPowerModel,
     i::Int;
     nw::Int = pm.cnw,
 )
@@ -187,7 +187,7 @@ function constraint_current_balance_ni_expr(
 end
 
 function constraint_current_balance_ni_expr(
-    pm::PM.AbstractPowerModel,
+    pm::AbstractPowerModel,
     n::Int,
     i::Int,
     bus_arcs,
@@ -246,7 +246,7 @@ function powermodels_network!(
     sys::PSY.System,
     template::ProblemTemplate,
     instantiate_model,
-) where {S <: PM.AbstractPowerModel}
+) where {S <: AbstractPowerModel}
     time_steps = get_time_steps(container)
     pm_data, PM_map = pass_to_pm(sys, template, time_steps[end])
 
@@ -349,7 +349,7 @@ function PMvarmap(::Type{S}) where {S <: PM.AbstractActivePowerModel}
     return pm_variable_map
 end
 
-function PMvarmap(::Type{S}) where {S <: PM.AbstractPowerModel}
+function PMvarmap(::Type{S}) where {S <: AbstractPowerModel}
     pm_variable_map = Dict{Type, Dict{Symbol, Union{VariableType, NamedTuple}}}()
 
     pm_variable_map[PSY.ACBus] = Dict(:va => VoltageAngle(), :vm => VoltageMagnitude())
@@ -381,7 +381,7 @@ function PMconmap(::Type{S}) where {S <: PM.AbstractActivePowerModel}
     return pm_constraint_map
 end
 
-function PMconmap(::Type{S}) where {S <: PM.AbstractPowerModel}
+function PMconmap(::Type{S}) where {S <: AbstractPowerModel}
     pm_constraint_map = Dict{Type, Dict{Symbol, ConstraintType}}()
 
     pm_constraint_map[PSY.ACBus] = Dict(
@@ -391,7 +391,7 @@ function PMconmap(::Type{S}) where {S <: PM.AbstractPowerModel}
     return pm_constraint_map
 end
 
-function PMexprmap(::Type{S}) where {S <: PM.AbstractPowerModel}
+function PMexprmap(::Type{S}) where {S <: AbstractPowerModel}
     pm_expr_map = Dict{
         Type,
         NamedTuple{
@@ -408,7 +408,7 @@ function add_pm_variable_refs!(
     system_formulation::Type{S},
     ::PSY.System,
     model::NetworkModel,
-) where {S <: PM.AbstractPowerModel}
+) where {S <: AbstractPowerModel}
     time_steps = get_time_steps(container)
     bus_dict = container.pm.ext[:PMmap].bus
     ACbranch_dict = container.pm.ext[:PMmap].arcs
@@ -544,7 +544,7 @@ function add_pm_constraint_refs!(
     container::OptimizationContainer,
     system_formulation::Type{S},
     ::PSY.System,
-) where {S <: PM.AbstractPowerModel}
+) where {S <: AbstractPowerModel}
     time_steps = get_time_steps(container)
     bus_dict = container.pm.ext[:PMmap].bus
 

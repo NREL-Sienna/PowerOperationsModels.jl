@@ -989,7 +989,7 @@ function construct_service!(
     model::ServiceModel{SR, F},
     devices_template::Dict{Symbol, DeviceModel},
     incompatible_device_types::Set{<:DataType},
-    ::NetworkModel{<:PM.AbstractPowerModel},
+    ::NetworkModel{<:AbstractPowerModel},
 ) where {SR <: PSY.Reserve, F <: RangeReserveWithDeliverabilityConstraints}
     name = get_service_name(model)
     service = PSY.get_component(SR, sys, name)

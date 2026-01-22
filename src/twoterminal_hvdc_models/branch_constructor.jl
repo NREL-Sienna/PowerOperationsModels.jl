@@ -65,7 +65,7 @@ construct_device!(
     ::PSY.System,
     ::ArgumentConstructStage,
     ::DeviceModel{<:PSY.ACTransmission, StaticBranchUnbounded},
-    ::NetworkModel{<:PM.AbstractPowerModel},
+    ::NetworkModel{<:AbstractPowerModel},
 ) = nothing
 
 construct_device!(
@@ -73,7 +73,7 @@ construct_device!(
     ::PSY.System,
     ::ModelConstructStage,
     ::DeviceModel{<:PSY.ACTransmission, StaticBranchUnbounded},
-    ::NetworkModel{<:PM.AbstractPowerModel},
+    ::NetworkModel{<:AbstractPowerModel},
 ) = nothing
 
 # For DC Power only. Implements constraints
@@ -360,7 +360,7 @@ function construct_device!(
     sys::PSY.System,
     ::ArgumentConstructStage,
     device_model::DeviceModel{T, StaticBranch},
-    network_model::NetworkModel{<:PM.AbstractPowerModel},
+    network_model::NetworkModel{<:AbstractPowerModel},
 ) where {T <: PSY.ACTransmission}
     devices = get_available_components(device_model, sys)
 
@@ -382,7 +382,7 @@ function construct_device!(
     sys::PSY.System,
     ::ModelConstructStage,
     device_model::DeviceModel{T, StaticBranch},
-    network_model::NetworkModel{<:PM.AbstractPowerModel},
+    network_model::NetworkModel{<:AbstractPowerModel},
 ) where {T <: PSY.ACTransmission}
     devices = get_available_components(device_model, sys)
     add_feedforward_constraints!(container, device_model, devices)
@@ -410,7 +410,7 @@ function construct_device!(
     ::ArgumentConstructStage,
     device_model::DeviceModel{T, StaticBranchBounds},
     ::NetworkModel{U},
-) where {T <: PSY.ACTransmission, U <: PM.AbstractPowerModel}
+) where {T <: PSY.ACTransmission, U <: AbstractPowerModel}
     if get_use_slacks(device_model)
         throw(
             ArgumentError(
@@ -428,7 +428,7 @@ function construct_device!(
     sys::PSY.System,
     ::ModelConstructStage,
     device_model::DeviceModel{T, StaticBranchBounds},
-    network_model::NetworkModel{<:PM.AbstractPowerModel},
+    network_model::NetworkModel{<:AbstractPowerModel},
 ) where {T <: PSY.ACTransmission}
     devices = get_available_components(device_model, sys)
     branch_rate_bounds!(container, device_model, network_model)
@@ -523,7 +523,7 @@ function construct_device!(
     sys::PSY.System,
     ::ArgumentConstructStage,
     device_model::DeviceModel{T, HVDCTwoTerminalUnbounded},
-    ::NetworkModel{<:PM.AbstractPowerModel},
+    ::NetworkModel{<:AbstractPowerModel},
 ) where {T <: PSY.TwoTerminalHVDC}
     devices = get_available_components(device_model, sys)
     add_feedforward_arguments!(container, device_model, devices)
@@ -535,7 +535,7 @@ function construct_device!(
     sys::PSY.System,
     ::ModelConstructStage,
     device_model::DeviceModel{<:PSY.TwoTerminalHVDC, HVDCTwoTerminalUnbounded},
-    ::NetworkModel{<:PM.AbstractPowerModel},
+    ::NetworkModel{<:AbstractPowerModel},
 )
     devices = get_available_components(device_model, sys)
     add_constraint_dual!(container, sys, device_model)
@@ -686,7 +686,7 @@ function construct_device!(
     sys::PSY.System,
     ::ArgumentConstructStage,
     device_model::DeviceModel{T, HVDCTwoTerminalLossless},
-    ::NetworkModel{<:PM.AbstractPowerModel},
+    ::NetworkModel{<:AbstractPowerModel},
 ) where {T <: PSY.TwoTerminalHVDC}
     devices = get_available_components(device_model, sys)
     add_feedforward_arguments!(container, device_model, devices)
@@ -698,7 +698,7 @@ function construct_device!(
     sys::PSY.System,
     ::ModelConstructStage,
     device_model::DeviceModel{T, HVDCTwoTerminalLossless},
-    network_model::NetworkModel{<:PM.AbstractPowerModel},
+    network_model::NetworkModel{<:AbstractPowerModel},
 ) where {T <: PSY.TwoTerminalHVDC}
     devices = get_available_components(device_model, sys)
     add_constraints!(container, FlowRateConstraint, devices, device_model, network_model)

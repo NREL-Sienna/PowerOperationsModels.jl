@@ -6,7 +6,7 @@ function construct_device!(
     sys::PSY.System,
     ::ArgumentConstructStage,
     model::DeviceModel{T, D},
-    network_model::NetworkModel{<:PM.AbstractPowerModel},
+    network_model::NetworkModel{<:AbstractPowerModel},
 ) where {
     T <: PSY.Source,
     D <: ImportExportSourceModel,
@@ -87,7 +87,7 @@ function construct_device!(
     sys::PSY.System,
     ::ModelConstructStage,
     model::DeviceModel{T, D},
-    network_model::NetworkModel{<:PM.AbstractPowerModel},
+    network_model::NetworkModel{<:AbstractPowerModel},
 ) where {
     T <: PSY.Source,
     D <: ImportExportSourceModel,

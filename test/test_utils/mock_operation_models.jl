@@ -10,7 +10,7 @@ function POM.DecisionModel(
     sys::PSY.System;
     name = nothing,
     kwargs...,
-) where {T <: PM.AbstractPowerModel}
+) where {T <: AbstractPowerModel}
     settings = POM.Settings(sys; kwargs...)
     available_resolutions = PSY.get_time_series_resolutions(sys)
     if length(available_resolutions) == 1

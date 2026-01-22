@@ -3,7 +3,7 @@ function construct_device!(
     sys::PSY.System,
     ::ArgumentConstructStage,
     model::DeviceModel{R, D},
-    network_model::NetworkModel{<:PM.AbstractPowerModel},
+    network_model::NetworkModel{<:AbstractPowerModel},
 ) where {
     R <: PSY.RenewableGen,
     D <: AbstractRenewableDispatchFormulation,
@@ -65,7 +65,7 @@ function construct_device!(
     sys::PSY.System,
     ::ModelConstructStage,
     model::DeviceModel{R, <:AbstractRenewableDispatchFormulation},
-    network_model::NetworkModel{<:PM.AbstractPowerModel},
+    network_model::NetworkModel{<:AbstractPowerModel},
 ) where {R <: PSY.RenewableGen}
     devices = get_available_components(model, sys)
 
@@ -217,7 +217,7 @@ function construct_device!(
     sys::PSY.System,
     ::ArgumentConstructStage,
     model::DeviceModel{R, FixedOutput},
-    network_model::NetworkModel{<:PM.AbstractPowerModel},
+    network_model::NetworkModel{<:AbstractPowerModel},
 ) where {R <: PSY.RenewableGen}
     devices = get_available_components(model, sys)
 
@@ -273,7 +273,7 @@ function construct_device!(
     sys::PSY.System,
     ::ModelConstructStage,
     model::DeviceModel{<:PSY.RenewableGen, FixedOutput},
-    network_model::NetworkModel{<:PM.AbstractPowerModel},
+    network_model::NetworkModel{<:AbstractPowerModel},
 )
     # FixedOutput doesn't add any constraints to the model. This function covers
     # AbstractPowerModel and AbtractActivePowerModel

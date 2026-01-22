@@ -194,7 +194,7 @@ end
 
 function _get_flow_variable_vector(
     container::OptimizationContainer,
-    ::NetworkModel{<:PM.AbstractPowerModel},
+    ::NetworkModel{<:AbstractPowerModel},
     ::Type{B},
 ) where {B <: PSY.ACTransmission}
     return [
@@ -206,7 +206,7 @@ end
 function branch_rate_bounds!(
     container::OptimizationContainer,
     ::DeviceModel{B, T},
-    network_model::NetworkModel{<:PM.AbstractPowerModel},
+    network_model::NetworkModel{<:AbstractPowerModel},
 ) where {B <: PSY.ACTransmission, T <: AbstractBranchFormulation}
     time_steps = get_time_steps(container)
     net_reduction_data = get_network_reduction(network_model)
@@ -522,7 +522,7 @@ function add_constraints!(
     devices::IS.FlattenIteratorWrapper{B},
     device_model::DeviceModel{B, <:AbstractBranchFormulation},
     network_model::NetworkModel{T},
-) where {B <: PSY.ACTransmission, T <: PM.AbstractPowerModel}
+) where {B <: PSY.ACTransmission, T <: AbstractPowerModel}
     reduced_branch_tracker = get_reduced_branch_tracker(network_model)
     net_reduction_data = get_network_reduction(network_model)
     all_branch_maps_by_type = net_reduction_data.all_branch_maps_by_type
@@ -574,7 +574,7 @@ function add_constraints!(
     devices::IS.FlattenIteratorWrapper{B},
     device_model::DeviceModel{B, <:AbstractBranchFormulation},
     network_model::NetworkModel{T},
-) where {B <: PSY.ACTransmission, T <: PM.AbstractPowerModel}
+) where {B <: PSY.ACTransmission, T <: AbstractPowerModel}
     reduced_branch_tracker = get_reduced_branch_tracker(network_model)
     net_reduction_data = get_network_reduction(network_model)
     all_branch_maps_by_type = net_reduction_data.all_branch_maps_by_type
@@ -1069,7 +1069,7 @@ function objective_function!(
     container::OptimizationContainer,
     ::IS.FlattenIteratorWrapper{T},
     device_model::DeviceModel{T, <:AbstractBranchFormulation},
-    ::Type{<:PM.AbstractPowerModel},
+    ::Type{<:AbstractPowerModel},
 ) where {T <: PSY.ACTransmission}
     if get_use_slacks(device_model)
         variable_up = get_variable(container, FlowActivePowerSlackUpperBound(), T)

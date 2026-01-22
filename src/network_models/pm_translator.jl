@@ -52,7 +52,7 @@ function get_branch_to_pm(
     ::Tuple{Int, Int},
     branch::PSY.PhaseShiftingTransformer,
     ::Type{D},
-    ::Type{<:PM.AbstractPowerModel},
+    ::Type{<:AbstractPowerModel},
 ) where {D <: AbstractBranchFormulation}
     # we allocate the transformer shunt values to primary side only
     yt = PSY.get_primary_shunt(branch)
@@ -84,7 +84,7 @@ function get_branch_to_pm(
     ::Tuple{Int, Int},
     branch::PSY.PhaseShiftingTransformer,
     ::Type{StaticBranchUnbounded},
-    ::Type{<:PM.AbstractPowerModel},
+    ::Type{<:AbstractPowerModel},
 )
     # we allocate the transformer shunt values to primary side only
     yt = PSY.get_primary_shunt(branch)
@@ -113,7 +113,7 @@ function get_branch_to_pm(
     ::Tuple{Int, Int},
     branch::PSY.Transformer2W,
     ::Type{<:AbstractBranchFormulation},
-    ::Type{<:PM.AbstractPowerModel},
+    ::Type{<:AbstractPowerModel},
 )
     # we allocate the transformer shunt values to primary side only
     yt = PSY.get_primary_shunt(branch)
@@ -145,7 +145,7 @@ function get_branch_to_pm(
     ::Tuple{Int, Int},
     branch::PSY.Transformer2W,
     ::Type{StaticBranchUnbounded},
-    ::Type{<:PM.AbstractPowerModel},
+    ::Type{<:AbstractPowerModel},
 )
     # we allocate the transformer shunt values to primary side only
     yt = PSY.get_primary_shunt(branch)
@@ -174,7 +174,7 @@ function get_branch_to_pm(
     ::Tuple{Int, Int},
     branch::PSY.TapTransformer,
     ::Type{<:AbstractBranchFormulation},
-    ::Type{<:PM.AbstractPowerModel},
+    ::Type{<:AbstractPowerModel},
 )
     # we allocate the transformer shunt values to primary side only
     yt = PSY.get_primary_shunt(branch)
@@ -206,7 +206,7 @@ function get_branch_to_pm(
     ::Tuple{Int, Int},
     branch::PSY.TapTransformer,
     ::Type{StaticBranchUnbounded},
-    ::Type{<:PM.AbstractPowerModel},
+    ::Type{<:AbstractPowerModel},
 )
     # we allocate the transformer shunt values to primary side only
     yt = PSY.get_primary_shunt(branch)
@@ -235,7 +235,7 @@ function get_branch_to_pm(
     ::Tuple{Int, Int},
     branch::PSY.ACTransmission,
     ::Type{<:AbstractBranchFormulation},
-    ::Type{<:PM.AbstractPowerModel},
+    ::Type{<:AbstractPowerModel},
 )
     PM_branch = Dict{String, Any}(
         "br_r" => PSY.get_r(branch),
@@ -265,7 +265,7 @@ function get_branch_to_pm(
     ::Tuple{Int, Int},
     branch::PSY.ACTransmission,
     ::Type{StaticBranchUnbounded},
-    ::Type{<:PM.AbstractPowerModel},
+    ::Type{<:AbstractPowerModel},
 )
     PM_branch = Dict{String, Any}(
         "br_r" => PSY.get_r(branch),
@@ -292,7 +292,7 @@ function get_branch_to_pm(
     arc_tuple::Tuple{Int, Int},
     branch::PNM.ThreeWindingTransformerWinding{PSY.Transformer3W},
     ::Type{StaticBranchUnbounded},
-    ::Type{<:PM.AbstractPowerModel},
+    ::Type{<:AbstractPowerModel},
 )
     arc_tuple
     PM_branch = Dict{String, Any}(
@@ -320,7 +320,7 @@ function get_branch_to_pm(
     arc_tuple::Tuple{Int, Int},
     branch::PNM.ThreeWindingTransformerWinding{PSY.Transformer3W},
     ::Type{<:AbstractBranchFormulation},
-    ::Type{<:PM.AbstractPowerModel},
+    ::Type{<:AbstractPowerModel},
 )
     PM_branch = Dict{String, Any}(
         "br_r" => PNM.get_equivalent_r(branch),
@@ -350,7 +350,7 @@ function get_branch_to_pm(
     arc_tuple::Tuple{Int, Int},
     branch::PNM.ThreeWindingTransformerWinding{PSY.PhaseShiftingTransformer3W},
     ::Type{<:AbstractBranchFormulation},
-    ::Type{<:PM.AbstractPowerModel},
+    ::Type{<:AbstractPowerModel},
 )
     PM_branch = Dict{String, Any}(
         "br_r" => PNM.get_equivalent_r(branch),
@@ -380,7 +380,7 @@ function get_branch_to_pm(
     arc_tuple::Tuple{Int, Int},
     branch::PNM.ThreeWindingTransformerWinding{PSY.PhaseShiftingTransformer3W},
     ::Type{StaticBranchUnbounded},
-    ::Type{<:PM.AbstractPowerModel},
+    ::Type{<:AbstractPowerModel},
 )
     PM_branch = Dict{String, Any}(
         "br_r" => PNM.get_equivalent_r(branch),
@@ -407,7 +407,7 @@ function get_branch_to_pm(
     arc_tuple::Tuple{Int, Int},
     double_circuit::PNM.BranchesParallel,
     T::Type{<:AbstractBranchFormulation},
-    U::Type{<:PM.AbstractPowerModel},
+    U::Type{<:AbstractPowerModel},
 )
     equivalent_branch = PNM.get_equivalent_physical_branch_parameters(double_circuit)
     PM_branch = Dict{String, Any}(
@@ -439,7 +439,7 @@ function get_branch_to_pm(
     arc_tuple::Tuple{Int, Int},
     double_circuit::PNM.BranchesParallel,
     T::Type{StaticBranchUnbounded},
-    U::Type{<:PM.AbstractPowerModel},
+    U::Type{<:AbstractPowerModel},
 )
     equivalent_branch = PNM.get_equivalent_physical_branch_parameters(double_circuit)
     PM_branch = Dict{String, Any}(
@@ -471,7 +471,7 @@ function get_branch_to_pm(
     arc_tuple::Tuple{Int, Int},
     series_chain::PNM.BranchesSeries,
     T::Type{<:AbstractBranchFormulation},
-    U::Type{<:PM.AbstractPowerModel},
+    U::Type{<:AbstractPowerModel},
 )
     equivalent_branch = PNM.get_equivalent_physical_branch_parameters(series_chain)
     PM_branch = Dict{String, Any}(
@@ -499,7 +499,7 @@ function get_branch_to_pm(
     arc_tuple::Tuple{Int, Int},
     series_chain::PNM.BranchesSeries,
     T::Type{StaticBranchUnbounded},
-    U::Type{<:PM.AbstractPowerModel},
+    U::Type{<:AbstractPowerModel},
 )
     equivalent_branch = PNM.get_equivalent_physical_branch_parameters(series_chain)
     PM_branch = Dict{String, Any}(
@@ -526,7 +526,7 @@ function get_branch_to_pm(
     ix::Int,
     branch::PSY.TwoTerminalGenericHVDCLine,
     ::Type{HVDCTwoTerminalDispatch},
-    ::Type{<:PM.AbstractPowerModel},
+    ::Type{<:AbstractPowerModel},
 )
     check_hvdc_line_limits_unidirectional(branch)
     PM_branch = Dict{String, Any}(
@@ -565,7 +565,7 @@ function get_branch_to_pm(
     ix::Int,
     branch::PSY.TwoTerminalGenericHVDCLine,
     ::Type{<:AbstractTwoTerminalDCLineFormulation},
-    ::Type{<:PM.AbstractPowerModel},
+    ::Type{<:AbstractPowerModel},
 )
     PM_branch = Dict{String, Any}(
         "loss1" => PSY.get_proportional_term(PSY.get_loss(branch)),
@@ -641,7 +641,7 @@ function get_branch_to_pm(
     ix::Int,
     branch::PSY.TwoTerminalLCCLine,
     ::Type{HVDCTwoTerminalLCC},
-    ::Type{<:PM.AbstractPowerModel},
+    ::Type{<:AbstractPowerModel},
 )
     return Dict{String, Any}()
 end
@@ -652,7 +652,7 @@ function get_branches_to_pm(
     ::Type{T},
     branch_template::BranchModelContainer,
     start_idx = 0,
-) where {T <: PSY.ACTransmission, S <: PM.AbstractPowerModel}
+) where {T <: PSY.ACTransmission, S <: AbstractPowerModel}
     PM_branches = Dict{String, Any}()
     PMmap_br = Dict{Tuple{Int, Int}, PM_MAP_TUPLE}()
     net_reduction_data = get_network_reduction(network_model)
@@ -696,7 +696,7 @@ function get_branches_to_pm(
     ::Type{T},
     branch_template::BranchModelContainer,
     start_idx = 0,
-) where {T <: PSY.TwoTerminalHVDC, S <: PM.AbstractPowerModel}
+) where {T <: PSY.TwoTerminalHVDC, S <: AbstractPowerModel}
     PM_branches = Dict{String, Any}()
     PMmap_br = Dict{PM_MAP_TUPLE, T}()
 

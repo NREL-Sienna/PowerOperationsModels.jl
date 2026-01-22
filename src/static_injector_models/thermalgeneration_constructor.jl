@@ -46,7 +46,7 @@ function construct_device!(
     ::PSY.System,
     ::ModelConstructStage,
     ::DeviceModel{<:PSY.ThermalGen, FixedOutput},
-    network_model::NetworkModel{<:PM.AbstractPowerModel},
+    network_model::NetworkModel{<:AbstractPowerModel},
 )
     # FixedOutput doesn't add any constraints to the model. This function covers
     # AbstractPowerModel and AbtractActivePowerModel
@@ -61,7 +61,7 @@ function construct_device!(
     sys::PSY.System,
     ::ArgumentConstructStage,
     device_model::DeviceModel{T, D},
-    network_model::NetworkModel{<:PM.AbstractPowerModel},
+    network_model::NetworkModel{<:AbstractPowerModel},
 ) where {
     T <: PSY.ThermalGen,
     D <: AbstractStandardUnitCommitment,
@@ -145,7 +145,7 @@ function construct_device!(
     sys::PSY.System,
     ::ModelConstructStage,
     device_model::DeviceModel{T, U},
-    network_model::NetworkModel{<:PM.AbstractPowerModel},
+    network_model::NetworkModel{<:AbstractPowerModel},
 ) where {
     T <: PSY.ThermalGen,
     U <: Union{AbstractStandardUnitCommitment, AbstractSecurityConstrainedUnitCommitment},
@@ -352,7 +352,7 @@ function construct_device!(
     sys::PSY.System,
     ::ArgumentConstructStage,
     device_model::DeviceModel{T, ThermalBasicUnitCommitment},
-    network_model::NetworkModel{<:PM.AbstractPowerModel},
+    network_model::NetworkModel{<:AbstractPowerModel},
 ) where {T <: PSY.ThermalGen}
     devices = get_available_components(device_model, sys)
 
@@ -443,7 +443,7 @@ function construct_device!(
     sys::PSY.System,
     ::ModelConstructStage,
     device_model::DeviceModel{T, ThermalBasicUnitCommitment},
-    network_model::NetworkModel{<:PM.AbstractPowerModel},
+    network_model::NetworkModel{<:AbstractPowerModel},
 ) where {T <: PSY.ThermalGen}
     devices = get_available_components(device_model, sys)
 
@@ -642,7 +642,7 @@ function construct_device!(
     sys::PSY.System,
     ::ArgumentConstructStage,
     device_model::DeviceModel{T, ThermalStandardDispatch},
-    network_model::NetworkModel{<:PM.AbstractPowerModel},
+    network_model::NetworkModel{<:AbstractPowerModel},
 ) where {T <: PSY.ThermalGen}
     devices = get_available_components(device_model, sys)
 
@@ -724,7 +724,7 @@ function construct_device!(
     sys::PSY.System,
     ::ModelConstructStage,
     device_model::DeviceModel{T, ThermalStandardDispatch},
-    network_model::NetworkModel{<:PM.AbstractPowerModel},
+    network_model::NetworkModel{<:AbstractPowerModel},
 ) where {T <: PSY.ThermalGen}
     devices = get_available_components(device_model, sys)
 
@@ -890,7 +890,7 @@ function construct_device!(
     sys::PSY.System,
     ::ArgumentConstructStage,
     device_model::DeviceModel{T, D},
-    network_model::NetworkModel{<:PM.AbstractPowerModel},
+    network_model::NetworkModel{<:AbstractPowerModel},
 ) where {
     T <: PSY.ThermalGen,
     D <: AbstractThermalDispatchFormulation,
@@ -960,7 +960,7 @@ function construct_device!(
     sys::PSY.System,
     ::ModelConstructStage,
     device_model::DeviceModel{T, <:AbstractThermalDispatchFormulation},
-    network_model::NetworkModel{<:PM.AbstractPowerModel},
+    network_model::NetworkModel{<:AbstractPowerModel},
 ) where {T <: PSY.ThermalGen}
     devices = get_available_components(device_model, sys)
 
@@ -1107,7 +1107,7 @@ function construct_device!(
     sys::PSY.System,
     ::ArgumentConstructStage,
     device_model::DeviceModel{PSY.ThermalMultiStart, ThermalMultiStartUnitCommitment},
-    network_model::NetworkModel{<:PM.AbstractPowerModel},
+    network_model::NetworkModel{<:AbstractPowerModel},
 )
     devices = get_available_components(device_model, sys)
 
@@ -1219,7 +1219,7 @@ function construct_device!(
     sys::PSY.System,
     ::ModelConstructStage,
     device_model::DeviceModel{PSY.ThermalMultiStart, ThermalMultiStartUnitCommitment},
-    network_model::NetworkModel{<:PM.AbstractPowerModel},
+    network_model::NetworkModel{<:AbstractPowerModel},
 )
     devices = get_available_components(device_model, sys)
 
@@ -1477,7 +1477,7 @@ function construct_device!(
     sys::PSY.System,
     ::ArgumentConstructStage,
     device_model::DeviceModel{T, ThermalCompactUnitCommitment},
-    network_model::NetworkModel{<:PM.AbstractPowerModel},
+    network_model::NetworkModel{<:AbstractPowerModel},
 ) where {T <: PSY.ThermalGen}
     devices = get_available_components(device_model, sys)
 
@@ -1577,7 +1577,7 @@ function construct_device!(
     sys::PSY.System,
     ::ModelConstructStage,
     device_model::DeviceModel{T, ThermalCompactUnitCommitment},
-    network_model::NetworkModel{<:PM.AbstractPowerModel},
+    network_model::NetworkModel{<:AbstractPowerModel},
 ) where {T <: PSY.ThermalGen}
     devices = get_available_components(device_model, sys)
 
@@ -1785,7 +1785,7 @@ function construct_device!(
     sys::PSY.System,
     ::ArgumentConstructStage,
     device_model::DeviceModel{T, ThermalBasicCompactUnitCommitment},
-    network_model::NetworkModel{<:PM.AbstractPowerModel},
+    network_model::NetworkModel{<:AbstractPowerModel},
 ) where {T <: PSY.ThermalGen}
     devices = get_available_components(device_model, sys)
 
@@ -1885,7 +1885,7 @@ function construct_device!(
     sys::PSY.System,
     ::ModelConstructStage,
     device_model::DeviceModel{T, ThermalBasicCompactUnitCommitment},
-    network_model::NetworkModel{<:PM.AbstractPowerModel},
+    network_model::NetworkModel{<:AbstractPowerModel},
 ) where {T <: PSY.ThermalGen}
     devices = get_available_components(device_model, sys)
 
@@ -2087,7 +2087,7 @@ function construct_device!(
     sys::PSY.System,
     ::ArgumentConstructStage,
     device_model::DeviceModel{T, ThermalCompactDispatch},
-    network_model::NetworkModel{<:PM.AbstractPowerModel},
+    network_model::NetworkModel{<:AbstractPowerModel},
 ) where {T <: PSY.ThermalGen}
     devices = get_available_components(device_model, sys)
 
@@ -2178,7 +2178,7 @@ function construct_device!(
     sys::PSY.System,
     ::ModelConstructStage,
     device_model::DeviceModel{T, ThermalCompactDispatch},
-    network_model::NetworkModel{<:PM.AbstractPowerModel},
+    network_model::NetworkModel{<:AbstractPowerModel},
 ) where {T <: PSY.ThermalGen}
     devices = get_available_components(device_model, sys)
 

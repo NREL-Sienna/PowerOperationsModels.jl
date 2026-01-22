@@ -82,7 +82,7 @@ function add_constraints!(
 ) where {
     V <: PSY.Source,
     W <: AbstractSourceFormulation,
-    X <: PM.AbstractPowerModel,
+    X <: AbstractPowerModel,
 }
     if get_attribute(model, "reservation")
         add_reserve_range_constraints!(container, T, U, devices, model, X)
@@ -101,7 +101,7 @@ function add_constraints!(
 ) where {
     U <: PSY.Source,
     V <: AbstractSourceFormulation,
-    X <: PM.AbstractPowerModel,
+    X <: AbstractPowerModel,
 }
     time_steps = get_time_steps(container)
     resolution = get_resolution(container)
@@ -155,7 +155,7 @@ function add_constraints!(
 ) where {
     V <: PSY.Source,
     W <: AbstractSourceFormulation,
-    X <: PM.AbstractPowerModel,
+    X <: AbstractPowerModel,
 }
     add_parameterized_upper_bound_range_constraints(
         container,
@@ -179,7 +179,7 @@ function add_constraints!(
 ) where {
     V <: PSY.Source,
     W <: AbstractSourceFormulation,
-    X <: PM.AbstractPowerModel,
+    X <: AbstractPowerModel,
 }
     add_parameterized_upper_bound_range_constraints(
         container,
@@ -198,7 +198,7 @@ function objective_function!(
     devices::IS.FlattenIteratorWrapper{T},
     ::DeviceModel{T, U},
     ::Type{V},
-) where {T <: PSY.Source, U <: AbstractSourceFormulation, V <: PM.AbstractPowerModel}
+) where {T <: PSY.Source, U <: AbstractSourceFormulation, V <: AbstractPowerModel}
     add_variable_cost!(container, ActivePowerOutVariable(), devices, U())
     add_variable_cost!(container, ActivePowerInVariable(), devices, U())
     return

@@ -4,7 +4,7 @@ function construct_hvdc_network!(
     transmission_model::NetworkModel{T},
     hvdc_model::Nothing,
     ::ProblemTemplate,
-) where {T <: PM.AbstractPowerModel}
+) where {T <: AbstractPowerModel}
     return
 end
 
@@ -14,7 +14,7 @@ function construct_hvdc_network!(
     transmission_model::NetworkModel{T},
     hvdc_model::TransportHVDCNetworkModel,
     ::ProblemTemplate,
-) where {T <: PM.AbstractPowerModel}
+) where {T <: AbstractPowerModel}
     add_constraints!(
         container,
         NodalBalanceActiveConstraint,
@@ -33,7 +33,7 @@ function construct_hvdc_network!(
     transmission_model::NetworkModel{T},
     hvdc_model::VoltageDispatchHVDCNetworkModel,
     ::ProblemTemplate,
-) where {T <: PM.AbstractPowerModel}
+) where {T <: AbstractPowerModel}
     add_constraints!(
         container,
         NodalBalanceCurrentConstraint,

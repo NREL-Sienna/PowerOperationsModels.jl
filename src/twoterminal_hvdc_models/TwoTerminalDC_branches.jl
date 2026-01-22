@@ -346,7 +346,7 @@ function add_constraints!(
     ::Type{T},
     devices::Union{Vector{U}, IS.FlattenIteratorWrapper{U}},
     ::DeviceModel{U, HVDCTwoTerminalPiecewiseLoss},
-    ::NetworkModel{<:PM.AbstractPowerModel},
+    ::NetworkModel{<:AbstractPowerModel},
 ) where {T <: HVDCFlowCalculationConstraint, U <: PSY.TwoTerminalHVDC}
     var_pwl = get_variable(container, HVDCPiecewiseLossVariable(), U)
     var_pwl_bin = get_variable(container, HVDCPiecewiseBinaryLossVariable(), U)
@@ -446,7 +446,7 @@ add_constraints!(
     ::Type{<:Union{FlowRateConstraintFromTo, FlowRateConstraintToFrom}},
     ::IS.FlattenIteratorWrapper{T},
     ::DeviceModel{T, HVDCTwoTerminalUnbounded},
-    ::NetworkModel{<:PM.AbstractPowerModel},
+    ::NetworkModel{<:AbstractPowerModel},
 ) where {T <: PSY.TwoTerminalHVDC} = nothing
 
 add_constraints!(
@@ -454,7 +454,7 @@ add_constraints!(
     ::Type{FlowRateConstraint},
     ::IS.FlattenIteratorWrapper{T},
     ::DeviceModel{T, HVDCTwoTerminalUnbounded},
-    ::NetworkModel{<:PM.AbstractPowerModel},
+    ::NetworkModel{<:AbstractPowerModel},
 ) where {T <: PSY.TwoTerminalHVDC} = nothing
 
 function add_constraints!(
@@ -462,7 +462,7 @@ function add_constraints!(
     ::Type{T},
     devices::Union{Vector{U}, IS.FlattenIteratorWrapper{U}},
     ::DeviceModel{U, HVDCTwoTerminalLossless},
-    ::NetworkModel{<:PM.AbstractPowerModel},
+    ::NetworkModel{<:AbstractPowerModel},
 ) where {T <: FlowRateConstraint, U <: PSY.TwoTerminalHVDC}
     time_steps = get_time_steps(container)
     names = PSY.get_name.(devices)

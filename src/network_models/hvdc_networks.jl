@@ -11,7 +11,7 @@ function add_constraints!(
     sys::PSY.System,
     model::NetworkModel{V},
     hvdc_model::W,
-) where {V <: PM.AbstractPowerModel, W <: TransportHVDCNetworkModel}
+) where {V <: AbstractPowerModel, W <: TransportHVDCNetworkModel}
     dc_buses = PSY.get_components(PSY.DCBus, sys)
     if isempty(dc_buses)
         return
@@ -42,7 +42,7 @@ function add_constraints!(
     sys::PSY.System,
     model::NetworkModel{V},
     hvdc_model::W,
-) where {V <: PM.AbstractPowerModel, W <: VoltageDispatchHVDCNetworkModel}
+) where {V <: AbstractPowerModel, W <: VoltageDispatchHVDCNetworkModel}
     dc_buses = PSY.get_components(PSY.DCBus, sys)
     if isempty(dc_buses)
         return

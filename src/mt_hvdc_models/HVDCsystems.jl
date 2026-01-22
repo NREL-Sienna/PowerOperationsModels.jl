@@ -197,7 +197,7 @@ function add_to_expression!(
     U <: Union{FlowActivePowerVariable, DCLineCurrent},
     V <: PSY.TModelHVDCLine,
     W <: AbstractDCLineFormulation,
-    X <: PM.AbstractPowerModel,
+    X <: AbstractPowerModel,
 }
     variable = get_variable(container, U(), V)
     expression = get_expression(container, T(), PSY.DCBus)
@@ -259,7 +259,7 @@ function add_to_expression!(
     U <: ActivePowerVariable,
     V <: PSY.InterconnectingConverter,
     W <: AbstractConverterFormulation,
-    X <: PM.AbstractPowerModel,
+    X <: AbstractPowerModel,
 }
     _add_to_expression!(
         container,
@@ -284,7 +284,7 @@ function _add_to_expression!(
     U <: ActivePowerVariable,
     V <: PSY.InterconnectingConverter,
     W <: AbstractConverterFormulation,
-    X <: PM.AbstractPowerModel,
+    X <: AbstractPowerModel,
 }
     variable = get_variable(container, U(), V)
     expression_dc = get_expression(container, T(), PSY.DCBus)
@@ -527,7 +527,7 @@ function add_constraints!(
     devices::IS.FlattenIteratorWrapper{T},
     model::DeviceModel{T, U},
     network_model::NetworkModel{V},
-) where {T <: PSY.TModelHVDCLine, U <: DCLossyLine, V <: PM.AbstractPowerModel}
+) where {T <: PSY.TModelHVDCLine, U <: DCLossyLine, V <: AbstractPowerModel}
     variable = get_variable(container, DCLineCurrent(), T)
     dc_voltage = get_variable(container, DCVoltage(), PSY.DCBus)
     time_steps = get_time_steps(container)
@@ -782,7 +782,7 @@ function add_constraints!(
     ::Type{T},
     devices::IS.FlattenIteratorWrapper{U},
     ::DeviceModel{U, V},
-    ::NetworkModel{<:PM.AbstractPowerModel},
+    ::NetworkModel{<:AbstractPowerModel},
 ) where {
     T <: CurrentAbsoluteValueConstraint,
     U <: PSY.InterconnectingConverter,
@@ -850,7 +850,7 @@ function add_constraints!(
     ::Type{T},
     devices::IS.FlattenIteratorWrapper{U},
     model::DeviceModel{U, V},
-    ::NetworkModel{<:PM.AbstractPowerModel},
+    ::NetworkModel{<:AbstractPowerModel},
 ) where {
     T <: InterpolationVoltageConstraints,
     U <: PSY.InterconnectingConverter,
@@ -887,7 +887,7 @@ function add_constraints!(
     ::Type{T},
     devices::IS.FlattenIteratorWrapper{U},
     model::DeviceModel{U, V},
-    ::NetworkModel{<:PM.AbstractPowerModel},
+    ::NetworkModel{<:AbstractPowerModel},
 ) where {
     T <: InterpolationCurrentConstraints,
     U <: PSY.InterconnectingConverter,
@@ -925,7 +925,7 @@ function add_constraints!(
     ::Type{T},
     devices::IS.FlattenIteratorWrapper{U},
     model::DeviceModel{U, V},
-    ::NetworkModel{<:PM.AbstractPowerModel},
+    ::NetworkModel{<:AbstractPowerModel},
 ) where {
     T <: InterpolationBilinearConstraints,
     U <: PSY.InterconnectingConverter,
@@ -969,7 +969,7 @@ function objective_function!(
     ::OptimizationContainer,
     ::IS.FlattenIteratorWrapper{PSY.InterconnectingConverter},
     ::DeviceModel{PSY.InterconnectingConverter, D},
-    ::Type{<:PM.AbstractPowerModel},
+    ::Type{<:AbstractPowerModel},
 ) where {D <: AbstractConverterFormulation}
     return
 end

@@ -36,7 +36,7 @@ function add_variables!(
     model::NetworkModel{T},
     devices::IS.FlattenIteratorWrapper{PSY.AreaInterchange},
     formulation::AbstractBranchFormulation,
-) where {T <: PM.AbstractPowerModel}
+) where {T <: AbstractPowerModel}
     time_steps = get_time_steps(container)
 
     variable = add_variable_container!(

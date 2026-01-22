@@ -88,7 +88,7 @@ function add_variables!(
     network_model::NetworkModel{U},
 ) where {
     T <: Union{SystemBalanceSlackUp, SystemBalanceSlackDown},
-    U <: PM.AbstractPowerModel,
+    U <: AbstractPowerModel,
 }
     time_steps = get_time_steps(container)
     network_reduction = get_network_reduction(network_model)
@@ -176,7 +176,7 @@ function objective_function!(
     container::OptimizationContainer,
     sys::PSY.System,
     network_model::NetworkModel{T},
-) where {T <: PM.AbstractPowerModel}
+) where {T <: AbstractPowerModel}
     variable_p_up = get_variable(container, SystemBalanceSlackUp(), PSY.ACBus, "P")
     variable_p_dn = get_variable(container, SystemBalanceSlackDown(), PSY.ACBus, "P")
     variable_q_up = get_variable(container, SystemBalanceSlackUp(), PSY.ACBus, "Q")
