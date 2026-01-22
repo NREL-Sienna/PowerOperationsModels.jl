@@ -1,9 +1,16 @@
 ### Solvers where line flow limit cuts are added iteratively ###
 
-function solve_opf_branch_power_cuts!(data::Dict{String,<:Any}, model_type::Type, optimizer; solution_processors=[], max_iter::Int=100, time_limit::Float64=3600.0)
-    @info( "maximum cut iterations set to value of $max_iter")
+function solve_opf_branch_power_cuts!(
+    data::Dict{String, <:Any},
+    model_type::Type,
+    optimizer;
+    solution_processors = [],
+    max_iter::Int = 100,
+    time_limit::Float64 = 3600.0,
+)
+    @info("maximum cut iterations set to value of $max_iter")
 
-    for (i,branch) in data["branch"]
+    for (i, branch) in data["branch"]
         if haskey(branch, "rate_a")
             branch["rate_a_inactive"] = branch["rate_a"]
             delete!(branch, "rate_a")
@@ -14,7 +21,11 @@ function solve_opf_branch_power_cuts!(data::Dict{String,<:Any}, model_type::Type
 
     #result = solve_opf(data, model_type, optimizer)
     pm = instantiate_model(data, model_type, build_opf)
-    result = optimize_model!(pm, optimizer=optimizer, solution_processors=solution_processors)
+    result = optimize_model!(
+        pm;
+        optimizer = optimizer,
+        solution_processors = solution_processors,
+    )
 
     #print_summary(result["solution"])
 
@@ -22,7 +33,7 @@ function solve_opf_branch_power_cuts!(data::Dict{String,<:Any}, model_type::Type
     violated = true
     while violated && iteration < max_iter && (time() - start_time) < time_limit
         violated = false
-        for (i,branch) in data["branch"]
+        for (i, branch) in data["branch"]
             if haskey(branch, "rate_a_inactive")
                 rate_a = branch["rate_a_inactive"]
                 branch_sol = result["solution"]["branch"][i]
@@ -38,7 +49,7 @@ function solve_opf_branch_power_cuts!(data::Dict{String,<:Any}, model_type::Type
                 #println(branch["index"], rate_a, mva_fr, mva_to)
 
                 if mva_fr > rate_a || mva_to > rate_a
-                    @info( "activate rate_a on branch $(branch["index"])")
+                    @info("activate rate_a on branch $(branch["index"])")
 
                     branch["rate_a"] = branch["rate_a_inactive"]
                     delete!(branch, "rate_a_inactive")
@@ -55,11 +66,11 @@ function solve_opf_branch_power_cuts!(data::Dict{String,<:Any}, model_type::Type
         if violated
             iteration += 1
             #result = solve_opf(data, model_type, optimizer)
-            result = optimize_model!(pm, solution_processors=solution_processors)
+            result = optimize_model!(pm; solution_processors = solution_processors)
 
             #print_summary(result["solution"])
         else
-            @info( "flow cuts converged in $iteration iterations")
+            @info("flow cuts converged in $iteration iterations")
         end
     end
 
@@ -68,7 +79,6 @@ function solve_opf_branch_power_cuts!(data::Dict{String,<:Any}, model_type::Type
 
     return result
 end
-
 
 """
 Solves the PTDF variant of the OPF problem by iteratively adding line flow
@@ -82,10 +92,16 @@ supporting the PTDF problem specification at this time.
 * `time_limit`: maximum amount of time (sec) for the algorithm.
 * `full_inverse`: compute the complete admittance matrix inverse, instead of a branch by branch computation.
 """
-function solve_opf_ptdf_branch_power_cuts!(data::Dict{String,<:Any}, optimizer; max_iter::Int=100, time_limit::Float64=3600.0, full_inverse=false)
-    @info( "maximum cut iterations set to value of $max_iter")
+function solve_opf_ptdf_branch_power_cuts!(
+    data::Dict{String, <:Any},
+    optimizer;
+    max_iter::Int = 100,
+    time_limit::Float64 = 3600.0,
+    full_inverse = false,
+)
+    @info("maximum cut iterations set to value of $max_iter")
 
-    for (i,branch) in data["branch"]
+    for (i, branch) in data["branch"]
         if haskey(branch, "rate_a")
             branch["rate_a_inactive"] = branch["rate_a"]
             delete!(branch, "rate_a")
@@ -102,10 +118,14 @@ function solve_opf_ptdf_branch_power_cuts!(data::Dict{String,<:Any}, optimizer; 
 
     start_time = time()
 
-
     #result = solve_ptdf_opf(data, DCPPowerModel, optimizer, full_inverse=full_inverse)
-    pm = instantiate_model(data, DCPPowerModel, build_opf_ptdf; ref_extensions=ref_extensions)
-    result = optimize_model!(pm, optimizer=optimizer)
+    pm = instantiate_model(
+        data,
+        DCPPowerModel,
+        build_opf_ptdf;
+        ref_extensions = ref_extensions,
+    )
+    result = optimize_model!(pm; optimizer = optimizer)
     update_data!(data, result["solution"])
 
     pf_result = compute_dc_pf(data)
@@ -118,7 +138,7 @@ function solve_opf_ptdf_branch_power_cuts!(data::Dict{String,<:Any}, optimizer; 
     violated = true
     while violated && iteration < max_iter && (time() - start_time) < time_limit
         violated = false
-        for (i,branch) in data["branch"]
+        for (i, branch) in data["branch"]
             if haskey(branch, "rate_a_inactive")
                 rate_a = branch["rate_a_inactive"]
 
@@ -131,7 +151,7 @@ function solve_opf_ptdf_branch_power_cuts!(data::Dict{String,<:Any}, optimizer; 
                 end
 
                 if mva_fr > rate_a || mva_to > rate_a
-                    @info( "activate rate_a on branch $(branch["index"])")
+                    @info("activate rate_a on branch $(branch["index"])")
 
                     # update data model
                     branch["rate_a"] = branch["rate_a_inactive"]
@@ -164,7 +184,7 @@ function solve_opf_ptdf_branch_power_cuts!(data::Dict{String,<:Any}, optimizer; 
 
             #print_summary(result["solution"])
         else
-            @info( "flow cuts converged in $iteration iterations")
+            @info("flow cuts converged in $iteration iterations")
         end
     end
 

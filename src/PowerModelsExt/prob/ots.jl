@@ -41,13 +41,11 @@ function build_ots(pm::AbstractPowerModel)
     end
 end
 
-
-function ref_add_on_off_va_bounds!(ref::Dict{Symbol,<:Any}, data::Dict{String,<:Any})
+function ref_add_on_off_va_bounds!(ref::Dict{Symbol, <:Any}, data::Dict{String, <:Any})
     apply_pm!(_ref_add_on_off_va_bounds!, ref, data)
 end
 
-
-function _ref_add_on_off_va_bounds!(ref::Dict{Symbol,<:Any}, data::Dict{String,<:Any})
+function _ref_add_on_off_va_bounds!(ref::Dict{Symbol, <:Any}, data::Dict{String, <:Any})
     off_angmin, off_angmax = calc_theta_delta_bounds(data)
     ref[:off_angmin], ref[:off_angmax] = off_angmin, off_angmax
 end

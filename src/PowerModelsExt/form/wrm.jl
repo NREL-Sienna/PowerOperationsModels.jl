@@ -1,30 +1,35 @@
 ### sdp relaxations in the rectangular W-space
 
 function constraint_current_limit_from(pm::AbstractWRMModel, n::Int, f_idx, c_rating_a)
-    l,i,j = f_idx
+    l, i, j = f_idx
 
     w_fr = var(pm, n, :w, i)
 
     p_fr = var(pm, n, :p, f_idx)
     q_fr = var(pm, n, :q, f_idx)
-    JuMP.@constraint(pm.model, [w_fr*c_rating_a^2+1, 2*p_fr, 2*q_fr, w_fr*c_rating_a^2-1] in JuMP.SecondOrderCone())
+    JuMP.@constraint(
+        pm.model,
+        [w_fr * c_rating_a^2 + 1, 2 * p_fr, 2 * q_fr, w_fr * c_rating_a^2 - 1] in
+        JuMP.SecondOrderCone()
+    )
 end
 
 function constraint_current_limit_to(pm::AbstractWRMModel, n::Int, t_idx, c_rating_a)
-    l,j,i = t_idx
+    l, j, i = t_idx
 
     w_to = var(pm, n, :w, j)
 
     p_to = var(pm, n, :p, t_idx)
     q_to = var(pm, n, :q, t_idx)
-    JuMP.@constraint(pm.model, [w_to*c_rating_a^2+1, 2*p_to, 2*q_to, w_to*c_rating_a^2-1] in JuMP.SecondOrderCone())
+    JuMP.@constraint(
+        pm.model,
+        [w_to * c_rating_a^2 + 1, 2 * p_to, 2 * q_to, w_to * c_rating_a^2 - 1] in
+        JuMP.SecondOrderCone()
+    )
 end
 
-
-
-
 function constraint_model_voltage(pm::AbstractWRMModel, n::Int)
-    _check_missing_keys(var(pm, n), [:WR,:WI], typeof(pm))
+    _check_missing_keys(var(pm, n), [:WR, :WI], typeof(pm))
 
     WR = var(pm, n)[:WR]
     WI = var(pm, n)[:WI]
@@ -32,26 +37,33 @@ function constraint_model_voltage(pm::AbstractWRMModel, n::Int)
     JuMP.@constraint(pm.model, [WR WI; -WI WR] in JuMP.PSDCone())
 end
 
-
-function variable_bus_voltage(pm::AbstractWRMModel; nw::Int=nw_id_default, bounded::Bool=true, report::Bool=true)
+function variable_bus_voltage(
+    pm::AbstractWRMModel;
+    nw::Int = nw_id_default,
+    bounded::Bool = true,
+    report::Bool = true,
+)
     wr_min, wr_max, wi_min, wi_max = ref_calc_voltage_product_bounds(ref(pm, nw, :buspairs))
     bus_ids = ids(pm, nw, :bus)
 
     w_index = 1:length(bus_ids)
-    lookup_w_index = Dict((bi,i) for (i,bi) in enumerate(bus_ids))
+    lookup_w_index = Dict((bi, i) for (i, bi) in enumerate(bus_ids))
 
     WR_start = LinearAlgebra.I(length(bus_ids))
 
-    WR = var(pm, nw)[:WR] = JuMP.@variable(pm.model,
-        [i=1:length(bus_ids), j=1:length(bus_ids)], Symmetric, base_name="$(nw)_WR", start=WR_start[i,j]
-    )
+    WR =
+        var(pm, nw)[:WR] = JuMP.@variable(pm.model,
+            [i = 1:length(bus_ids), j = 1:length(bus_ids)], Symmetric,
+            base_name = "$(nw)_WR", start = WR_start[i, j]
+        )
     if report
         sol(pm, nw)[:WR] = WR
     end
 
-    WI = var(pm, nw)[:WI] = JuMP.@variable(pm.model,
-        [1:length(bus_ids), 1:length(bus_ids)], base_name="$(nw)_WI", start=0.0
-    )
+    WI =
+        var(pm, nw)[:WI] = JuMP.@variable(pm.model,
+            [1:length(bus_ids), 1:length(bus_ids)], base_name = "$(nw)_WI", start = 0.0
+        )
     if report
         sol(pm, nw)[:WI] = WI
     end
@@ -59,8 +71,8 @@ function variable_bus_voltage(pm::AbstractWRMModel; nw::Int=nw_id_default, bound
     # bounds on diagonal
     for (i, bus) in ref(pm, nw, :bus)
         w_idx = lookup_w_index[i]
-        wr_ii = WR[w_idx,w_idx]
-        wi_ii = WR[w_idx,w_idx]
+        wr_ii = WR[w_idx, w_idx]
+        wi_ii = WR[w_idx, w_idx]
 
         if bounded
             JuMP.set_lower_bound(wr_ii, (bus["vmin"])^2)
@@ -75,44 +87,54 @@ function variable_bus_voltage(pm::AbstractWRMModel; nw::Int=nw_id_default, bound
     end
 
     # bounds on off-diagonal
-    for (i,j) in ids(pm, nw, :buspairs)
+    for (i, j) in ids(pm, nw, :buspairs)
         wi_idx = lookup_w_index[i]
         wj_idx = lookup_w_index[j]
 
         if bounded
-            JuMP.set_upper_bound(WR[wi_idx, wj_idx], wr_max[(i,j)])
-            JuMP.set_lower_bound(WR[wi_idx, wj_idx], wr_min[(i,j)])
+            JuMP.set_upper_bound(WR[wi_idx, wj_idx], wr_max[(i, j)])
+            JuMP.set_lower_bound(WR[wi_idx, wj_idx], wr_min[(i, j)])
 
-            JuMP.set_upper_bound(WI[wi_idx, wj_idx], wi_max[(i,j)])
-            JuMP.set_lower_bound(WI[wi_idx, wj_idx], wi_min[(i,j)])
+            JuMP.set_upper_bound(WI[wi_idx, wj_idx], wi_max[(i, j)])
+            JuMP.set_lower_bound(WI[wi_idx, wj_idx], wi_min[(i, j)])
         end
     end
 
-    var(pm, nw)[:w] = Dict{Int,Any}()
+    var(pm, nw)[:w] = Dict{Int, Any}()
     for (i, bus) in ref(pm, nw, :bus)
         w_idx = lookup_w_index[i]
-        var(pm, nw, :w)[i] = WR[w_idx,w_idx]
+        var(pm, nw, :w)[i] = WR[w_idx, w_idx]
     end
     report && sol_component_value(pm, nw, :bus, :w, ids(pm, nw, :bus), var(pm, nw)[:w])
 
-    var(pm, nw)[:wr] = Dict{Tuple{Int,Int},Any}()
-    var(pm, nw)[:wi] = Dict{Tuple{Int,Int},Any}()
-    for (i,j) in ids(pm, nw, :buspairs)
+    var(pm, nw)[:wr] = Dict{Tuple{Int, Int}, Any}()
+    var(pm, nw)[:wi] = Dict{Tuple{Int, Int}, Any}()
+    for (i, j) in ids(pm, nw, :buspairs)
         w_fr_index = lookup_w_index[i]
         w_to_index = lookup_w_index[j]
 
-        var(pm, nw, :wr)[(i,j)] = WR[w_fr_index, w_to_index]
-        var(pm, nw, :wi)[(i,j)] = WI[w_fr_index, w_to_index]
+        var(pm, nw, :wr)[(i, j)] = WR[w_fr_index, w_to_index]
+        var(pm, nw, :wi)[(i, j)] = WI[w_fr_index, w_to_index]
     end
-    report && sol_component_value_buspair(pm, nw, :buspairs, :wr, ids(pm, nw, :buspairs), var(pm, nw)[:wr])
-    report && sol_component_value_buspair(pm, nw, :buspairs, :wi, ids(pm, nw, :buspairs), var(pm, nw)[:wi])
+    report && sol_component_value_buspair(
+        pm,
+        nw,
+        :buspairs,
+        :wr,
+        ids(pm, nw, :buspairs),
+        var(pm, nw)[:wr],
+    )
+    report && sol_component_value_buspair(
+        pm,
+        nw,
+        :buspairs,
+        :wi,
+        ids(pm, nw, :buspairs),
+        var(pm, nw)[:wi],
+    )
 end
 
-
-
-
 ###### Sparse SDP Relaxations ######
-
 
 struct _SDconstraintDecomposition
     "Each sub-vector consists of bus IDs corresponding to a clique grouping"
@@ -131,41 +153,48 @@ function Base.:(==)(d1::_SDconstraintDecomposition, d2::_SDconstraintDecompositi
     return eq
 end
 
-function variable_bus_voltage(pm::AbstractSparseSDPWRMModel; nw::Int=nw_id_default, bounded::Bool=true, report::Bool=true)
-
+function variable_bus_voltage(
+    pm::AbstractSparseSDPWRMModel;
+    nw::Int = nw_id_default,
+    bounded::Bool = true,
+    report::Bool = true,
+)
     if haskey(pm.ext, :SDconstraintDecomposition)
         decomp = pm.ext[:SDconstraintDecomposition]
         groups = decomp.decomp
         lookup_index = decomp.lookup_index
-        lookup_bus_index = Dict((reverse(p) for p = pairs(lookup_index)))
+        lookup_bus_index = Dict((reverse(p) for p in pairs(lookup_index)))
     else
         cadj, lookup_index, ordering = _chordal_extension(pm, nw)
         groups = _maximal_cliques(cadj)
-        lookup_bus_index = Dict((reverse(p) for p = pairs(lookup_index)))
+        lookup_bus_index = Dict((reverse(p) for p in pairs(lookup_index)))
         groups = [[lookup_bus_index[gi] for gi in g] for g in groups]
-        pm.ext[:SDconstraintDecomposition] = _SDconstraintDecomposition(groups, lookup_index, ordering)
+        pm.ext[:SDconstraintDecomposition] =
+            _SDconstraintDecomposition(groups, lookup_index, ordering)
     end
 
     voltage_product_groups =
         var(pm, nw)[:voltage_product_groups] =
-        Vector{Dict{Symbol, Array{JuMP.VariableRef,2}}}(undef, length(groups))
+            Vector{Dict{Symbol, Array{JuMP.VariableRef, 2}}}(undef, length(groups))
 
     for (gidx, group) in enumerate(groups)
         n = length(group)
         wr_start = LinearAlgebra.I(n)
         voltage_product_groups[gidx] = Dict()
-        WR = voltage_product_groups[gidx][:WR] =
-            var(pm, nw)[:voltage_product_groups][gidx][:WR] =
-            JuMP.@variable(pm.model, [i=1:n, j=1:n], Symmetric,
-                base_name="$(nw)_$(gidx)_WR", start=wr_start[i,j])
+        WR =
+            voltage_product_groups[gidx][:WR] =
+                var(pm, nw)[:voltage_product_groups][gidx][:WR] =
+                    JuMP.@variable(pm.model, [i = 1:n, j = 1:n], Symmetric,
+                        base_name = "$(nw)_$(gidx)_WR", start = wr_start[i, j])
         if report
             sol(pm, nw, :w_group, gidx)[:WR] = WR
         end
 
-        WI = voltage_product_groups[gidx][:WI] =
-            var(pm, nw)[:voltage_product_groups][gidx][:WI] =
-            JuMP.@variable(pm.model, [1:n, 1:n],
-                base_name="$(nw)_$(gidx)_WI", start=0.0)
+        WI =
+            voltage_product_groups[gidx][:WI] =
+                var(pm, nw)[:voltage_product_groups][gidx][:WI] =
+                    JuMP.@variable(pm.model, [1:n, 1:n],
+                        base_name = "$(nw)_$(gidx)_WI", start = 0.0)
         if report
             sol(pm, nw, :w_group, gidx)[:WI] = WI
         end
@@ -174,9 +203,9 @@ function variable_bus_voltage(pm::AbstractSparseSDPWRMModel; nw::Int=nw_id_defau
     # voltage product bounds
     visited_buses = []
     visited_buspairs = []
-    var(pm, nw)[:w] = Dict{Int,Any}()
-    var(pm, nw)[:wr] = Dict{Tuple{Int,Int},Any}()
-    var(pm, nw)[:wi] = Dict{Tuple{Int,Int},Any}()
+    var(pm, nw)[:w] = Dict{Int, Any}()
+    var(pm, nw)[:wr] = Dict{Tuple{Int, Int}, Any}()
+    var(pm, nw)[:wi] = Dict{Tuple{Int, Int}, Any}()
     wr_min, wr_max, wi_min, wi_max = ref_calc_voltage_product_bounds(ref(pm, nw, :buspairs))
     for (gidx, voltage_product_group) in enumerate(voltage_product_groups)
         WR, WI = voltage_product_group[:WR], voltage_product_group[:WI]
@@ -229,10 +258,23 @@ function variable_bus_voltage(pm::AbstractSparseSDPWRMModel; nw::Int=nw_id_defau
     end
 
     report && sol_component_value(pm, nw, :bus, :w, ids(pm, nw, :bus), var(pm, nw)[:w])
-    report && sol_component_value_buspair(pm, nw, :buspairs, :wr, ids(pm, nw, :buspairs), var(pm, nw)[:wr])
-    report && sol_component_value_buspair(pm, nw, :buspairs, :wi, ids(pm, nw, :buspairs), var(pm, nw)[:wi])
+    report && sol_component_value_buspair(
+        pm,
+        nw,
+        :buspairs,
+        :wr,
+        ids(pm, nw, :buspairs),
+        var(pm, nw)[:wr],
+    )
+    report && sol_component_value_buspair(
+        pm,
+        nw,
+        :buspairs,
+        :wi,
+        ids(pm, nw, :buspairs),
+        var(pm, nw)[:wi],
+    )
 end
-
 
 function constraint_model_voltage(pm::AbstractSparseSDPWRMModel, n::Int)
     _check_missing_keys(var(pm, n), [:voltage_product_groups], typeof(pm))
@@ -245,7 +287,7 @@ function constraint_model_voltage(pm::AbstractSparseSDPWRMModel, n::Int)
 
     # semidefinite constraint for each group in clique grouping
     for (gidx, voltage_product_group) in enumerate(voltage_product_groups)
-        _check_missing_keys(voltage_product_group, [:WR,:WI], typeof(pm))
+        _check_missing_keys(voltage_product_group, [:WR, :WI], typeof(pm))
 
         group = groups[gidx]
         ng = length(group)
@@ -262,7 +304,11 @@ function constraint_model_voltage(pm::AbstractSparseSDPWRMModel, n::Int)
             wi_ji = WI[2, 1]
 
             # standard SOC form (Mosek doesn't like rotated form)
-            JuMP.@constraint(pm.model, [(wr_ii + wr_jj), (wr_ii - wr_jj), 2*wr_ij, 2*wi_ij] in JuMP.SecondOrderCone())
+            JuMP.@constraint(
+                pm.model,
+                [(wr_ii + wr_jj), (wr_ii - wr_jj), 2 * wr_ij, 2 * wi_ij] in
+                JuMP.SecondOrderCone()
+            )
             JuMP.@constraint(pm.model, wi_ij == -wi_ji)
         else
             JuMP.@constraint(pm.model, [WR WI; -WI WR] in JuMP.PSDCone())
@@ -271,7 +317,10 @@ function constraint_model_voltage(pm::AbstractSparseSDPWRMModel, n::Int)
 
     # linking constraints
     tree = _prim(_overlap_graph(groups))
-    overlapping_pairs = [Tuple(CartesianIndices(tree)[i]) for i in (LinearIndices(tree))[findall(x->x!=0, tree)]]
+    overlapping_pairs = [
+        Tuple(CartesianIndices(tree)[i]) for
+        i in (LinearIndices(tree))[findall(x -> x != 0, tree)]
+    ]
     for (i, j) in overlapping_pairs
         gi, gj = groups[i], groups[j]
         var_i, var_j = voltage_product_groups[i], voltage_product_groups[j]
@@ -286,7 +335,6 @@ function constraint_model_voltage(pm::AbstractSparseSDPWRMModel, n::Int)
     end
 end
 
-
 """
     adj, lookup_index = _adjacency_matrix(pm, nw)
 Return:
@@ -294,7 +342,7 @@ Return:
 - `lookup_index` s.t. `lookup_index[bus_id]` returns the integer index
 of the bus with `bus_id` in the adjacency matrix.
 """
-function _adjacency_matrix(pm::AbstractPowerModel, nw::Int=nw_id_default)
+function _adjacency_matrix(pm::AbstractPowerModel, nw::Int = nw_id_default)
     bus_ids = ids(pm, nw, :bus)
     buspairs = ref(pm, nw, :buspairs)
 
@@ -305,9 +353,8 @@ function _adjacency_matrix(pm::AbstractPowerModel, nw::Int=nw_id_default)
     f = [lookup_index[bp[1]] for bp in keys(buspairs)]
     t = [lookup_index[bp[2]] for bp in keys(buspairs)]
 
-    return SparseArrays.sparse([f;t], [t;f], ones(2nl), nb, nb), lookup_index
+    return SparseArrays.sparse([f; t], [t; f], ones(2nl), nb, nb), lookup_index
 end
-
 
 """
     cadj, lookup_index, ordering = _chordal_extension(pm, nw)
@@ -321,7 +368,7 @@ of the bus with `bus_id` in the adjacency matrix.
 function _chordal_extension(pm::AbstractPowerModel, nw::Int)
     adj, lookup_index = _adjacency_matrix(pm, nw)
     nb = size(adj, 1)
-    diag_el = sum(adj, dims=1)[:]
+    diag_el = sum(adj; dims = 1)[:]
     W = LinearAlgebra.Hermitian(-adj + SparseArrays.spdiagm(0 => diag_el .+ 1))
 
     F = LinearAlgebra.cholesky(W)
@@ -331,11 +378,11 @@ function _chordal_extension(pm::AbstractPowerModel, nw::Int)
 
     Rchol = L - SparseArrays.spdiagm(0 => LinearAlgebra.diag(L))
     f_idx, t_idx, V = SparseArrays.findnz(Rchol)
-    cadj = SparseArrays.sparse([f_idx;t_idx], [t_idx;f_idx], ones(2*length(f_idx)), nb, nb)
+    cadj =
+        SparseArrays.sparse([f_idx; t_idx], [t_idx; f_idx], ones(2 * length(f_idx)), nb, nb)
     cadj = cadj[q, q] # revert to original bus ordering (invert cholfact permutation)
     return cadj, lookup_index, p
 end
-
 
 """
     mc = _maximal_cliques(cadj, peo)
@@ -348,8 +395,8 @@ function _maximal_cliques(cadj::SparseArrays.SparseMatrixCSC, peo::Vector{Int})
     # use peo to obtain one clique for each vertex
     cliques = Vector(undef, nb)
     for (i, v) in enumerate(peo)
-        Nv = findall(x->x!=0, cadj[:, v])
-        cliques[i] = union(v, intersect(Nv, peo[i+1:end]))
+        Nv = findall(x -> x != 0, cadj[:, v])
+        cliques[i] = union(v, intersect(Nv, peo[(i + 1):end]))
     end
 
     # now remove cliques that are strict subsets of other cliques
@@ -377,12 +424,12 @@ function _mcs(A)
     peo = zeros(Int, n)
     unnumbered = collect(1:n)
 
-    for i = n:-1:1
+    for i in n:-1:1
         z = unnumbered[argmax(w[unnumbered])]
         filter!(x -> x != z, unnumbered)
         peo[i] = z
 
-        Nz = findall(x->x!=0, A[:, z])
+        Nz = findall(x -> x != 0, A[:, z])
         for y in intersect(Nz, unnumbered)
             w[y] += 1
         end
@@ -397,7 +444,7 @@ If minweight == false, return the *maximum* weight spanning tree.
 
 Convention: start with node 1.
 """
-function _prim(A, minweight=false)
+function _prim(A, minweight = false)
     n = size(A, 1)
     candidate_edges = []
     unvisited = collect(1:n)
@@ -408,19 +455,19 @@ function _prim(A, minweight=false)
         current_node = next_node
         filter!(node -> node != current_node, unvisited)
 
-        neighbors = intersect(findall(x->x!=0, A[:, current_node]), unvisited)
+        neighbors = intersect(findall(x -> x != 0, A[:, current_node]), unvisited)
         current_node_edges = [(current_node, i) for i in neighbors]
         append!(candidate_edges, current_node_edges)
         filter!(edge -> length(intersect(edge, unvisited)) == 1, candidate_edges)
         weights = [A[edge...] for edge in candidate_edges]
-        next_edge = minweight ? candidate_edges[indmin(weights)] : candidate_edges[argmax(weights)]
+        next_edge =
+            minweight ? candidate_edges[indmin(weights)] : candidate_edges[argmax(weights)]
         filter!(edge -> edge != next_edge, candidate_edges)
         T[next_edge...] = minweight ? minimum(weights) : maximum(weights)
         next_node = intersect(next_edge, unvisited)[1]
     end
     return T
 end
-
 
 """
     A = _overlap_graph(groups)
@@ -447,7 +494,6 @@ function _overlap_graph(groups)
     return SparseArrays.sparse(I, J, V, n, n)
 end
 
-
 function _filter_flipped_pairs!(pairs)
     for (i, j) in pairs
         if i != j && (j, i) in pairs
@@ -455,7 +501,6 @@ function _filter_flipped_pairs!(pairs)
         end
     end
 end
-
 
 """
     idx_a, idx_b = _overlap_indices(A, B)
@@ -466,14 +511,13 @@ Given two arrays (sizes need not match) that share some values, return:
 
 Thus, A[idx_a] == B[idx_b].
 """
-function _overlap_indices(A::Array, B::Array, symmetric=true)
+function _overlap_indices(A::Array, B::Array, symmetric = true)
     overlap = intersect(A, B)
     symmetric && _filter_flipped_pairs!(overlap)
     idx_a = [something(findfirst(isequal(o), A), 0) for o in overlap]
     idx_b = [something(findfirst(isequal(o), B), 0) for o in overlap]
     return idx_a, idx_b
 end
-
 
 """
     ps = _problem_size(groups)
@@ -483,7 +527,7 @@ not necessary for the operation of clique merge, since `merge_cost`
 computes the change in problem size for a proposed group merge.
 """
 function _problem_size(groups)
-    nvars(n::Integer) = n*(2*n + 1)
+    nvars(n::Integer) = n * (2 * n + 1)
     A = _prim(_overlap_graph(groups))
     return sum(nvars.(Int.(SparseArrays.nonzeros(A)))) + sum(nvars.(length.(groups)))
 end

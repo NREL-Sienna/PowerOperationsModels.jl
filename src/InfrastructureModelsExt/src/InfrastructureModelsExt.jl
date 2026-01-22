@@ -12,7 +12,10 @@ __init__() = Memento.register(_LOGGER)
 
 "Suppresses information and warning messages output by InfrastructureModels, for fine grained control use the Memento package"
 function silence()
-    Memento.info(_LOGGER, "Suppressing information and warning messages for the rest of this session.  Use the Memento package for more fine-grained control of logging.")
+    Memento.info(
+        _LOGGER,
+        "Suppressing information and warning messages for the rest of this session.  Use the Memento package for more fine-grained control of logging.",
+    )
     Memento.setlevel!(_LOGGER, "error")
 end
 
@@ -30,8 +33,8 @@ include("core/relaxation_scheme.jl")
 include("core/ref.jl")
 include("core/solution.jl")
 
-include("io/common.jl")
-include("io/matlab.jl")
+# include("io/common.jl")
+# include("io/matlab.jl")
 
 include("core/export.jl")
 

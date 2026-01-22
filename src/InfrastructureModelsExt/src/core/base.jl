@@ -12,33 +12,30 @@ macro def(name, definition)
     end
 end
 
-
 "root of the infrastructure model formulation type hierarchy"
 abstract type AbstractInfrastructureModel end
-
 
 "a macro for adding the standard InfrastructureModels fields to a type definition"
 InfrastructureModels.@def im_fields begin
     model::JuMP.AbstractModel
 
-    data::Dict{String,<:Any}
-    setting::Dict{String,<:Any}
-    solution::Dict{String,<:Any}
+    data::Dict{String, <:Any}
+    setting::Dict{String, <:Any}
+    solution::Dict{String, <:Any}
 
-    ref::Dict{Symbol,<:Any}
-    var::Dict{Symbol,<:Any}
-    con::Dict{Symbol,<:Any}
+    ref::Dict{Symbol, <:Any}
+    var::Dict{Symbol, <:Any}
+    con::Dict{Symbol, <:Any}
 
-    sol::Dict{Symbol,<:Any}
-    sol_proc::Dict{Symbol,<:Any}
+    sol::Dict{Symbol, <:Any}
+    sol_proc::Dict{Symbol, <:Any}
 
     # Extension dictionary
     # Extensions should define a type to hold information particular to
     # their functionality, and store an instance of the type in this
     # dictionary keyed on an extension-specific symbol
-    ext::Dict{Symbol,<:Any}
+    ext::Dict{Symbol, <:Any}
 end
-
 
 "Constructor for an InfrastructureModels modeling object, where `data` is
 assumed to in a multi-infrastructure network data format."
@@ -59,18 +56,17 @@ function InitializeInfrastructureModel(
         jump_model,
         data,
         setting,
-        Dict{String,Any}(), # empty solution data
+        Dict{String, Any}(), # empty solution data
         ref,
         var,
         con,
         sol,
         sol_proc,
-        ext
+        ext,
     )
 
     return imo
 end
-
 
 "Constructor for an InfrastructureModels modeling object, where the
 infrastructure type `it` must be specified a priori."
@@ -90,18 +86,17 @@ function InitializeInfrastructureModel(
         jump_model,
         data,
         setting,
-        Dict{String,Any}(), # empty solution data
+        Dict{String, Any}(), # empty solution data
         ref,
         var,
         con,
         sol,
         sol_proc,
-        ext
+        ext,
     )
 
     return imo
 end
-
 
 """
 Given a data dictionary following the InfrastructureModels
@@ -132,14 +127,17 @@ function ref_initialize(data::Dict{String, <:Any}, global_keys::Set{String} = Se
     return refs
 end
 
-
 """
 Given a data dictionary following the Infrastructure Models conventions, builds
 an initial "ref" dictionary converting strings to symbols and component
 keys to integers. The global keys argument specifies which keys should remain
 in the root of dictionary when building a multi-network
 """
-function ref_initialize(data::Dict{String, <:Any}, it::String, global_keys::Set{String} = Set{String}())
+function ref_initialize(
+    data::Dict{String, <:Any},
+    it::String,
+    global_keys::Set{String} = Set{String}(),
+)
     # Initialize the refs dictionary.
     refs = Dict{Symbol, Any}(:it => Dict{Symbol, Any}())
 
@@ -170,9 +168,12 @@ function _initialize_dict_from_ref(ref::Dict{Symbol, <:Any})
     return dict
 end
 
-
 "Populate the portion of `refs` corresponding to global keys."
-function _populate_ref_global_keys!(refs::Dict{Symbol, <:Any}, data::Dict{String, <:Any}, global_keys::Set{String} = Set{String}())
+function _populate_ref_global_keys!(
+    refs::Dict{Symbol, <:Any},
+    data::Dict{String, <:Any},
+    global_keys::Set{String} = Set{String}(),
+)
     # Populate the global keys section of the refs dictionary.
     for global_key in global_keys
         if haskey(data, global_key)
@@ -181,16 +182,20 @@ function _populate_ref_global_keys!(refs::Dict{Symbol, <:Any}, data::Dict{String
     end
 end
 
-
 "Populate the portion of `refs` for a specific infrastructure type."
-function _populate_ref_it!(refs::Dict{Symbol, <:Any}, data_it::Dict{String, <:Any}, global_keys::Set{String}, it::String)
+function _populate_ref_it!(
+    refs::Dict{Symbol, <:Any},
+    data_it::Dict{String, <:Any},
+    global_keys::Set{String},
+    it::String,
+)
     # Initialize the ref corresponding to the infrastructure type.
     refs[:it][Symbol(it)] = Dict{Symbol, Any}()
 
     # Build a multinetwork representation of the data.
     if ismultinetwork(data_it)
         nws_data = data_it["nw"]
-    
+
         for (key, item) in data_it
             if key != "nw"
                 refs[:it][Symbol(it)][Symbol(key)] = item
@@ -206,7 +211,7 @@ function _populate_ref_it!(refs::Dict{Symbol, <:Any}, data_it::Dict{String, <:An
     for (n, nw_data) in nws_data
         nw_id = parse(Int, n)
         ref = nws[nw_id] = Dict{Symbol, Any}()
-    
+
         for (key, item) in nw_data
             if !(key in global_keys)
                 if typeof(item) <: Dict{String, <:Any} && _iscomponentdict(item)
@@ -220,10 +225,15 @@ function _populate_ref_it!(refs::Dict{Symbol, <:Any}, data_it::Dict{String, <:An
     end
 end
 
-
 "Builds a ref object without the need to initialize an
 AbstractInfrastructureModel, where `it` specifies the infrastructure type."
-function build_ref(data::Dict{String,<:Any}, ref_add_core!, global_keys::Set{String}, it::String; ref_extensions=[])
+function build_ref(
+    data::Dict{String, <:Any},
+    ref_add_core!,
+    global_keys::Set{String},
+    it::String;
+    ref_extensions = [],
+)
     ref = ref_initialize(data, it, global_keys)
     ref_add_core!(ref)
 
@@ -234,11 +244,15 @@ function build_ref(data::Dict{String,<:Any}, ref_add_core!, global_keys::Set{Str
     return ref
 end
 
-
 "Builds a ref object without the need to initialize an
 AbstractInfrastructureModel, where the data is assumed to be in a
 multi-infrastructure format."
-function build_ref(data::Dict{String,<:Any}, ref_add_core!, global_keys::Set{String}; ref_extensions=[])
+function build_ref(
+    data::Dict{String, <:Any},
+    ref_add_core!,
+    global_keys::Set{String};
+    ref_extensions = [],
+)
     @assert ismultiinfrastructure(data)
 
     ref = ref_initialize(data, global_keys)
@@ -251,8 +265,9 @@ function build_ref(data::Dict{String,<:Any}, ref_add_core!, global_keys::Set{Str
     return ref
 end
 
-
-report_duals(aim::AbstractInfrastructureModel) = haskey(aim.setting, "output") && haskey(aim.setting["output"], "duals") && aim.setting["output"]["duals"] == true
+report_duals(aim::AbstractInfrastructureModel) =
+    haskey(aim.setting, "output") && haskey(aim.setting["output"], "duals") &&
+    aim.setting["output"]["duals"] == true
 
 ### Helper functions for working with AbstractInfrastructureModels
 it_ids(aim::AbstractInfrastructureModel) = keys(aim.ref[:it])
@@ -269,41 +284,85 @@ end
 nw_ids(aim::AbstractInfrastructureModel, it::Symbol) = keys(aim.ref[:it][it][:nw])
 nws(aim::AbstractInfrastructureModel, it::Symbol) = aim.ref[:it][it][:nw]
 
-ids(aim::AbstractInfrastructureModel, it::Symbol, nw::Int, key::Symbol) = keys(aim.ref[:it][it][:nw][nw][key])
-ids(aim::AbstractInfrastructureModel, it::Symbol, key::Symbol; nw::Int=nw_id_default) = keys(aim.ref[:it][it][:nw][nw][key])
-
+ids(aim::AbstractInfrastructureModel, it::Symbol, nw::Int, key::Symbol) =
+    keys(aim.ref[:it][it][:nw][nw][key])
+ids(aim::AbstractInfrastructureModel, it::Symbol, key::Symbol; nw::Int = nw_id_default) =
+    keys(aim.ref[:it][it][:nw][nw][key])
 
 ref(aim::AbstractInfrastructureModel, it::Symbol, nw::Int) = aim.ref[:it][it][:nw][nw]
-ref(aim::AbstractInfrastructureModel, it::Symbol, nw::Int, key::Symbol) = aim.ref[:it][it][:nw][nw][key]
-ref(aim::AbstractInfrastructureModel, it::Symbol, nw::Int, key::Symbol, idx) = aim.ref[:it][it][:nw][nw][key][idx]
-ref(aim::AbstractInfrastructureModel, it::Symbol, nw::Int, key::Symbol, idx, param::String) = aim.ref[:it][it][:nw][nw][key][idx][param]
+ref(aim::AbstractInfrastructureModel, it::Symbol, nw::Int, key::Symbol) =
+    aim.ref[:it][it][:nw][nw][key]
+ref(aim::AbstractInfrastructureModel, it::Symbol, nw::Int, key::Symbol, idx) =
+    aim.ref[:it][it][:nw][nw][key][idx]
+ref(
+    aim::AbstractInfrastructureModel,
+    it::Symbol,
+    nw::Int,
+    key::Symbol,
+    idx,
+    param::String,
+) = aim.ref[:it][it][:nw][nw][key][idx][param]
 
-
-ref(aim::AbstractInfrastructureModel, it::Symbol; nw::Int=nw_id_default) = aim.ref[:it][it][:nw][nw]
-ref(aim::AbstractInfrastructureModel, it::Symbol, key::Symbol; nw::Int=nw_id_default) = aim.ref[:it][it][:nw][nw][key]
-ref(aim::AbstractInfrastructureModel, it::Symbol, key::Symbol, idx; nw::Int=nw_id_default) = aim.ref[:it][it][:nw][nw][key][idx]
-ref(aim::AbstractInfrastructureModel, it::Symbol, key::Symbol, idx, param::String; nw::Int=nw_id_default) = aim.ref[:it][it][:nw][nw][key][idx][param]
+ref(aim::AbstractInfrastructureModel, it::Symbol; nw::Int = nw_id_default) =
+    aim.ref[:it][it][:nw][nw]
+ref(aim::AbstractInfrastructureModel, it::Symbol, key::Symbol; nw::Int = nw_id_default) =
+    aim.ref[:it][it][:nw][nw][key]
+ref(
+    aim::AbstractInfrastructureModel,
+    it::Symbol,
+    key::Symbol,
+    idx;
+    nw::Int = nw_id_default,
+) = aim.ref[:it][it][:nw][nw][key][idx]
+ref(
+    aim::AbstractInfrastructureModel,
+    it::Symbol,
+    key::Symbol,
+    idx,
+    param::String;
+    nw::Int = nw_id_default,
+) = aim.ref[:it][it][:nw][nw][key][idx][param]
 
 var(aim::AbstractInfrastructureModel, it::Symbol, nw::Int) = aim.var[:it][it][:nw][nw]
-var(aim::AbstractInfrastructureModel, it::Symbol, nw::Int, key::Symbol) = aim.var[:it][it][:nw][nw][key]
-var(aim::AbstractInfrastructureModel, it::Symbol, nw::Int, key::Symbol, idx) = aim.var[:it][it][:nw][nw][key][idx]
+var(aim::AbstractInfrastructureModel, it::Symbol, nw::Int, key::Symbol) =
+    aim.var[:it][it][:nw][nw][key]
+var(aim::AbstractInfrastructureModel, it::Symbol, nw::Int, key::Symbol, idx) =
+    aim.var[:it][it][:nw][nw][key][idx]
 
-var(aim::AbstractInfrastructureModel, it::Symbol; nw::Int=nw_id_default) = aim.var[:it][it][:nw][nw]
-var(aim::AbstractInfrastructureModel, it::Symbol, key::Symbol; nw::Int=nw_id_default) = aim.var[:it][it][:nw][nw][key]
-var(aim::AbstractInfrastructureModel, it::Symbol, key::Symbol, idx; nw::Int=nw_id_default) = aim.var[:it][it][:nw][nw][key][idx]
-
+var(aim::AbstractInfrastructureModel, it::Symbol; nw::Int = nw_id_default) =
+    aim.var[:it][it][:nw][nw]
+var(aim::AbstractInfrastructureModel, it::Symbol, key::Symbol; nw::Int = nw_id_default) =
+    aim.var[:it][it][:nw][nw][key]
+var(
+    aim::AbstractInfrastructureModel,
+    it::Symbol,
+    key::Symbol,
+    idx;
+    nw::Int = nw_id_default,
+) = aim.var[:it][it][:nw][nw][key][idx]
 
 con(aim::AbstractInfrastructureModel, it::Symbol, nw::Int) = aim.con[:it][it][:nw][nw]
-con(aim::AbstractInfrastructureModel, it::Symbol, nw::Int, key::Symbol) = aim.con[:it][it][:nw][nw][key]
-con(aim::AbstractInfrastructureModel, it::Symbol, nw::Int, key::Symbol, idx) = aim.con[:it][it][:nw][nw][key][idx]
+con(aim::AbstractInfrastructureModel, it::Symbol, nw::Int, key::Symbol) =
+    aim.con[:it][it][:nw][nw][key]
+con(aim::AbstractInfrastructureModel, it::Symbol, nw::Int, key::Symbol, idx) =
+    aim.con[:it][it][:nw][nw][key][idx]
 
-con(aim::AbstractInfrastructureModel, it::Symbol; nw::Int=nw_id_default) = aim.con[:it][it][:nw][nw]
-con(aim::AbstractInfrastructureModel, it::Symbol, key::Symbol; nw::Int=nw_id_default) = aim.con[:it][it][:nw][nw][key]
-con(aim::AbstractInfrastructureModel, it::Symbol, key::Symbol, idx; nw::Int=nw_id_default) = aim.con[:it][it][:nw][nw][key][idx]
+con(aim::AbstractInfrastructureModel, it::Symbol; nw::Int = nw_id_default) =
+    aim.con[:it][it][:nw][nw]
+con(aim::AbstractInfrastructureModel, it::Symbol, key::Symbol; nw::Int = nw_id_default) =
+    aim.con[:it][it][:nw][nw][key]
+con(
+    aim::AbstractInfrastructureModel,
+    it::Symbol,
+    key::Symbol,
+    idx;
+    nw::Int = nw_id_default,
+) = aim.con[:it][it][:nw][nw][key][idx]
 
-
-sol(aim::AbstractInfrastructureModel, it::Symbol, nw::Int, args...) = _sol(aim.sol[:it][it][:nw][nw], args...)
-sol(aim::AbstractInfrastructureModel, it::Symbol, args...; nw::Int=nw_id_default) = _sol(aim.sol[:it][it][:nw][nw], args...)
+sol(aim::AbstractInfrastructureModel, it::Symbol, nw::Int, args...) =
+    _sol(aim.sol[:it][it][:nw][nw], args...)
+sol(aim::AbstractInfrastructureModel, it::Symbol, args...; nw::Int = nw_id_default) =
+    _sol(aim.sol[:it][it][:nw][nw], args...)
 
 function _sol(sol::Dict, args...)
     for arg in args
@@ -317,11 +376,10 @@ function _sol(sol::Dict, args...)
     return sol
 end
 
-
 ""
 function instantiate_model(
-    data::Dict{String,<:Any}, model_type::Type, build_method, ref_add_core!,
-    global_keys::Set{String}; ref_extensions=[], kwargs...)
+    data::Dict{String, <:Any}, model_type::Type, build_method, ref_add_core!,
+    global_keys::Set{String}; ref_extensions = [], kwargs...)
     # NOTE, this model constructor will build the ref dict using the latest info from the data    
     start_time = time()
 
@@ -345,11 +403,10 @@ function instantiate_model(
     return imo
 end
 
-
 ""
 function instantiate_model(
-    data::Dict{String,<:Any}, model_type::Type, build_method, ref_add_core!,
-    global_keys::Set{String}, it::Symbol; ref_extensions=[], kwargs...)
+    data::Dict{String, <:Any}, model_type::Type, build_method, ref_add_core!,
+    global_keys::Set{String}, it::Symbol; ref_extensions = [], kwargs...)
     # NOTE, this model constructor will build the ref dict using the latest info from the data    
     start_time = time()
 
@@ -373,9 +430,13 @@ function instantiate_model(
     return imo
 end
 
-
 ""
-function optimize_model!(aim::AbstractInfrastructureModel; relax_integrality=false, optimizer=nothing, solution_processors=[])
+function optimize_model!(
+    aim::AbstractInfrastructureModel;
+    relax_integrality = false,
+    optimizer = nothing,
+    solution_processors = [],
+)
     start_time = time()
 
     if relax_integrality
@@ -386,12 +447,18 @@ function optimize_model!(aim::AbstractInfrastructureModel; relax_integrality=fal
         if JuMP.backend(aim.model).optimizer === nothing
             JuMP.set_optimizer(aim.model, optimizer)
         else
-            Memento.warn(_LOGGER, "Model already contains optimizer, cannot use optimizer specified in `optimize_model!`")
+            Memento.warn(
+                _LOGGER,
+                "Model already contains optimizer, cannot use optimizer specified in `optimize_model!`",
+            )
         end
     end
 
     if JuMP.mode(aim.model) != JuMP.DIRECT && JuMP.backend(aim.model).optimizer === nothing
-        Memento.error(_LOGGER, "No optimizer specified in `optimize_model!` or the given JuMP model.")
+        Memento.error(
+            _LOGGER,
+            "No optimizer specified in `optimize_model!` or the given JuMP model.",
+        )
     end
 
     _, solve_time, solve_bytes_alloc, sec_in_gc = @timed JuMP.optimize!(aim.model)
@@ -399,13 +466,16 @@ function optimize_model!(aim::AbstractInfrastructureModel; relax_integrality=fal
     try
         solve_time = JuMP.solve_time(aim.model)
     catch
-        Memento.warn(_LOGGER, "The given optimizer does not provide the SolveTime() attribute, falling back on @timed.  This is not a rigorous timing value.");
+        Memento.warn(
+            _LOGGER,
+            "The given optimizer does not provide the SolveTime() attribute, falling back on @timed.  This is not a rigorous timing value.",
+        )
     end
-    
+
     Memento.debug(_LOGGER, "JuMP model optimize time: $(time() - start_time)")
 
     start_time = time()
-    result = build_result(aim, solve_time; solution_processors=solution_processors)
+    result = build_result(aim, solve_time; solution_processors = solution_processors)
     Memento.debug(_LOGGER, "solution build time: $(time() - start_time)")
 
     aim.solution = result["solution"]

@@ -1,21 +1,31 @@
 "recursively applies new_data to data, overwriting information"
-function update_data!(data::Dict{String,<:Any}, new_data::Dict{String,<:Any})
+function update_data!(data::Dict{String, <:Any}, new_data::Dict{String, <:Any})
     if haskey(data, "per_unit") && haskey(new_data, "per_unit")
         if data["per_unit"] != new_data["per_unit"]
-            Memento.error(_LOGGER, "update_data requires datasets in the same units, try make_per_unit and make_mixed_units")
+            Memento.error(
+                _LOGGER,
+                "update_data requires datasets in the same units, try make_per_unit and make_mixed_units",
+            )
         end
     else
-        Memento.warn(_LOGGER, "running update_data with data that does not include per_unit field, units may be incorrect")
+        Memento.warn(
+            _LOGGER,
+            "running update_data with data that does not include per_unit field, units may be incorrect",
+        )
     end
 
     _update_data!(data, new_data)
 end
 
-
 "Apply the function `func!`, which modifies `data` for a specific
 infrastructure, `it`. Here, `apply_to_subnetworks` specifies whether or
 not `func!` should be applied to all subnetworks in a multinetwork dataset."
-function apply!(func!::Function, data::Dict{String, <:Any}, it::String; apply_to_subnetworks::Bool = true)
+function apply!(
+    func!::Function,
+    data::Dict{String, <:Any},
+    it::String;
+    apply_to_subnetworks::Bool = true,
+)
     data_it = ismultiinfrastructure(data) ? data["it"][it] : data
 
     if ismultinetwork(data_it) && apply_to_subnetworks
@@ -27,13 +37,17 @@ function apply!(func!::Function, data::Dict{String, <:Any}, it::String; apply_to
     end
 end
 
-
 "Apply the getter function `func`, which operates on `data` for a specific
 infrastructure, `it`. Here, `apply_to_subnetworks` specifies whether or
 not `func` should be applied to all subnetworks in a multinetwork dataset. If
 so, a dictionary of retrieved data using `func` is returned, indexed by the
 indices of the multinetwork. Otherwise, a single value is returned."
-function get_data(func::Function, data::Dict{String, <:Any}, it::String; apply_to_subnetworks::Bool = true)
+function get_data(
+    func::Function,
+    data::Dict{String, <:Any},
+    it::String;
+    apply_to_subnetworks::Bool = true,
+)
     data_it = ismultiinfrastructure(data) ? data["it"][it] : data
 
     if ismultinetwork(data_it) && apply_to_subnetworks
@@ -49,16 +63,13 @@ function get_data(func::Function, data::Dict{String, <:Any}, it::String; apply_t
     end
 end
 
-
-
 "Attempts to determine if the given data is a component dictionary"
 function _iscomponentdict(data::Dict)
-    return all( typeof(comp) <: Dict for (i, comp) in data )
+    return all(typeof(comp) <: Dict for (i, comp) in data)
 end
 
-
 "recursive call of _update_data"
-function _update_data!(data::Dict{String,<:Any}, new_data::Dict{String,<:Any})
+function _update_data!(data::Dict{String, <:Any}, new_data::Dict{String, <:Any})
     for (key, new_v) in new_data
         if haskey(data, key)
             v = data[key]
@@ -74,20 +85,20 @@ function _update_data!(data::Dict{String,<:Any}, new_data::Dict{String,<:Any})
 end
 
 "checks if a given network data is a multinetwork"
-function ismultinetwork(data::Dict{String,<:Any})
+function ismultinetwork(data::Dict{String, <:Any})
     return haskey(data, "multinetwork") && data["multinetwork"] == true
 end
 
 "checks if a given network data is a multinetwork"
-function ismultiinfrastructure(data::Dict{String,<:Any})
+function ismultiinfrastructure(data::Dict{String, <:Any})
     return haskey(data, "multiinfrastructure") && data["multiinfrastructure"] == true
 end
 
 "checks if a given dataset has a time series component"
-has_time_series(data::Dict{String,<:Any}) = haskey(data, "time_series")
+has_time_series(data::Dict{String, <:Any}) = haskey(data, "time_series")
 
 "gets the number of networks that could exist provided the base data"
-function get_num_networks(data::Dict{String,<:Any})
+function get_num_networks(data::Dict{String, <:Any})
     if ismultinetwork(data)
         return length(data["nw"])
     elseif has_time_series(data)
@@ -98,7 +109,7 @@ function get_num_networks(data::Dict{String,<:Any})
 end
 
 "Transforms a single network into a multinetwork with several deepcopies of the original network"
-function replicate(sn_data::Dict{String,<:Any}, count::Int, global_keys::Set{String})
+function replicate(sn_data::Dict{String, <:Any}, count::Int, global_keys::Set{String})
     @assert count > 0
     if ismultinetwork(sn_data)
         Memento.error(_LOGGER, "replicate can only be used on single networks")
@@ -106,8 +117,8 @@ function replicate(sn_data::Dict{String,<:Any}, count::Int, global_keys::Set{Str
 
     name = get(sn_data, "name", "anonymous")
 
-    mn_data = Dict{String,Any}(
-        "nw" => Dict{String,Any}()
+    mn_data = Dict{String, Any}(
+        "nw" => Dict{String, Any}(),
     )
 
     mn_data["multinetwork"] = true
@@ -131,7 +142,6 @@ function replicate(sn_data::Dict{String,<:Any}, count::Int, global_keys::Set{Str
     return mn_data
 end
 
-
 "turns a single network and a time_series data block into a multi-network"
 function make_multinetwork(data::Dict{String, <:Any}, it::String, global_keys::Set{String})
     data_it = ismultiinfrastructure(data) ? data["it"][it] : data
@@ -147,7 +157,10 @@ function make_multinetwork(data::Dict{String, <:Any}, it::String, global_keys::S
     steps = data_it["time_series"]["num_steps"]
 
     if !isa(steps, Int)
-        Memento.error(_LOGGER, "the value of num_steps should be an integer, given $(steps)")
+        Memento.error(
+            _LOGGER,
+            "the value of num_steps should be an integer, given $(steps)",
+        )
     end
 
     mn_data = replicate(data_it, steps, union(global_keys, Set(["time_series"])))
@@ -156,21 +169,24 @@ function make_multinetwork(data::Dict{String, <:Any}, it::String, global_keys::S
     for i in 1:steps
         nw_data = mn_data["nw"]["$(i)"]
 
-        for (k,v) in time_series
+        for (k, v) in time_series
             (k == "num_steps") && (continue)
             if isa(v, Dict) && haskey(nw_data, k)
                 #println(k); println(v)
                 _update_data_timepoint!(nw_data[k], v, i)
-            elseif isa(v, Array) 
-                if length(v) != steps 
-                    Memento.error(_LOGGER, "the size of the array $k in the time series block must be equal to $steps, currently it is $(length(v))")
-                else 
+            elseif isa(v, Array)
+                if length(v) != steps
+                    Memento.error(
+                        _LOGGER,
+                        "the size of the array $k in the time series block must be equal to $steps, currently it is $(length(v))",
+                    )
+                else
                     #println(k); println(v[i])
                     nw_data[k] = v[i]
-                end 
+                end
             else
                 mn_data[k] = v
-            end 
+            end
         end
     end
 
@@ -178,7 +194,6 @@ function make_multinetwork(data::Dict{String, <:Any}, it::String, global_keys::S
 
     return ismultiinfrastructure(data) ? Dict("it" => Dict(it => mn_data)) : mn_data
 end
-
 
 "loads a single time point from a time_series data block into the current network"
 function load_timepoint!(data::Dict{String, <:Any}, step_index::Int)
@@ -191,10 +206,13 @@ function load_timepoint!(data::Dict{String, <:Any}, step_index::Int)
     end
 
     if step_index < 1 || step_index > data["time_series"]["num_steps"]
-        Memento.error(_LOGGER, "a step index of $(step_index) is outside the valid range of 1:$(data["time_series"]["num_steps"])")
+        Memento.error(
+            _LOGGER,
+            "a step index of $(step_index) is outside the valid range of 1:$(data["time_series"]["num_steps"])",
+        )
     end
 
-    for (k,v) in data["time_series"]
+    for (k, v) in data["time_series"]
         if isa(v, Dict) && haskey(data, k)
             _update_data_timepoint!(data[k], v, step_index)
         end
@@ -206,7 +224,11 @@ function load_timepoint!(data::Dict{String, <:Any}, step_index::Int)
 end
 
 "recursive call of _update_data"
-function _update_data_timepoint!(data::Dict{String, <:Any}, new_data::Dict{String, <:Any}, step::Int)
+function _update_data_timepoint!(
+    data::Dict{String, <:Any},
+    new_data::Dict{String, <:Any},
+    step::Int,
+)
     for (key, new_v) in new_data
         if haskey(data, key)
             v = data[key]
@@ -215,40 +237,55 @@ function _update_data_timepoint!(data::Dict{String, <:Any}, new_data::Dict{Strin
             elseif (!isa(v, Dict) || !isa(v, Array)) && isa(new_v, Array)
                 data[key] = new_v[step]
             else
-                Memento.warn(_LOGGER, "skipping key $(key) because object types do not match, target $(typeof(v)) source $(typeof(new_v))")
+                Memento.warn(
+                    _LOGGER,
+                    "skipping key $(key) because object types do not match, target $(typeof(v)) source $(typeof(new_v))",
+                )
             end
         else
-            Memento.warn(_LOGGER, "skipping time_series key $(key) because it does not occur in the target data")
+            Memento.warn(
+                _LOGGER,
+                "skipping time_series key $(key) because it does not occur in the target data",
+            )
         end
     end
 end
 
-
-
 "builds a table of component data"
-function component_table(data::Dict{String,<:Any}, component::String, fields::Vector{String})
+function component_table(
+    data::Dict{String, <:Any},
+    component::String,
+    fields::Vector{String},
+)
     if ismultinetwork(data)
-        return Dict((i, _component_table(nw_data, component, fields)) for (i,nw_data) in data["nw"])
+        return Dict(
+            (i, _component_table(nw_data, component, fields)) for (i, nw_data) in data["nw"]
+        )
     else
         return _component_table(data, component, fields)
     end
 end
 
-component_table(data::Dict{String,<:Any}, component::String, field::String) = component_table(data, component, [field])
+component_table(data::Dict{String, <:Any}, component::String, field::String) =
+    component_table(data, component, [field])
 
-function _component_table(data::Dict{String,<:Any}, component::String, fields::Vector{String})
+function _component_table(
+    data::Dict{String, <:Any},
+    component::String,
+    fields::Vector{String},
+)
     comps = data[component]
     if !_iscomponentdict(comps)
         Memento.error(_LOGGER, "$(component) does not appear to refer to a component list")
     end
 
     items = []
-    sorted_comps = sort(collect(comps); by=x->parse(Int, x[1]))
-    for (i,comp) in sorted_comps
+    sorted_comps = sort(collect(comps); by = x -> parse(Int, x[1]))
+    for (i, comp) in sorted_comps
         push!(items, parse(Int, i))
     end
     for key in fields
-        for (i,comp) in sorted_comps
+        for (i, comp) in sorted_comps
             if haskey(comp, key)
                 push!(items, comp[key])
             else
@@ -257,25 +294,22 @@ function _component_table(data::Dict{String,<:Any}, component::String, fields::V
         end
     end
 
-    return reshape(items, length(comps), length(fields)+1)
+    return reshape(items, length(comps), length(fields) + 1)
 end
 
-
 "prints the text summary for a data dictionary to stdout"
-function print_summary(obj::Dict{String,<:Any}; kwargs...)
+function print_summary(obj::Dict{String, <:Any}; kwargs...)
     summary(stdout, obj; kwargs...)
 end
 
-
 "prints the text summary for a data dictionary to IO"
-function summary(io::IO, data::Dict{String,<:Any};
+function summary(io::IO, data::Dict{String, <:Any};
     float_precision::Int = 3,
     component_types_order = Dict(),
     component_parameter_order = Dict(),
     max_parameter_value = 999.0,
-    component_status_parameters = Set(["status"])
-    )
-
+    component_status_parameters = Set(["status"]),
+)
     if ismultinetwork(data)
         Memento.error(_LOGGER, "summary does not yet support multinetwork data")
     end
@@ -284,7 +318,7 @@ function summary(io::IO, data::Dict{String,<:Any};
     other_types = []
 
     println(io, _bold("Metadata"))
-    for (k,v) in sort(collect(data); by=x->x[1])
+    for (k, v) in sort(collect(data); by = x -> x[1])
         if typeof(v) <: Dict && _iscomponentdict(v)
             push!(component_types, k)
             continue
@@ -293,17 +327,18 @@ function summary(io::IO, data::Dict{String,<:Any};
         println(io, "  $(k): $(value2string(v, float_precision))")
     end
 
-
     if length(component_types) > 0
         println(io, "")
         println(io, _bold("Table Counts"))
     end
-    
-    for k in sort(component_types, by=x->get(component_types_order, x, max_parameter_value))
+
+    for k in
+        sort(component_types; by = x -> get(component_types_order, x, max_parameter_value))
         println(io, "  $(k): $(length(data[k]))")
     end
 
-    for comp_type in sort(component_types, by=x->get(component_types_order, x, max_parameter_value))
+    for comp_type in
+        sort(component_types; by = x -> get(component_types_order, x, max_parameter_value))
         if length(data[comp_type]) <= 0
             continue
         end
@@ -316,7 +351,7 @@ function summary(io::IO, data::Dict{String,<:Any};
         display_components = Dict()
         active_components = Set()
         for (i, component) in components
-            disp_comp = Dict{String,Any}(k => v for (k,v) in component)
+            disp_comp = Dict{String, Any}(k => v for (k, v) in component)
 
             status_found = false
             for (k, v) in disp_comp
@@ -379,7 +414,8 @@ function summary(io::IO, data::Dict{String,<:Any};
         if length(display_components) == 1
             default_values = Dict{String, Any}()
         else
-            default_values = Dict{String, Any}([x for x in default_values if !isa(x.second, Nothing)])
+            default_values =
+                Dict{String, Any}([x for x in default_values if !isa(x.second, Nothing)])
         end
 
         #display(default_values)
@@ -391,13 +427,16 @@ function summary(io::IO, data::Dict{String,<:Any};
 
         comp_id_pad = comp_key_sizes["index"] # not clear why this is offset so much
         delete!(comp_key_sizes, "index")
-        comp_keys_ordered = sort([k for k in keys(comp_key_sizes) if !(haskey(default_values, k))], by=x->(get(component_parameter_order, x, max_parameter_value), x))
+        comp_keys_ordered = sort(
+            [k for k in keys(comp_key_sizes) if !(haskey(default_values, k))];
+            by = x -> (get(component_parameter_order, x, max_parameter_value), x),
+        )
 
         header = join([lpad(k, comp_key_sizes[k]) for k in comp_keys_ordered], ", ")
 
-        pad = " "^(comp_id_pad+2)
+        pad = " "^(comp_id_pad + 2)
         println(io, "  $(pad)$(header)")
-        for k in sort([k for k in keys(display_components)]; by=x->parse(Int, x))
+        for k in sort([k for k in keys(display_components)]; by = x -> parse(Int, x))
             comp = display_components[k]
             items = []
             for ck in comp_keys_ordered
@@ -418,12 +457,14 @@ function summary(io::IO, data::Dict{String,<:Any};
         if length(default_values) > 0
             println(io, "")
             println(io, "  default values:")
-            for k in sort([k for k in keys(default_values)], by=x->(get(component_parameter_order, x, max_parameter_value), x))
+            for k in sort(
+                [k for k in keys(default_values)];
+                by = x -> (get(component_parameter_order, x, max_parameter_value), x),
+            )
                 println(io, "    $(k): $(default_values[k])")
             end
         end
     end
-
 end
 
 "Makes a string bold in the terminal"
@@ -459,7 +500,6 @@ function value2string(v::Dict, float_precision::Int)
     return "{($(length(v)))}"
 end
 
-
 """
 converts a float value into a string of fixed precision
 
@@ -473,11 +513,9 @@ function float2string(v::AbstractFloat, float_precision::Int)
     return rpad(str, lhs + 1 + float_precision, "0")
 end
 
-
-
 "tests if two dicts are equal, up to floating point precision"
 function compare_dict(d1, d2)
-    for (k1,v1) in d1
+    for (k1, v1) in d1
         if !haskey(d2, k1)
             return false
         end
@@ -536,4 +574,3 @@ function _compare_numbers(v1, v2)
     end
     return true
 end
-

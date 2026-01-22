@@ -118,7 +118,9 @@ function mock_construct_device!(
     add_event_model = false,
 )
     if add_event_model
-        error("Event models are not supported in InfrastructureOptimizationModels. Use PowerSimulations for event modeling.")
+        error(
+            "Event models are not supported in InfrastructureOptimizationModels. Use PowerSimulations for event modeling.",
+        )
     end
     set_device_model!(problem.template, model)
     template = POM.get_template(problem)

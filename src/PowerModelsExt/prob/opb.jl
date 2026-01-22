@@ -12,13 +12,12 @@ function build_opb(pm::AbstractPowerModel)
     end
 end
 
-
-function ref_add_connected_components!(ref::Dict{Symbol,<:Any}, data::Dict{String,<:Any})
+function ref_add_connected_components!(ref::Dict{Symbol, <:Any}, data::Dict{String, <:Any})
     apply_pm!(_ref_add_connected_components!, ref, data)
 end
 
-
-function _ref_add_connected_components!(ref::Dict{Symbol,<:Any}, data::Dict{String,<:Any})
+function _ref_add_connected_components!(ref::Dict{Symbol, <:Any}, data::Dict{String, <:Any})
     component_sets = calc_connected_components(data)
-    ref[:components] = Dict(i => c for (i,c) in enumerate(sort(collect(component_sets); by = length)))
+    ref[:components] =
+        Dict(i => c for (i, c) in enumerate(sort(collect(component_sets); by = length)))
 end

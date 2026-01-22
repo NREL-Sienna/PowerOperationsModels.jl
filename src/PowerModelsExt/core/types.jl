@@ -43,10 +43,6 @@ abstract type AbstractBFQPModel <: AbstractBFModel end
 "for variants of branch flow models that target conic solvers"
 abstract type AbstractBFConicModel <: AbstractBFModel end
 
-
-
-
-
 ##### Exact Non-Convex Models #####
 
 ""
@@ -79,11 +75,12 @@ History and discussion:
 }
 ```
 """
-mutable struct ACPPowerModel <: AbstractACPModel @pm_fields end
+mutable struct ACPPowerModel <: AbstractACPModel
+    @pm_fields
+end
 
 ""
 abstract type AbstractACRModel <: AbstractPowerModel end
-
 
 """
 AC power flow Model with rectangular bus voltage variables.
@@ -98,8 +95,9 @@ AC power flow Model with rectangular bus voltage variables.
 }
 ```
 """
-mutable struct ACRPowerModel <: AbstractACRModel @pm_fields end
-
+mutable struct ACRPowerModel <: AbstractACRModel
+    @pm_fields
+end
 
 ""
 abstract type AbstractACTModel <: AbstractPowerModel end
@@ -121,10 +119,9 @@ AC power flow Model (nonconvex) with variables for voltage angle, voltage magnit
 }
 ```
 """
-mutable struct ACTPowerModel <: AbstractACTModel @pm_fields end
-
-
-
+mutable struct ACTPowerModel <: AbstractACTModel
+    @pm_fields
+end
 
 ""
 abstract type AbstractIVRModel <: AbstractACRModel end
@@ -147,8 +144,9 @@ due to constants power loads/generators and apparent power limits.
 
 Applicable to problem formulations with `_iv` in the name.
 """
-mutable struct IVRPowerModel <: AbstractIVRModel @pm_fields end
-
+mutable struct IVRPowerModel <: AbstractIVRModel
+    @pm_fields
+end
 
 ##### Linear Approximations #####
 # AbstractDCPModel is imported from IS.Optimization
@@ -179,8 +177,9 @@ in solutions should be expected when comparing active-power-only approximations 
 }
 ```
 """
-mutable struct DCPPowerModel <: AbstractDCPModel @pm_fields end
-
+mutable struct DCPPowerModel <: AbstractDCPModel
+    @pm_fields
+end
 
 abstract type AbstractDCMPPModel <: AbstractDCPModel end
 
@@ -194,29 +193,28 @@ Similar to the DCPPowerModel with the following changes:
 
 The results should be equal to the results of matpower calculations.
 """
-mutable struct DCMPPowerModel <: AbstractDCMPPModel @pm_fields end
-
+mutable struct DCMPPowerModel <: AbstractDCMPPModel
+    @pm_fields
+end
 
 abstract type AbstractNFAModel <: AbstractDCPModel end
 
 """
 The an active power only network flow approximation, also known as the transportation model.
 """
-mutable struct NFAPowerModel <: AbstractNFAModel @pm_fields end
-
-
-
-
+mutable struct NFAPowerModel <: AbstractNFAModel
+    @pm_fields
+end
 
 ##### Quadratic Approximations #####
-
 
 ""
 abstract type AbstractDCPLLModel <: AbstractDCPModel end
 
 ""
-mutable struct DCPLLPowerModel <: AbstractDCPLLModel @pm_fields end
-
+mutable struct DCPLLPowerModel <: AbstractDCPLLModel
+    @pm_fields
+end
 
 ""
 abstract type AbstractLPACModel <: AbstractPowerModel end
@@ -250,10 +248,9 @@ constraints.
 }
 ```
 """
-mutable struct LPACCPowerModel <: AbstractLPACCModel @pm_fields end
-
-
-
+mutable struct LPACCPowerModel <: AbstractLPACCModel
+    @pm_fields
+end
 
 ##### Quadratic Relaxations #####
 
@@ -285,8 +282,9 @@ The implementation casts this as a convex quadratically constrained problem.
 }
 ```
 """
-mutable struct SOCWRPowerModel <: AbstractSOCWRModel @pm_fields end
-
+mutable struct SOCWRPowerModel <: AbstractSOCWRModel
+    @pm_fields
+end
 
 ""
 abstract type AbstractSOCWRConicModel <: AbstractWRConicModel end
@@ -296,9 +294,9 @@ Second-order cone relaxation of bus injection model of AC OPF.
 
 This implementation casts the problem as a convex conic problem.
 """
-mutable struct SOCWRConicPowerModel <: AbstractSOCWRConicModel @pm_fields end
-
-
+mutable struct SOCWRConicPowerModel <: AbstractSOCWRConicModel
+    @pm_fields
+end
 
 ""
 abstract type AbstractQCWRModel <: AbstractWRModel end
@@ -324,8 +322,9 @@ Recursive McCormik relaxations are used for the trilinear terms (i.e. QCRM).
 }
 ```
 """
-mutable struct QCRMPowerModel <: AbstractQCRMPowerModel @pm_fields end
-
+mutable struct QCRMPowerModel <: AbstractQCRMPowerModel
+    @pm_fields
+end
 
 ""
 abstract type AbstractQCLSModel <: AbstractQCWRModel end
@@ -360,9 +359,9 @@ The original model derivation is available in,
 }
 ```
 """
-mutable struct QCLSPowerModel <: AbstractQCLSModel @pm_fields end
-
-
+mutable struct QCLSPowerModel <: AbstractQCLSModel
+    @pm_fields
+end
 
 ""
 abstract type AbstractSOCBFModel <: AbstractBFQPModel end
@@ -396,7 +395,9 @@ Extended as discussed in:
 
 Applicable to problem formulations with `_bf` in the name.
 """
-mutable struct SOCBFPowerModel <: AbstractSOCBFModel @pm_fields end
+mutable struct SOCBFPowerModel <: AbstractSOCBFModel
+    @pm_fields
+end
 
 """
 Linear approximation of branch flow model.
@@ -421,24 +422,22 @@ Note that flow bounds are still second order cones.
 
 Applicable to problem formulations with `_bf` in the name.
 """
-mutable struct BFAPowerModel <: AbstractBFAModel @pm_fields end
+mutable struct BFAPowerModel <: AbstractBFAModel
+    @pm_fields
+end
 
 ""
 abstract type AbstractSOCBFConicModel <: AbstractBFConicModel end
 
 ""
-mutable struct SOCBFConicPowerModel <: AbstractSOCBFConicModel @pm_fields end
-
-
-
-
-
+mutable struct SOCBFConicPowerModel <: AbstractSOCBFConicModel
+    @pm_fields
+end
 
 ###### SDP Relaxations ######
 
 ""
 abstract type AbstractWRMModel <: AbstractConicModel end
-
 
 ""
 abstract type AbstractSDPWRMModel <: AbstractWRMModel end
@@ -475,8 +474,9 @@ First paper to use "W" variables in the BIM of AC OPF:
 }
 ```
 """
-mutable struct SDPWRMPowerModel <: AbstractSDPWRMModel @pm_fields end
-
+mutable struct SDPWRMPowerModel <: AbstractSDPWRMModel
+    @pm_fields
+end
 
 abstract type AbstractSparseSDPWRMModel <: AbstractSDPWRMModel end
 
@@ -514,9 +514,9 @@ Original application to OPF by:
 }
 ```
 """
-mutable struct SparseSDPWRMPowerModel <: AbstractSparseSDPWRMModel @pm_fields end
-
-
+mutable struct SparseSDPWRMPowerModel <: AbstractSparseSDPWRMModel
+    @pm_fields
+end
 
 ##### Union Types #####
 #
@@ -531,13 +531,16 @@ mutable struct SparseSDPWRMPowerModel <: AbstractSparseSDPWRMModel @pm_fields en
 # type hierarchy can resolve the issue instead.
 #
 
-AbstractWRModels = Union{AbstractACTModel, AbstractWRModel, AbstractWRConicModel, AbstractWRMModel}
+AbstractWRModels =
+    Union{AbstractACTModel, AbstractWRModel, AbstractWRConicModel, AbstractWRMModel}
 AbstractWModels = Union{AbstractWRModels, AbstractBFModel}
-AbstractWConvexModels = Union{AbstractWRModel, AbstractWRConicModel, AbstractWRMModel, AbstractBFModel}
+AbstractWConvexModels =
+    Union{AbstractWRModel, AbstractWRConicModel, AbstractWRMModel, AbstractBFModel}
 
 AbstractAPLossLessModels = Union{DCPPowerModel, DCMPPowerModel, AbstractNFAModel}
 
-AbstractPolarModels = Union{AbstractACPModel, AbstractACTModel, AbstractLPACModel, AbstractDCPModel}
+AbstractPolarModels =
+    Union{AbstractACPModel, AbstractACTModel, AbstractLPACModel, AbstractDCPModel}
 
 "union of all conic Model branches"
 AbstractConicModels = Union{AbstractConicModel, AbstractBFConicModel}
