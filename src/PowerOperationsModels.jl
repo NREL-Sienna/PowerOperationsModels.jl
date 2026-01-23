@@ -6,10 +6,19 @@ module PowerOperationsModels
 import Dates
 import InfrastructureSystems
 import JuMP
+import Memento
 import PowerSystems
 import TimerOutputs
 
 using DocStringExtensions
+
+#################################################################################
+# Embedded submodules (adapted from InfrastructureModels.jl and PowerModels.jl)
+#################################################################################
+include("InfrastructureModels/InfrastructureModels.jl")
+include("PowerModels/PowerModels.jl")
+
+const PM = PowerModels
 
 @template (FUNCTIONS, METHODS) = """
                                  $(TYPEDSIGNATURES)
@@ -145,9 +154,22 @@ using InfrastructureOptimizationModels:
     get_constraint_index,
     get_variable_index,
     list_recorder_events,
+    jump_value,
+    ConstraintBounds,
+    VariableBounds,
     # Status Enums
     ModelBuildStatus,
     RunStatus,
+    SimulationBuildStatus,
+    # Problem Types
+    DefaultDecisionProblem,
+    DefaultEmulationProblem,
+    # Settings and Data Types
+    Settings,
+    InitialConditionsData,
+    # Constants
+    COST_EPSILON,
+    INITIALIZATION_PROBLEM_HORIZON_COUNT,
     # Construction stages
     ArgumentConstructStage,
     ModelConstructStage,
@@ -242,6 +264,9 @@ export get_all_variable_index
 export get_constraint_index
 export get_variable_index
 export list_recorder_events
+export jump_value
+export ConstraintBounds
+export VariableBounds
 
 # Key Types
 export VariableKey
@@ -253,6 +278,19 @@ export AuxVarKey
 # Status Enums
 export ModelBuildStatus
 export RunStatus
+export SimulationBuildStatus
+
+# Problem Types
+export DefaultDecisionProblem
+export DefaultEmulationProblem
+
+# Settings and Data Types
+export Settings
+export InitialConditionsData
+
+# Constants
+export COST_EPSILON
+export INITIALIZATION_PROBLEM_HORIZON_COUNT
 
 #################################################################################
 # Exports - Variable Types (defined in core/variables.jl)

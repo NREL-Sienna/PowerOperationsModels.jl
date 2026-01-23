@@ -1,4 +1,4 @@
-# TODO: Re-enable DCPPowerModel tests when PowerModelsExt is integrated
+# TODO: Re-enable DCPPowerModel tests when PowerModels is integrated
 # DCPPowerModel requires PowerModels.jl extension
 const DC_NETWORK_MODELS_FOR_TESTING = [PTDFPowerModel]
 
@@ -25,7 +25,7 @@ const DC_NETWORK_MODELS_FOR_TESTING = [PTDFPowerModel]
     end
 end
 
-# TODO: Re-enable when PowerModelsExt is integrated
+# TODO: Re-enable when PowerModels is integrated
 # @testset "AC Power Flow Monitored Line Flow Constraints" begin
 #     system = PSB.build_system(PSITestSystems, "c_sys5_ml")
 #     limits = PSY.get_flow_limits(PSY.get_component(MonitoredLine, system, "1"))
@@ -284,7 +284,7 @@ end
     ptdf_values = ptdf_vars["FlowActivePowerVariable__TwoTerminalGenericHVDCLine"]
     ptdf_objective = POM.get_optimization_container(model).optimizer_stats.objective_value
 
-    # TODO: Re-enable when PowerModelsExt is integrated
+    # TODO: Re-enable when PowerModels is integrated
     # set_network_model!(template_uc, NetworkModel(DCPPowerModel))
     #
     # model = DecisionModel(
@@ -596,7 +596,7 @@ end
     )
 end
 
-# TODO: Re-enable when PowerModelsExt is integrated
+# TODO: Re-enable when PowerModels is integrated
 # @testset "AC Power Flow Models for TwoTerminalGenericHVDCLine  Flow Constraints and TapTransformer & Transformer2W Unbounded" begin
 #     ratelimit_constraint_keys = [
 #         POM.ConstraintKey(FlowRateConstraintFromTo, Transformer2W),
@@ -671,7 +671,7 @@ end
     # This rating (0.247479) was previously inferred in PSY.check_component after setting the rating to 0.0 in the tests
     set_rating!(PSY.get_component(Line, system, "2"), 0.247479)
     for (model, optimizer) in NETWORKS_FOR_TESTING
-        # TODO: Re-enable when PowerModelsExt is integrated
+        # TODO: Re-enable when PowerModels is integrated
         # if model ∈ [PM.SDPWRMPowerModel, SOCWRConicPowerModel]
         #     # Skip because the data is too in the feasibility margins for these models
         #     continue
@@ -897,7 +897,7 @@ end
         )
     end
 
-    # TODO: Re-enable when PowerModelsExt is integrated
+    # TODO: Re-enable when PowerModels is integrated
     # template_ac = get_thermal_dispatch_template_network(ACPPowerModel)
     # set_device_model!(template_ac, DeviceModel(Transformer3W, StaticBranch))
     # model_ac = DecisionModel(template_ac, system; optimizer = ipopt_optimizer)

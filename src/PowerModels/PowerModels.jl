@@ -1,7 +1,7 @@
-module PowerModelsExt
+module PowerModels
 
-import .InfrastructureModelsExt as _IM
-import .InfrastructureModels: optimize_model!, @im_fields, nw_id_default
+import ..InfrastructureModels as _IM
+import ..InfrastructureModels: optimize_model!, @im_fields, nw_id_default
 import InfrastructureSystems
 import JuMP
 import LinearAlgebra
@@ -54,9 +54,4 @@ include("util/flow_limit_cuts.jl")
 # this must come last to support automated export
 include("core/export.jl")
 
-# This import was retained for anyone using PowerModelsExt.InfrastructureModels.
-# The suggested approach is for users to import InfrastructureModels in their
-# own code.
-import InfrastructureModels
-
-end  # module PowerModelsExt
+end  # module PowerModels

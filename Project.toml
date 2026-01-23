@@ -10,7 +10,11 @@ InfrastructureOptimizationModels = "bed98974-b02a-5e2f-9ee0-a103f5c45069"
 InfrastructureSystems = "2cd47ed4-ca9b-11e9-27f2-ab636a7671f1"
 JSON3 = "0f8b85d8-7281-11e9-16c2-39a750bddbf1"
 JuMP = "4076af6c-e467-56ae-b986-b466b2749572"
+LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+Logging = "56ddb016-857b-54e1-b83d-db4d58db5568"
+Memento = "f28f55f0-a522-5efc-85c2-fe41dfb9b2d9"
 PowerSystems = "bcd98974-b02a-5e2f-9ee0-a103f5c450dd"
+SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
 TimerOutputs = "a759f4b9-e2f1-59dc-863e-4aeb61b1ea8f"
 
 [weakdeps]

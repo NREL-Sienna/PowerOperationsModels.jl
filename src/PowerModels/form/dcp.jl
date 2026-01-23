@@ -390,6 +390,11 @@ function constraint_ne_voltage_angle_difference(
     JuMP.@constraint(pm.model, va_fr - va_to >= angmin * z + vad_min * (1 - z))
 end
 
+#=
+NOTE: AdmittanceMatrix functions commented out - PowerNetworkMatrices provides similar
+functionality and the original PowerModels AdmittanceMatrix type was not copied to avoid
+name clashes with PNM.AdmittanceMatrix.
+
 function expression_bus_voltage(pm::AbstractPowerModel, n::Int, i, am::AdmittanceMatrix)
     ref_bus = collect(ids(pm, n, :ref_buses))[1]
     inj_factors = injection_factors_va(am, ref_bus, i)
@@ -411,6 +416,7 @@ function expression_bus_voltage(
     var(pm, n, :va)[i] =
         JuMP.@expression(pm.model, sum(f * inj_p[j] for (j, f) in inj_factors))
 end
+=#
 
 ######## Lossless Models ########
 
