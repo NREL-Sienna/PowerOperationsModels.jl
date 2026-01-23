@@ -7,6 +7,7 @@ import Dates
 import InfrastructureSystems
 import JuMP
 import Memento
+import JuMP.Containers: DenseAxisArray, SparseAxisArray
 import PowerSystems
 import TimerOutputs
 
@@ -30,6 +31,9 @@ const PM = PowerModels
 #################################################################################
 const IS = InfrastructureSystems
 const ISOPT = InfrastructureSystems.Optimization
+
+# PM alias for PowerModels types that now live in IS.Optimization
+const PM = ISOPT
 
 const PSY = PowerSystems
 
@@ -63,6 +67,29 @@ import InfrastructureOptimizationModels:
     should_write_resulting_value,
     convert_result_to_natural_units
 
+# Import functions that POM extends with device-specific implementations
+# These are the main extension points where POM provides concrete implementations
+import InfrastructureOptimizationModels:
+    construct_device!,
+    construct_service!,
+    add_variables!,
+    add_constraints!,
+    add_to_expression!,
+    objective_function!
+
+# Import types needed by device model files
+using InfrastructureOptimizationModels:
+    FixedOutput,
+    OptimizationContainer,
+    DeviceModel,
+    NetworkModel,
+    OperationModel,
+    ArgumentConstructStage,
+    ModelConstructStage,
+    get_available_components,
+    get_attribute,
+    get_time_steps
+
 #################################################################################
 # Include core type definitions
 # These define concrete Variable, Expression, Constraint, and Parameter types
@@ -72,8 +99,20 @@ include("core/variables.jl")
 include("core/expressions.jl")
 include("core/constraints.jl")
 include("core/auxiliary_variables.jl")
+include("core/parameters.jl")
 include("core/formulations.jl")
 include("core/network_formulations.jl")
+
+# Device Models - Renewable Generation
+include("static_injector_models/renewable_generation.jl")
+include("static_injector_models/renewablegeneration_constructor.jl")
+
+# TODO: Add more device model includes as they are ready
+# include("core/definitions.jl")
+# include("core/default_interface_methods.jl")
+# include("static_injector_models/...")
+# include("ac_transmission_models/...")
+# include("network_models/...")
 
 #################################################################################
 # Import and re-export from InfrastructureOptimizationModels
@@ -100,6 +139,10 @@ using InfrastructureOptimizationModels:
     InitialTimeDurationOn,
     InitialTimeDurationOff,
     InitialEnergyLevel,
+    DeviceAboveMinPower,
+    # Abstract problem types
+    DefaultDecisionProblem,
+    DefaultEmulationProblem,
     # Functions
     build!,
     get_initial_conditions,
@@ -193,6 +236,37 @@ using InfrastructureOptimizationModels:
     ExpressionKey,
     AuxVarKey,
     OptimizationContainerKey
+
+#################################################################################
+# Re-exports from IOM for testing support
+# These are internal functions/types re-exported so tests can use POM.func_name
+#################################################################################
+using InfrastructureOptimizationModels:
+    # Container access functions
+    get_optimization_container,
+    get_constraints,
+    get_constraint,
+    get_aux_variables,
+    get_expression,
+    get_internal,
+    # Template access functions
+    get_model,
+    get_formulation,
+    # Initial conditions functions
+    get_initial_conditions_data,
+    get_initial_condition,
+    get_value,
+    get_initial_condition_value,
+    # JuMP utilities
+    jump_value,
+    # Bounds types
+    ConstraintBounds,
+    VariableBounds,
+    # Constants
+    INITIALIZATION_PROBLEM_HORIZON_COUNT
+
+# Import private/internal helpers (use import to avoid undeclared warning)
+import InfrastructureOptimizationModels: _get_ramp_constraint_devices
 
 #################################################################################
 # Exports - Base Models
@@ -383,6 +457,26 @@ export HVDCFlowDirectionVariable
 export HVDCLosses
 export ConverterDCPower
 export ConverterCurrentDirection
+
+#################################################################################
+# Exports - Constraint Types (defined in core/constraints.jl)
+#################################################################################
+export FlowRateConstraint
+export FlowRateConstraintFromTo
+export FlowRateConstraintToFrom
+export FlowLimitConstraint
+export FlowLimitFromToConstraint
+export FlowLimitToFromConstraint
+export ImportExportBudgetConstraint
+export ActivePowerVariableLimitsConstraint
+export InputActivePowerVariableLimitsConstraint
+export ActivePowerOutVariableTimeSeriesLimitsConstraint
+export ActivePowerInVariableTimeSeriesLimitsConstraint
+export PiecewiseLinearBlockIncrementalOfferConstraint
+export PiecewiseLinearBlockDecrementalOfferConstraint
+export RateLimitConstraint
+export RateLimitConstraintFromTo
+export RateLimitConstraintToFrom
 
 #################################################################################
 # Exports - Expression Types (defined in core/expressions.jl)
