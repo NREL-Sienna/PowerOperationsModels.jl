@@ -115,49 +115,7 @@ const IGNORABLE_FILES = [
 ]
 const RESULTS_DIR = "results"
 
-# Enums
-ModelBuildStatus = ISOPT.ModelBuildStatus
-SimulationBuildStatus = IS.Simulation.SimulationBuildStatus
-
-RunStatus = IS.Simulation.RunStatus
-
+# POM-specific enums (not duplicated from IOM)
 IS.@scoped_enum(SOSStatusVariable, NO_VARIABLE = 1, PARAMETER = 2, VARIABLE = 3,)
 
 IS.@scoped_enum(COMPACT_PWL_STATUS, VALID = 1, INVALID = 2, UNDETERMINED = 3)
-
-const ENUMS = (ModelBuildStatus, SimulationBuildStatus, RunStatus, SOSStatusVariable)
-
-const ENUM_MAPPINGS = Dict()
-
-for enum in ENUMS
-    ENUM_MAPPINGS[enum] = Dict()
-    for value in instances(enum)
-        ENUM_MAPPINGS[enum][lowercase(string(value))] = value
-    end
-end
-
-# Special cases for backwards compatibility
-ENUM_MAPPINGS[RunStatus]["ready"] = RunStatus.INITIALIZED
-ENUM_MAPPINGS[RunStatus]["successful"] = RunStatus.SUCCESSFULLY_FINALIZED
-
-"""
-Get the enum value for the string. Case insensitive.
-"""
-function get_enum_value(enum, value::String)
-    if !haskey(ENUM_MAPPINGS, enum)
-        throw(ArgumentError("enum=$enum is not valid"))
-    end
-
-    val = lowercase(value)
-    if !haskey(ENUM_MAPPINGS[enum], val)
-        throw(ArgumentError("enum=$enum does not have value=$val"))
-    end
-
-    return ENUM_MAPPINGS[enum][val]
-end
-
-Base.convert(::Type{SimulationBuildStatus}, val::String) =
-    get_enum_value(SimulationBuildStatus, val)
-Base.convert(::Type{ModelBuildStatus}, val::String) = get_enum_value(ModelBuildStatus, val)
-Base.convert(::Type{RunStatus}, val::String) = get_enum_value(RunStatus, val)
-Base.convert(::Type{SOSStatusVariable}, x::String) = get_enum_value(SOSStatusVariable, x)
