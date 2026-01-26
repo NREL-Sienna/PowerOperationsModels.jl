@@ -391,7 +391,7 @@ function add_to_expression!(
         for d_outage in devices_outages
             if d == d_outage
                 for t in time_steps
-                    _add_to_jump_expression!(
+                    add_proportional_to_jump_expression!(
                         expression[name, t],
                         variable[name, t],
                         -1.0,
@@ -403,7 +403,7 @@ function add_to_expression!(
             name_outage = PSY.get_name(d_outage)
 
             for t in time_steps
-                _add_to_jump_expression!(
+                add_proportional_to_jump_expression!(
                     expression[name_outage, t],
                     variable_outages[name_outage, name, t],
                     1.0,
@@ -557,7 +557,7 @@ function add_to_expression!(
             name_outage = PSY.get_name(d_outage)
 
             for t in get_time_steps(container)
-                _add_to_jump_expression!(
+                add_proportional_to_jump_expression!(
                     expression[name_outage, bus_no, t],
                     variable_outages[name_outage, name, t],
                     mult,
@@ -1225,7 +1225,7 @@ function add_to_expression!(
         mult = get_variable_multiplier(U(), typeof(d), F())
 
         for t in time_steps
-            _add_to_jump_expression!(
+            add_proportional_to_jump_expression!(
                 expression[name_outage, t],
                 variable[name, t],
                 mult,
@@ -1286,7 +1286,7 @@ function add_to_expression!(
             end
 
             for t in time_steps
-                _add_to_jump_expression!(
+                add_proportional_to_jump_expression!(
                     expression[name_outage, t],
                     reserve_deployment_variable[name_outage, name, t],
                     mult,
@@ -1354,7 +1354,7 @@ function add_to_expression!(
             bus_number = PNM.get_mapped_bus_number(network_reduction, PSY.get_bus(d))
 
             for t in time_steps
-                _add_to_jump_expression!(
+                add_proportional_to_jump_expression!(
                     expression[name_outage, bus_number, t],
                     reserve_deployment_variable[name_outage, name, t],
                     mult,
@@ -1413,7 +1413,7 @@ function add_to_expression!(
         mult = get_variable_multiplier(U(), typeof(d), F())
         bus_number = PNM.get_mapped_bus_number(network_reduction, PSY.get_bus(d))
         for t in time_steps
-            _add_to_jump_expression!(
+            add_proportional_to_jump_expression!(
                 expression[name_outage, bus_number, t],
                 variable[name, t],
                 mult,
@@ -1528,7 +1528,7 @@ function add_to_expression!(
             name_outage = IS.get_uuid(outage)
 
             for t in time_steps
-                _add_to_jump_expression!(
+                add_proportional_to_jump_expression!(
                     expression[name_outage, branch, t],
                     flow_variables[branch, t],
                     1.0,

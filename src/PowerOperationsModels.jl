@@ -5,6 +5,7 @@ module PowerOperationsModels
 #################################################################################
 import Dates
 import InfrastructureSystems
+import InfrastructureSystems: @assert_op
 import JuMP
 import Memento
 import JuMP.Containers: DenseAxisArray, SparseAxisArray
@@ -83,25 +84,47 @@ import InfrastructureOptimizationModels:
     add_variables!,
     add_constraints!,
     add_to_expression!,
+    add_expressions!,
     objective_function!,
     initial_condition_variable,
     initial_condition_default,
     get_initial_conditions_value,
     update_initial_conditions!,
-    add_initial_condition!
+    add_initial_condition!,
+    # Variable/expression multiplier functions (have stubs in IOM)
+    get_variable_multiplier,
+    get_expression_multiplier,
+    get_multiplier_value
 
 # Import types needed by device model files
 using InfrastructureOptimizationModels:
+    # Core types
     FixedOutput,
     OptimizationContainer,
     DeviceModel,
+    ServiceModel,
     NetworkModel,
     OperationModel,
+    ProblemTemplate,
+    DecisionModel,
+    EmulationModel,
+    InitialCondition,
+    # Construction stages
     ArgumentConstructStage,
     ModelConstructStage,
-    get_available_components,
-    get_attribute,
-    get_time_steps,
+    # Key types
+    AuxVarKey,
+    VariableKey,
+    ConstraintKey,
+    ParameterKey,
+    ExpressionKey,
+    OptimizationContainerKey,
+    # Container types
+    ParameterContainer,
+    EmulationModelStore,
+    # Branch model types
+    BranchModelContainer,
+    DeviceModelForBranches,
     # Initial condition types
     DeviceStatus,
     DevicePower,
@@ -111,73 +134,6 @@ using InfrastructureOptimizationModels:
     InitialEnergyLevel,
     # Cost types
     StartUpStages,
-    # Functions needed for device models
-    InitialCondition,
-    get_initial_condition,
-    add_to_expression!,
-    add_variables!,
-    add_constraints!,
-    add_parameters!,
-    objective_function!,
-    get_expression,
-    get_variable,
-    has_container_key,
-    # Note: add_feedforward_arguments!, add_feedforward_constraints!,
-    # get_default_on_variable, get_default_off_variable are defined in POM, not IOM
-    # Key types
-    AuxVarKey,
-    VariableKey,
-    ConstraintKey,
-    ParameterKey,
-    ExpressionKey,
-    # Container types
-    ParameterContainer,
-    # Model template types
-    ProblemTemplate,
-    DecisionModel,
-    EmulationModel,
-    # Branch model types
-    BranchModelContainer,
-    DeviceModelForBranches,
-    # Time series utilities
-    get_time_series_names,
-    # Resolution utilities
-    set_resolution!,
-    # Initial conditions
-    add_initial_condition!,
-    # Template utilities
-    get_template,
-    finalize_template!,
-    # Market bid processing
-    process_market_bid_parameters!,
-    # Time series validation
-    validate_time_series!,
-    # Optimization container initialization
-    init_optimization_container!,
-    # Internal accessors needed by tests
-    get_network_model,
-    get_value,
-    get_initial_conditions_data,
-    get_initial_condition_value,
-    get_objective_expression,
-    get_formulation,
-    # Initial condition infrastructure (POM extends these)
-    get_initial_conditions_value,
-    update_initial_conditions!,
-    EmulationModelStore,
-    set_ic_quantity!,
-    get_last_recorded_value,
-    get_component_type,
-    get_component_name,
-    add_initial_condition_container!,
-    has_initial_condition_value,
-    add_jump_parameter,
-    get_jump_model,
-    get_settings,
-    get_rebuild_model,
-    LOG_GROUP_BUILD_INITIAL_CONDITIONS,
-    # Note: ABSOLUTE_TOLERANCE is defined in POM's definitions.jl
-    # Note: TimeDurationOn and TimeDurationOff are defined in POM, not IOM
     # Expression types (abstract and concrete)
     SystemBalanceExpressions,
     RangeConstraintLBExpressions,
@@ -199,9 +155,153 @@ using InfrastructureOptimizationModels:
     DCCurrentBalance,
     # Note: HVDCPowerBalance is NOT imported - POM defines its own HVDCPowerBalance <: ConstraintType
     # while IOM has HVDCPowerBalance <: ExpressionType. These are different types.
+    # Status enums
+    ModelBuildStatus,
+    RunStatus,
+    SimulationBuildStatus,
+    # Settings and data types
+    Settings,
+    InitialConditionsData,
+    # Problem types
+    DefaultDecisionProblem,
+    DefaultEmulationProblem,
+    # Result types
+    OptimizationProblemResults,
+    OptimizationProblemResultsExport,
+    OptimizerStats,
+    ConstraintBounds,
+    VariableBounds,
+    # Constants
+    # Note: COST_EPSILON, INITIALIZATION_PROBLEM_HORIZON_COUNT, HOURS_IN_WEEK
+    # are defined in POM's definitions.jl, not imported from IOM
+    LOG_GROUP_BUILD_INITIAL_CONDITIONS,
+    # PowerNetworkMatrices types (re-exported by IOM)
+    PTDF,
+    VirtualPTDF,
+    LODF,
+    VirtualLODF,
+    # JuMP utilities
+    optimizer_with_attributes,
+    # Expression infrastructure (generic functions from IOM)
+    add_constant_to_jump_expression!,
+    add_proportional_to_jump_expression!,
+    add_linear_to_jump_expression!,
+    # Core model functions
+    get_available_components,
+    get_attribute,
+    get_time_steps,
+    get_resolution,
+    get_time_series_names,
+    get_initial_condition,
+    get_initial_conditions,
+    get_initial_conditions_data,
+    get_initial_condition_value,
+    get_initial_conditions_value,
+    # Container access functions
+    get_expression,
+    get_variable,
+    get_parameter,
+    get_parameter_array,
+    get_multiplier_array,
+    get_parameter_column_refs,
+    has_container_key,
+    get_constraints,
+    get_constraint,
+    get_aux_variables,
+    get_optimization_container,
+    get_internal,
+    # Model building functions
+    add_to_expression!,
+    add_variables!,
+    add_constraints!,
+    add_parameters!,
+    add_constraints_container!,
+    add_expression_container!,
+    add_variable_cost!,
+    objective_function!,
+    # Initial condition functions
+    add_initial_condition!,
+    add_initial_condition_container!,
+    has_initial_condition_value,
+    update_initial_conditions!,
+    set_ic_quantity!,
+    get_last_recorded_value,
+    get_component_type,
+    get_component_name,
+    add_jump_parameter,
+    # Network/template functions
+    get_network_model,
+    get_network_reduction,
+    get_service_name,
+    get_default_time_series_type,
+    get_reference_bus,
+    get_template,
+    get_model,
+    get_formulation,
+    get_network_formulation,
+    get_hvdc_network_model,
+    set_device_model!,
+    set_service_model!,
+    set_network_model!,
+    set_hvdc_network_model!,
+    set_resolution!,
+    finalize_template!,
+    # Model operations
+    build!,
+    solve!,
+    run!,
+    serialize_problem,
+    serialize_results,
+    serialize_optimization_model,
+    validate_time_series!,
+    init_optimization_container!,
+    process_market_bid_parameters!,
+    # JuMP access
+    get_jump_model,
+    jump_value,
+    # Settings access
+    get_settings,
+    get_rebuild_model,
+    get_value,
+    get_objective_expression,
+    # Results functions
+    get_variable_values,
+    get_dual_values,
+    get_parameter_values,
+    get_aux_variable_values,
+    get_expression_values,
+    get_timestamps,
+    get_system,
+    get_problem_base_power,
+    get_objective_value,
+    read_variable,
+    read_dual,
+    read_parameter,
+    read_aux_variable,
+    read_expression,
+    read_variables,
+    read_duals,
+    read_parameters,
+    read_aux_variables,
+    read_expressions,
+    read_optimizer_stats,
+    # Index utilities
+    get_all_constraint_index,
+    get_all_variable_index,
+    get_constraint_index,
+    get_variable_index,
+    list_recorder_events,
+    # Other utilities
+    get_name,
+    get_model_base_power,
+    get_optimizer_stats,
     # Result writing/conversion methods to extend
     should_write_resulting_value,
     convert_result_to_natural_units
+    # Note: add_feedforward_arguments!, add_feedforward_constraints!,
+    # get_default_on_variable, get_default_off_variable are defined in POM, not IOM
+    # Note: ABSOLUTE_TOLERANCE is defined in POM's definitions.jl
+    # Note: TimeDurationOn and TimeDurationOff are defined in POM, not IOM
 
 #################################################################################
 # Include core type definitions
@@ -216,6 +316,10 @@ include("core/auxiliary_variables.jl")
 include("core/parameters.jl")
 include("core/formulations.jl")
 include("core/network_formulations.jl")
+
+# Common models - expression infrastructure
+# Device-specific add_to_expression! implementations
+include("common_models/add_to_expression.jl")
 
 # Initial Conditions - Device-specific implementations
 # These extend the generic infrastructure from IOM
@@ -252,159 +356,6 @@ include("network_models/network_constructor.jl")
 # include("twoterminal_hvdc_models/...")
 # include("mt_hvdc_models/...")
 # include("services_models/...")
-
-#################################################################################
-# Import and re-export from InfrastructureOptimizationModels
-# Infrastructure types and functions that are not type definitions
-#################################################################################
-
-using InfrastructureOptimizationModels:
-    #=
-        # Base Models
-        DecisionModel,
-        EmulationModel,
-        ProblemTemplate,
-        InitialCondition,
-        OperationModel,
-        # Network
-        NetworkModel,
-        # Model Container Types
-        DeviceModel,
-        ServiceModel,
-        # Optimization Container
-        OptimizationContainer,
-        # Initial Conditions Quantities
-        DevicePower,
-        DeviceStatus,
-        InitialTimeDurationOn,
-        InitialTimeDurationOff,
-        InitialEnergyLevel,
-        DeviceAboveMinPower,
-    =#
-    # Abstract problem types
-    DefaultDecisionProblem,
-    DefaultEmulationProblem,
-    # Functions
-    build!,
-    get_initial_conditions,
-    serialize_problem,
-    serialize_results,
-    serialize_optimization_model,
-    solve!,
-    run!,
-    set_device_model!,
-    set_service_model!,
-    set_network_model!,
-    get_network_formulation,
-    get_hvdc_network_model,
-    set_hvdc_network_model!,
-    get_available_components,
-    get_attribute,
-    get_time_steps,
-    get_resolution,
-    get_variable,
-    get_jump_model,
-    add_variable_cost!,
-    add_variables!,
-    add_constraints!,
-    add_constraints_container!,
-    # Results interfaces
-    get_variable_values,
-    get_dual_values,
-    get_parameter_values,
-    get_aux_variable_values,
-    get_expression_values,
-    get_timestamps,
-    get_system,
-    read_variable,
-    read_dual,
-    read_parameter,
-    read_aux_variable,
-    read_expression,
-    read_variables,
-    read_duals,
-    read_parameters,
-    read_aux_variables,
-    read_expressions,
-    get_problem_base_power,
-    get_objective_value,
-    read_optimizer_stats,
-    # Utils
-    OptimizationProblemResults,
-    OptimizationProblemResultsExport,
-    OptimizerStats,
-    get_all_constraint_index,
-    get_all_variable_index,
-    get_constraint_index,
-    get_variable_index,
-    list_recorder_events,
-    jump_value,
-    ConstraintBounds,
-    VariableBounds,
-    # Status Enums
-    ModelBuildStatus,
-    RunStatus,
-    SimulationBuildStatus,
-    # Problem Types
-    DefaultDecisionProblem,
-    DefaultEmulationProblem,
-    # Settings and Data Types
-    Settings,
-    InitialConditionsData,
-    # Constants
-    COST_EPSILON,
-    INITIALIZATION_PROBLEM_HORIZON_COUNT,
-    # Construction stages
-    ArgumentConstructStage,
-    ModelConstructStage,
-    # JuMP utilities
-    optimizer_with_attributes,
-    # PowerNetworkMatrices types
-    PTDF,
-    VirtualPTDF,
-    LODF,
-    VirtualLODF,
-    # Other utilities
-    get_name,
-    get_model_base_power,
-    get_optimizer_stats,
-    # Constants
-    HOURS_IN_WEEK,
-    # Key types (defined in IOM, not IS.Optimization)
-    VariableKey,
-    ConstraintKey,
-    ParameterKey,
-    ExpressionKey,
-    AuxVarKey,
-    OptimizationContainerKey
-
-#################################################################################
-# Re-exports from IOM for testing support
-# These are internal functions/types re-exported so tests can use POM.func_name
-#################################################################################
-using InfrastructureOptimizationModels:
-    # Container access functions
-    get_optimization_container,
-    get_constraints,
-    get_constraint,
-    get_aux_variables,
-    get_expression,
-    get_internal,
-    # Template access functions
-    get_model,
-    get_formulation,
-    # Initial conditions functions
-    get_initial_conditions_data,
-    get_initial_condition,
-    get_value,
-    get_initial_condition_value,
-    # JuMP utilities
-    jump_value,
-    # Bounds types
-    ConstraintBounds,
-    VariableBounds,
-    # Constants
-    INITIALIZATION_PROBLEM_HORIZON_COUNT
 
 # Import private/internal helpers (use import to avoid undeclared warning)
 import InfrastructureOptimizationModels: _get_ramp_constraint_devices
