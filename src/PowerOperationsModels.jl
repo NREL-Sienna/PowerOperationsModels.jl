@@ -85,7 +85,10 @@ import InfrastructureOptimizationModels:
     add_to_expression!,
     objective_function!,
     initial_condition_variable,
-    initial_condition_default
+    initial_condition_default,
+    get_initial_conditions_value,
+    update_initial_conditions!,
+    add_initial_condition!
 
 # Import types needed by device model files
 using InfrastructureOptimizationModels:
@@ -158,9 +161,23 @@ using InfrastructureOptimizationModels:
     get_initial_condition_value,
     get_objective_expression,
     get_formulation,
-    # Initial condition time types
-    TimeDurationOn,
-    TimeDurationOff,
+    # Initial condition infrastructure (POM extends these)
+    get_initial_conditions_value,
+    update_initial_conditions!,
+    EmulationModelStore,
+    set_ic_quantity!,
+    get_last_recorded_value,
+    get_component_type,
+    get_component_name,
+    add_initial_condition_container!,
+    has_initial_condition_value,
+    add_jump_parameter,
+    get_jump_model,
+    get_settings,
+    get_rebuild_model,
+    LOG_GROUP_BUILD_INITIAL_CONDITIONS,
+    # Note: ABSOLUTE_TOLERANCE is defined in POM's definitions.jl
+    # Note: TimeDurationOn and TimeDurationOff are defined in POM, not IOM
     # Expression types (abstract and concrete)
     SystemBalanceExpressions,
     RangeConstraintLBExpressions,
@@ -199,6 +216,11 @@ include("core/auxiliary_variables.jl")
 include("core/parameters.jl")
 include("core/formulations.jl")
 include("core/network_formulations.jl")
+
+# Initial Conditions - Device-specific implementations
+# These extend the generic infrastructure from IOM
+include("initial_conditions/device_initial_conditions.jl")
+include("initial_conditions/update_initial_conditions.jl")
 
 # Device Models - Static Injectors
 include("static_injector_models/thermal_generation.jl")
