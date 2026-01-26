@@ -8,6 +8,7 @@ import InfrastructureSystems
 import JuMP
 import Memento
 import JuMP.Containers: DenseAxisArray, SparseAxisArray
+import PowerNetworkMatrices
 import PowerSystems
 import TimerOutputs
 
@@ -21,6 +22,15 @@ include("PowerModels/PowerModels.jl")
 
 const PM = PowerModels
 
+# Import PM types into module namespace for re-export
+using .PowerModels:
+    DCPPowerModel,
+    ACPPowerModel,
+    AbstractDCPModel,
+    AbstractACPModel,
+    AbstractActivePowerModel,
+    NFAPowerModel
+
 @template (FUNCTIONS, METHODS) = """
                                  $(TYPEDSIGNATURES)
                                  $(DOCSTRING)
@@ -32,10 +42,8 @@ const PM = PowerModels
 const IS = InfrastructureSystems
 const ISOPT = InfrastructureSystems.Optimization
 
-# PM alias for PowerModels types that now live in IS.Optimization
-const PM = ISOPT
-
 const PSY = PowerSystems
+const PNM = PowerNetworkMatrices
 
 # Import abstract types from InfrastructureSystems.Optimization
 import InfrastructureSystems.Optimization:
@@ -75,7 +83,9 @@ import InfrastructureOptimizationModels:
     add_variables!,
     add_constraints!,
     add_to_expression!,
-    objective_function!
+    objective_function!,
+    initial_condition_variable,
+    initial_condition_default
 
 # Import types needed by device model files
 using InfrastructureOptimizationModels:
@@ -88,13 +98,100 @@ using InfrastructureOptimizationModels:
     ModelConstructStage,
     get_available_components,
     get_attribute,
-    get_time_steps
+    get_time_steps,
+    # Initial condition types
+    DeviceStatus,
+    DevicePower,
+    DeviceAboveMinPower,
+    InitialTimeDurationOn,
+    InitialTimeDurationOff,
+    InitialEnergyLevel,
+    # Cost types
+    StartUpStages,
+    # Functions needed for device models
+    InitialCondition,
+    get_initial_condition,
+    add_to_expression!,
+    add_variables!,
+    add_constraints!,
+    add_parameters!,
+    objective_function!,
+    get_expression,
+    get_variable,
+    has_container_key,
+    # Note: add_feedforward_arguments!, add_feedforward_constraints!,
+    # get_default_on_variable, get_default_off_variable are defined in POM, not IOM
+    # Key types
+    AuxVarKey,
+    VariableKey,
+    ConstraintKey,
+    ParameterKey,
+    ExpressionKey,
+    # Container types
+    ParameterContainer,
+    # Model template types
+    ProblemTemplate,
+    DecisionModel,
+    EmulationModel,
+    # Branch model types
+    BranchModelContainer,
+    DeviceModelForBranches,
+    # Time series utilities
+    get_time_series_names,
+    # Resolution utilities
+    set_resolution!,
+    # Initial conditions
+    add_initial_condition!,
+    # Template utilities
+    get_template,
+    finalize_template!,
+    # Market bid processing
+    process_market_bid_parameters!,
+    # Time series validation
+    validate_time_series!,
+    # Optimization container initialization
+    init_optimization_container!,
+    # Internal accessors needed by tests
+    get_network_model,
+    get_value,
+    get_initial_conditions_data,
+    get_initial_condition_value,
+    get_objective_expression,
+    get_formulation,
+    # Initial condition time types
+    TimeDurationOn,
+    TimeDurationOff,
+    # Expression types (abstract and concrete)
+    SystemBalanceExpressions,
+    RangeConstraintLBExpressions,
+    RangeConstraintUBExpressions,
+    CostExpressions,
+    PostContingencyExpressions,
+    ActivePowerBalance,
+    ReactivePowerBalance,
+    EmergencyUp,
+    EmergencyDown,
+    RawACE,
+    ProductionCostExpression,
+    FuelConsumptionExpression,
+    ActivePowerRangeExpressionLB,
+    ActivePowerRangeExpressionUB,
+    PostContingencyBranchFlow,
+    PostContingencyActivePowerGeneration,
+    NetActivePower,
+    DCCurrentBalance,
+    # Note: HVDCPowerBalance is NOT imported - POM defines its own HVDCPowerBalance <: ConstraintType
+    # while IOM has HVDCPowerBalance <: ExpressionType. These are different types.
+    # Result writing/conversion methods to extend
+    should_write_resulting_value,
+    convert_result_to_natural_units
 
 #################################################################################
 # Include core type definitions
 # These define concrete Variable, Expression, Constraint, and Parameter types
 # and extend should_write_resulting_value/convert_result_to_natural_units
 #################################################################################
+include("core/definitions.jl")
 include("core/variables.jl")
 include("core/expressions.jl")
 include("core/constraints.jl")
@@ -103,16 +200,36 @@ include("core/parameters.jl")
 include("core/formulations.jl")
 include("core/network_formulations.jl")
 
-# Device Models - Renewable Generation
+# Device Models - Static Injectors
+include("static_injector_models/thermal_generation.jl")
+include("static_injector_models/thermalgeneration_constructor.jl")
 include("static_injector_models/renewable_generation.jl")
 include("static_injector_models/renewablegeneration_constructor.jl")
+include("static_injector_models/electric_loads.jl")
+include("static_injector_models/load_constructor.jl")
+include("static_injector_models/source.jl")
+include("static_injector_models/source_constructor.jl")
 
-# TODO: Add more device model includes as they are ready
-# include("core/definitions.jl")
-# include("core/default_interface_methods.jl")
-# include("static_injector_models/...")
-# include("ac_transmission_models/...")
-# include("network_models/...")
+# AC Transmission Models
+include("ac_transmission_models/AC_branches.jl")
+include("ac_transmission_models/branch_constructor.jl")
+
+# Network Models
+include("network_models/network_slack_variables.jl")
+include("network_models/copperplate_model.jl")
+include("network_models/area_balance_model.jl")
+include("network_models/powermodels_interface.jl")
+include("network_models/pm_translator.jl")
+include("network_models/network_constructor.jl")
+
+# TODO: Add more model includes as they are ready
+# include("static_injector_models/static_injection_security_constrained_models.jl")
+# include("network_models/hvdc_networks.jl")
+# include("network_models/hvdc_network_constructor.jl")
+# include("network_models/security_constrained_models.jl")
+# include("twoterminal_hvdc_models/...")
+# include("mt_hvdc_models/...")
+# include("services_models/...")
 
 #################################################################################
 # Import and re-export from InfrastructureOptimizationModels
@@ -120,26 +237,28 @@ include("static_injector_models/renewablegeneration_constructor.jl")
 #################################################################################
 
 using InfrastructureOptimizationModels:
-    # Base Models
-    DecisionModel,
-    EmulationModel,
-    ProblemTemplate,
-    InitialCondition,
-    OperationModel,
-    # Network
-    NetworkModel,
-    # Model Container Types
-    DeviceModel,
-    ServiceModel,
-    # Optimization Container
-    OptimizationContainer,
-    # Initial Conditions Quantities
-    DevicePower,
-    DeviceStatus,
-    InitialTimeDurationOn,
-    InitialTimeDurationOff,
-    InitialEnergyLevel,
-    DeviceAboveMinPower,
+    #=
+        # Base Models
+        DecisionModel,
+        EmulationModel,
+        ProblemTemplate,
+        InitialCondition,
+        OperationModel,
+        # Network
+        NetworkModel,
+        # Model Container Types
+        DeviceModel,
+        ServiceModel,
+        # Optimization Container
+        OptimizationContainer,
+        # Initial Conditions Quantities
+        DevicePower,
+        DeviceStatus,
+        InitialTimeDurationOn,
+        InitialTimeDurationOff,
+        InitialEnergyLevel,
+        DeviceAboveMinPower,
+    =#
     # Abstract problem types
     DefaultDecisionProblem,
     DefaultEmulationProblem,
@@ -306,6 +425,20 @@ export set_network_model!
 export get_network_formulation
 export get_hvdc_network_model
 export set_hvdc_network_model!
+export process_market_bid_parameters!
+export validate_time_series!
+export init_optimization_container!
+export get_network_model
+export get_value
+export get_initial_conditions_data
+export get_initial_condition_value
+export get_objective_expression
+export get_formulation
+export TimeDurationOn
+export TimeDurationOff
+
+# Alias for InfrastructureSystems.Optimization needed by tests
+export ISOPT
 
 # Results interfaces
 export get_variable_values
@@ -477,6 +610,15 @@ export PiecewiseLinearBlockDecrementalOfferConstraint
 export RateLimitConstraint
 export RateLimitConstraintFromTo
 export RateLimitConstraintToFrom
+export RampConstraint
+export RampLimitConstraint
+export CopperPlateBalanceConstraint
+export ActiveRangeICConstraint
+export NodalBalanceActiveConstraint
+export RequirementConstraint
+export DurationConstraint
+export CommitmentConstraint
+export StartTypeConstraint
 
 #################################################################################
 # Exports - Expression Types (defined in core/expressions.jl)
@@ -503,6 +645,17 @@ export ComponentReserveUpBalanceExpression
 export ComponentReserveDownBalanceExpression
 export InterfaceTotalFlow
 export PTDFBranchFlow
+
+#################################################################################
+# Exports - Parameter Types (defined in core/parameters.jl)
+#################################################################################
+export ActivePowerTimeSeriesParameter
+export ReactivePowerTimeSeriesParameter
+export RequirementTimeSeriesParameter
+export UpperBoundValueParameter
+export LowerBoundValueParameter
+export OnStatusParameter
+export FixValueParameter
 
 #################################################################################
 # Exports - Formulation Types (defined in core/formulations.jl)
@@ -599,6 +752,14 @@ export AreaPTDFPowerModel
 
 # JuMP utilities
 export optimizer_with_attributes
+
+# PowerModels types (from embedded PM submodule)
+export DCPPowerModel
+export ACPPowerModel
+export AbstractDCPModel
+export AbstractACPModel
+export AbstractActivePowerModel
+export NFAPowerModel
 
 # PowerNetworkMatrices
 export PTDF

@@ -1,12 +1,4 @@
-"""
-Auxiliary Variable for Thermal Generation Models to keep track of time elapsed on
-"""
-struct TimeDurationOn <: AuxVariableType end
-
-"""
-Auxiliary Variable for Thermal Generation Models to keep track of time elapsed off
-"""
-struct TimeDurationOff <: AuxVariableType end
+# Note: TimeDurationOn and TimeDurationOff are imported from IOM
 
 """
 Auxiliary Variable for Thermal Generation Models that solve for power above min
