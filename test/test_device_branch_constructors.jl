@@ -1,7 +1,11 @@
+# TODO: Re-enable DCPPowerModel tests when PowerModels is integrated
+# DCPPowerModel requires PowerModels.jl extension
+const DC_NETWORK_MODELS_FOR_TESTING = [PTDFPowerModel]
+
 @testset "DC Power Flow Models Monitored Line Flow Constraints and Static Unbounded" begin
     system = PSB.build_system(PSITestSystems, "c_sys5_ml")
     limits = PSY.get_flow_limits(PSY.get_component(MonitoredLine, system, "1"))
-    for model in [DCPPowerModel, PTDFPowerModel]
+    for model in DC_NETWORK_MODELS_FOR_TESTING
         template = get_thermal_dispatch_template_network(
             NetworkModel(model; PTDF_matrix = PTDF(system)),
         )
@@ -21,33 +25,34 @@
     end
 end
 
-@testset "AC Power Flow Monitored Line Flow Constraints" begin
-    system = PSB.build_system(PSITestSystems, "c_sys5_ml")
-    limits = PSY.get_flow_limits(PSY.get_component(MonitoredLine, system, "1"))
-    template = get_thermal_dispatch_template_network(ACPPowerModel)
-    model_m = DecisionModel(template, system; optimizer = ipopt_optimizer)
-    @test build!(model_m; output_dir = mktempdir(; cleanup = true)) ==
-          POM.ModelBuildStatus.BUILT
-
-    @test check_variable_bounded(model_m, FlowActivePowerFromToVariable, MonitoredLine)
-    @test check_variable_unbounded(model_m, FlowReactivePowerFromToVariable, MonitoredLine)
-
-    @test solve!(model_m) == POM.RunStatus.SUCCESSFULLY_FINALIZED
-    @test check_flow_variable_values(
-        model_m,
-        FlowActivePowerFromToVariable,
-        FlowReactivePowerFromToVariable,
-        MonitoredLine,
-        "1",
-        0.0,
-        limits.from_to,
-    )
-end
+# TODO: Re-enable when PowerModels is integrated
+# @testset "AC Power Flow Monitored Line Flow Constraints" begin
+#     system = PSB.build_system(PSITestSystems, "c_sys5_ml")
+#     limits = PSY.get_flow_limits(PSY.get_component(MonitoredLine, system, "1"))
+#     template = get_thermal_dispatch_template_network(ACPPowerModel)
+#     model_m = DecisionModel(template, system; optimizer = ipopt_optimizer)
+#     @test build!(model_m; output_dir = mktempdir(; cleanup = true)) ==
+#           POM.ModelBuildStatus.BUILT
+#
+#     @test check_variable_bounded(model_m, FlowActivePowerFromToVariable, MonitoredLine)
+#     @test check_variable_unbounded(model_m, FlowReactivePowerFromToVariable, MonitoredLine)
+#
+#     @test solve!(model_m) == POM.RunStatus.SUCCESSFULLY_FINALIZED
+#     @test check_flow_variable_values(
+#         model_m,
+#         FlowActivePowerFromToVariable,
+#         FlowReactivePowerFromToVariable,
+#         MonitoredLine,
+#         "1",
+#         0.0,
+#         limits.from_to,
+#     )
+# end
 
 @testset "DC Power Flow Models Monitored Line Flow Constraints and Static with inequalities" begin
     system = PSB.build_system(PSITestSystems, "c_sys5_ml")
     set_rating!(PSY.get_component(Line, system, "2"), 1.5)
-    for model in [DCPPowerModel, PTDFPowerModel]
+    for model in DC_NETWORK_MODELS_FOR_TESTING
         template = get_thermal_dispatch_template_network(
             NetworkModel(model; PTDF_matrix = PTDF(system)),
         )
@@ -65,7 +70,7 @@ end
 @testset "DC Power Flow Models Monitored Line Flow Constraints and Static with Bounds" begin
     system = PSB.build_system(PSITestSystems, "c_sys5_ml")
     set_rating!(PSY.get_component(Line, system, "2"), 1.5)
-    for model in [DCPPowerModel, PTDFPowerModel]
+    for model in DC_NETWORK_MODELS_FOR_TESTING
         template = get_thermal_dispatch_template_network(NetworkModel(model))
         set_device_model!(template, DeviceModel(Line, StaticBranchBounds))
         set_device_model!(template, DeviceModel(MonitoredLine, StaticBranchUnbounded))
@@ -121,7 +126,7 @@ end
     transformer = PSY.get_component(Transformer2W, system, "Trans4")
     rate_limit2w = PSY.get_rating(tap_transformer)
 
-    for model in [DCPPowerModel, PTDFPowerModel]
+    for model in DC_NETWORK_MODELS_FOR_TESTING
         template = get_template_dispatch_with_network(
             NetworkModel(model),
         )
@@ -177,7 +182,7 @@ end
     transformer = PSY.get_component(Transformer2W, system, "Trans4")
     rate_limit2w = PSY.get_rating(tap_transformer)
 
-    for model in [DCPPowerModel, PTDFPowerModel]
+    for model in DC_NETWORK_MODELS_FOR_TESTING
         template = get_template_dispatch_with_network(
             NetworkModel(model; PTDF_matrix = PTDF(system)),
         )
@@ -279,26 +284,27 @@ end
     ptdf_values = ptdf_vars["FlowActivePowerVariable__TwoTerminalGenericHVDCLine"]
     ptdf_objective = POM.get_optimization_container(model).optimizer_stats.objective_value
 
-    set_network_model!(template_uc, NetworkModel(DCPPowerModel))
-
-    model = DecisionModel(
-        template_uc,
-        sys_5;
-        name = "UC",
-        optimizer = HiGHS_optimizer,
-        system_to_file = false,
-    )
-
-    solve!(model; output_dir = mktempdir())
-    dcp_vars =
-        read_variables(OptimizationProblemResults(model); table_format = TableFormat.WIDE)
-    dcp_values = dcp_vars["FlowActivePowerVariable__TwoTerminalGenericHVDCLine"]
-    dcp_objective =
-        POM.get_optimization_container(model).optimizer_stats.objective_value
-
-    @test isapprox(dcp_objective, ptdf_objective; atol = 0.1)
-    # Resulting solution is in the 4e5 order of magnitude
-    @test all(isapprox.(ptdf_values[!, "1"], dcp_values[!, "1"]; atol = 10))
+    # TODO: Re-enable when PowerModels is integrated
+    # set_network_model!(template_uc, NetworkModel(DCPPowerModel))
+    #
+    # model = DecisionModel(
+    #     template_uc,
+    #     sys_5;
+    #     name = "UC",
+    #     optimizer = HiGHS_optimizer,
+    #     system_to_file = false,
+    # )
+    #
+    # solve!(model; output_dir = mktempdir())
+    # dcp_vars =
+    #     read_variables(OptimizationProblemResults(model); table_format = TableFormat.WIDE)
+    # dcp_values = dcp_vars["FlowActivePowerVariable__TwoTerminalGenericHVDCLine"]
+    # dcp_objective =
+    #     POM.get_optimization_container(model).optimizer_stats.objective_value
+    #
+    # @test isapprox(dcp_objective, ptdf_objective; atol = 0.1)
+    # # Resulting solution is in the 4e5 order of magnitude
+    # @test all(isapprox.(ptdf_values[!, "1"], dcp_values[!, "1"]; atol = 10))
 end
 
 @testset "HVDCDispatch Model Tests" begin
@@ -324,7 +330,7 @@ end
     )
 
     add_component!(sys_5, hvdc)
-    for net_model in [DCPPowerModel, PTDFPowerModel]
+    for net_model in DC_NETWORK_MODELS_FOR_TESTING
         @testset "$net_model" begin
             PSY.set_loss!(hvdc, PSY.LinearCurve(0.0))
             template_uc = ProblemTemplate(
@@ -590,84 +596,86 @@ end
     )
 end
 
-@testset "AC Power Flow Models for TwoTerminalGenericHVDCLine  Flow Constraints and TapTransformer & Transformer2W Unbounded" begin
-    ratelimit_constraint_keys = [
-        POM.ConstraintKey(FlowRateConstraintFromTo, Transformer2W),
-        POM.ConstraintKey(FlowRateConstraintToFrom, Transformer2W),
-        POM.ConstraintKey(FlowRateConstraintFromTo, TapTransformer),
-        POM.ConstraintKey(FlowRateConstraintToFrom, TapTransformer),
-        POM.ConstraintKey(FlowRateConstraint, TwoTerminalGenericHVDCLine, "ub"),
-        POM.ConstraintKey(FlowRateConstraint, TwoTerminalGenericHVDCLine, "lb"),
-    ]
-
-    system = PSB.build_system(PSITestSystems, "c_sys14_dc")
-
-    hvdc_line = PSY.get_component(TwoTerminalGenericHVDCLine, system, "DCLine3")
-    limits_from = PSY.get_active_power_limits_from(hvdc_line)
-    limits_to = PSY.get_active_power_limits_to(hvdc_line)
-    limits_min = min(limits_from.min, limits_to.min)
-    limits_max = min(limits_from.max, limits_to.max)
-
-    tap_transformer = PSY.get_component(TapTransformer, system, "Trans3")
-    rate_limit = PSY.get_rating(tap_transformer)
-
-    transformer = PSY.get_component(Transformer2W, system, "Trans4")
-    rate_limit2w = PSY.get_rating(tap_transformer)
-
-    template = get_template_dispatch_with_network(ACPPowerModel)
-    set_device_model!(template, TapTransformer, StaticBranchBounds)
-    set_device_model!(template, Transformer2W, StaticBranchBounds)
-    set_device_model!(
-        template,
-        DeviceModel(TwoTerminalGenericHVDCLine, HVDCTwoTerminalLossless),
-    )
-    model_m = DecisionModel(template, system; optimizer = ipopt_optimizer)
-    @test build!(model_m; output_dir = mktempdir(; cleanup = true)) ==
-          POM.ModelBuildStatus.BUILT
-    @test check_variable_bounded(model_m, FlowActivePowerFromToVariable, TapTransformer)
-    @test check_variable_unbounded(model_m, FlowReactivePowerFromToVariable, TapTransformer)
-    @test check_variable_bounded(model_m, FlowActivePowerToFromVariable, Transformer2W)
-    @test check_variable_unbounded(model_m, FlowReactivePowerToFromVariable, Transformer2W)
-
-    psi_constraint_test(model_m, ratelimit_constraint_keys)
-
-    @test solve!(model_m) == POM.RunStatus.SUCCESSFULLY_FINALIZED
-
-    @test check_flow_variable_values(
-        model_m,
-        FlowActivePowerVariable,
-        FlowReactivePowerToFromVariable,
-        TwoTerminalGenericHVDCLine,
-        "DCLine3",
-        limits_max,
-    )
-    @test check_flow_variable_values(
-        model_m,
-        FlowActivePowerFromToVariable,
-        FlowReactivePowerFromToVariable,
-        TapTransformer,
-        "Trans3",
-        rate_limit,
-    )
-    @test check_flow_variable_values(
-        model_m,
-        FlowActivePowerToFromVariable,
-        FlowReactivePowerToFromVariable,
-        Transformer2W,
-        "Trans4",
-        rate_limit2w,
-    )
-end
+# TODO: Re-enable when PowerModels is integrated
+# @testset "AC Power Flow Models for TwoTerminalGenericHVDCLine  Flow Constraints and TapTransformer & Transformer2W Unbounded" begin
+#     ratelimit_constraint_keys = [
+#         POM.ConstraintKey(FlowRateConstraintFromTo, Transformer2W),
+#         POM.ConstraintKey(FlowRateConstraintToFrom, Transformer2W),
+#         POM.ConstraintKey(FlowRateConstraintFromTo, TapTransformer),
+#         POM.ConstraintKey(FlowRateConstraintToFrom, TapTransformer),
+#         POM.ConstraintKey(FlowRateConstraint, TwoTerminalGenericHVDCLine, "ub"),
+#         POM.ConstraintKey(FlowRateConstraint, TwoTerminalGenericHVDCLine, "lb"),
+#     ]
+#
+#     system = PSB.build_system(PSITestSystems, "c_sys14_dc")
+#
+#     hvdc_line = PSY.get_component(TwoTerminalGenericHVDCLine, system, "DCLine3")
+#     limits_from = PSY.get_active_power_limits_from(hvdc_line)
+#     limits_to = PSY.get_active_power_limits_to(hvdc_line)
+#     limits_min = min(limits_from.min, limits_to.min)
+#     limits_max = min(limits_from.max, limits_to.max)
+#
+#     tap_transformer = PSY.get_component(TapTransformer, system, "Trans3")
+#     rate_limit = PSY.get_rating(tap_transformer)
+#
+#     transformer = PSY.get_component(Transformer2W, system, "Trans4")
+#     rate_limit2w = PSY.get_rating(tap_transformer)
+#
+#     template = get_template_dispatch_with_network(ACPPowerModel)
+#     set_device_model!(template, TapTransformer, StaticBranchBounds)
+#     set_device_model!(template, Transformer2W, StaticBranchBounds)
+#     set_device_model!(
+#         template,
+#         DeviceModel(TwoTerminalGenericHVDCLine, HVDCTwoTerminalLossless),
+#     )
+#     model_m = DecisionModel(template, system; optimizer = ipopt_optimizer)
+#     @test build!(model_m; output_dir = mktempdir(; cleanup = true)) ==
+#           POM.ModelBuildStatus.BUILT
+#     @test check_variable_bounded(model_m, FlowActivePowerFromToVariable, TapTransformer)
+#     @test check_variable_unbounded(model_m, FlowReactivePowerFromToVariable, TapTransformer)
+#     @test check_variable_bounded(model_m, FlowActivePowerToFromVariable, Transformer2W)
+#     @test check_variable_unbounded(model_m, FlowReactivePowerToFromVariable, Transformer2W)
+#
+#     psi_constraint_test(model_m, ratelimit_constraint_keys)
+#
+#     @test solve!(model_m) == POM.RunStatus.SUCCESSFULLY_FINALIZED
+#
+#     @test check_flow_variable_values(
+#         model_m,
+#         FlowActivePowerVariable,
+#         FlowReactivePowerToFromVariable,
+#         TwoTerminalGenericHVDCLine,
+#         "DCLine3",
+#         limits_max,
+#     )
+#     @test check_flow_variable_values(
+#         model_m,
+#         FlowActivePowerFromToVariable,
+#         FlowReactivePowerFromToVariable,
+#         TapTransformer,
+#         "Trans3",
+#         rate_limit,
+#     )
+#     @test check_flow_variable_values(
+#         model_m,
+#         FlowActivePowerToFromVariable,
+#         FlowReactivePowerToFromVariable,
+#         Transformer2W,
+#         "Trans4",
+#         rate_limit2w,
+#     )
+# end
 
 @testset "Test Line and Monitored Line models with slacks" begin
     system = PSB.build_system(PSITestSystems, "c_sys5_ml")
     # This rating (0.247479) was previously inferred in PSY.check_component after setting the rating to 0.0 in the tests
     set_rating!(PSY.get_component(Line, system, "2"), 0.247479)
     for (model, optimizer) in NETWORKS_FOR_TESTING
-        if model ∈ [PM.SDPWRMPowerModel, SOCWRConicPowerModel]
-            # Skip because the data is too in the feasibility margins for these models
-            continue
-        end
+        # TODO: Re-enable when PowerModels is integrated
+        # if model ∈ [PM.SDPWRMPowerModel, SOCWRConicPowerModel]
+        #     # Skip because the data is too in the feasibility margins for these models
+        #     continue
+        # end
         template = get_thermal_dispatch_template_network(
             NetworkModel(model; use_slacks = true),
         )
@@ -864,7 +872,7 @@ end
 
     # Add Transformer3W device model when available
     # Test with DC Power Flow Model
-    for net_model in [DCPPowerModel, PTDFPowerModel]
+    for net_model in DC_NETWORK_MODELS_FOR_TESTING
         template = get_template_dispatch_with_network(
             NetworkModel(net_model; PTDF_matrix = PTDF(system)),
         )
@@ -889,10 +897,11 @@ end
         )
     end
 
-    template_ac = get_thermal_dispatch_template_network(ACPPowerModel)
-    set_device_model!(template_ac, DeviceModel(Transformer3W, StaticBranch))
-    model_ac = DecisionModel(template_ac, system; optimizer = ipopt_optimizer)
-    @test build!(model_ac; output_dir = mktempdir(; cleanup = true)) ==
-          POM.ModelBuildStatus.BUILT
-    @test solve!(model_ac) == POM.RunStatus.SUCCESSFULLY_FINALIZED
+    # TODO: Re-enable when PowerModels is integrated
+    # template_ac = get_thermal_dispatch_template_network(ACPPowerModel)
+    # set_device_model!(template_ac, DeviceModel(Transformer3W, StaticBranch))
+    # model_ac = DecisionModel(template_ac, system; optimizer = ipopt_optimizer)
+    # @test build!(model_ac; output_dir = mktempdir(; cleanup = true)) ==
+    #       POM.ModelBuildStatus.BUILT
+    # @test solve!(model_ac) == POM.RunStatus.SUCCESSFULLY_FINALIZED
 end

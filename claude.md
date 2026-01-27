@@ -70,15 +70,11 @@ This separation enables:
 - **Extensibility**: New device types can be added by implementing IOM interfaces
 - **Testing**: Each layer can be tested independently
 
-## PowerModels Extension
+## PowerModels Submodule
 
-The repository includes a **PowerModels.jl extension** (`ext/PowerModelsExt/`) that contains code originally from PowerModels.jl. This was done for two key reasons:
+The repository includes an embedded **PowerModels submodule** (`src/PowerModels/`) containing code adapted from PowerModels.jl. This provides power flow formulations without requiring the external PowerModels.jl dependency.
 
-1. **Reduced Dependency Overhead**: By extracting only the necessary power flow formulations into an extension, we avoid loading the entire PowerModels.jl package when it's not needed. The extension is only loaded when PowerModels.jl is explicitly imported by the user.
-
-2. **Better Abstraction Alignment**: The extracted code has been restructured to fit the IOM abstraction patterns, providing cleaner interfaces between power flow formulations and the optimization model construction.
-
-The extension provides:
+The submodule provides:
 - AC power flow formulations (ACP, ACR, ACT)
 - DC power flow formulations (DCP)
 - Linear approximations (LPAC)
@@ -87,11 +83,20 @@ The extension provides:
 - Optimal power flow problem definitions
 
 ```
-ext/PowerModelsExt/
+src/PowerModels/
+├── PowerModels.jl  # Submodule entry point
 ├── core/           # Formulation infrastructure (base, constraint, variable, etc.)
 ├── form/           # Power flow formulations (acp.jl, dcp.jl, lpac.jl, etc.)
 ├── prob/           # Problem definitions (opf.jl, ots.jl, pf_bf.jl, etc.)
 └── util/           # Utilities (flow_limit_cuts.jl, obbt.jl)
+```
+
+There is also an **InfrastructureModels submodule** (`src/InfrastructureModels/`) containing generic optimization infrastructure adapted from InfrastructureModels.jl:
+
+```
+src/InfrastructureModels/
+├── InfrastructureModels.jl  # Submodule entry point
+└── core/                    # Base types, data handling, constraints, solution processing
 ```
 
 ## Repository Structure
@@ -118,13 +123,16 @@ PowerOperationsModels.jl/
 │   ├── twoterminal_hvdc_models/            # Two-terminal HVDC
 │   ├── mt_hvdc_models/                     # Multi-terminal HVDC
 │   ├── services_models/                    # Reserves, AGC, interfaces
-│   └── network_models/                     # Network formulations
-│
-├── ext/PowerModelsExt/                     # PowerModels.jl extension
-│   ├── core/                               # Formulation infrastructure
-│   ├── form/                               # Power flow formulations
-│   ├── prob/                               # Problem definitions
-│   └── util/                               # Utilities
+│   ├── network_models/                     # Network formulations
+│   ├── InfrastructureModels/               # Embedded InfrastructureModels submodule
+│   │   ├── InfrastructureModels.jl         # Submodule entry point
+│   │   └── core/                           # Base types and infrastructure
+│   └── PowerModels/                        # Embedded PowerModels submodule
+│       ├── PowerModels.jl                  # Submodule entry point
+│       ├── core/                           # Formulation infrastructure
+│       ├── form/                           # Power flow formulations
+│       ├── prob/                           # Problem definitions
+│       └── util/                           # Utilities
 │
 ├── InfrastructureOptimizationModels.jl/    # IOM: Optimization infrastructure
 │   └── src/

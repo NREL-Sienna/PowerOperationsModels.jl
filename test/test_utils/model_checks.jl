@@ -487,7 +487,7 @@ function check_initialization_constraint_count(
     meta = POM.ISOPT.CONTAINER_KEY_EMPTY_META,
 ) where {S <: POM.ConstraintType, T <: PSY.Component}
     container =
-        ISOPT.get_initial_conditions_model_container(POM.get_internal(model))
+        POM.ISOPT.get_initial_conditions_model_container(POM.get_internal(model))
     no_component = length(PSY.get_components(filter_func, T, model.sys))
     time_steps = POM.get_time_steps(container)[end]
     constraint = POM.get_constraint(container, S(), T, meta)

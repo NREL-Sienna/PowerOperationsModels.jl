@@ -1,7 +1,7 @@
 ############################## Network Model Formulations ##################################
 # Network formulations using abstract types from InfrastructureSystems.Optimization
 # Concrete PowerModels types (ACPPowerModel, DCPPowerModel, etc.) are provided
-# by the PowerModelsExt extension when InfrastructureModels is loaded.
+# by the PowerModels submodule.
 
 """
 Abstract type for PTDF-based power flow formulations.

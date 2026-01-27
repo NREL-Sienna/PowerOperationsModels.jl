@@ -2,21 +2,19 @@ module PowerFlowsExt
 
 using InfrastructureOptimizationModels
 using PowerFlows
-import InfrastructureOptimizationModels: POM, PFS, IS, PNM, PSY, PM
+import InfrastructureOptimizationModels: IS, PNM, PSY
 import InfrastructureOptimizationModels:
     OptimizationContainerKey,
-    PowerFlowEvaluationData,
-    get_power_flow_data,
-    get_input_key_map,
-    check_network_reduction
+    AbstractPowerFlowEvaluationData
 
-# Re-create the PFS constant for use in this extension
+# Alias for PowerFlows
 const PFS_EXT = PowerFlows
 
 """
 Mutable struct to hold power flow evaluation data.
+Concrete implementation of AbstractPowerFlowEvaluationData.
 """
-mutable struct PowerFlowEvaluationData{T <: PFS_EXT.PowerFlowContainer}
+mutable struct PowerFlowEvaluationData{T <: PFS_EXT.PowerFlowContainer} <: AbstractPowerFlowEvaluationData
     power_flow_data::T
     """
     Records which PSI keys are read as input to the power flow and how the data are mapped.
@@ -51,18 +49,12 @@ function PowerFlowEvaluationData(
     check_network_reduction(power_flow_data)
     return PowerFlowEvaluationData{T}(
         power_flow_data,
-        Dict{Symbol, Dict{OptimizationContainerKey, <:Any}}(),
+        Dict{Symbol, Dict{OptimizationContainerKey, Any}}(),
         false,
     )
 end
 
 get_power_flow_data(ped::PowerFlowEvaluationData) = ped.power_flow_data
 get_input_key_map(ped::PowerFlowEvaluationData) = ped.input_key_map
-
-# Export the PowerFlowEvaluationData type to make it available
-InfrastructureOptimizationModels.PowerFlowEvaluationData = PowerFlowEvaluationData
-InfrastructureOptimizationModels.check_network_reduction = check_network_reduction
-InfrastructureOptimizationModels.get_power_flow_data = get_power_flow_data
-InfrastructureOptimizationModels.get_input_key_map = get_input_key_map
 
 end # module

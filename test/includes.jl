@@ -1,13 +1,11 @@
 # SIIP Packages
+using PowerOperationsModels
 using InfrastructureOptimizationModels
 using PowerSystems
 using PowerSystemCaseBuilder
 using InfrastructureSystems
 using PowerNetworkMatrices
-using HydroPowerSimulations
 import PowerSystemCaseBuilder: PSITestSystems
-using PowerNetworkMatrices
-using StorageSystemsSimulations
 using PowerFlows
 using DataFramesMeta
 
@@ -31,7 +29,8 @@ import Serialization
 import LinearAlgebra
 
 const PSY = PowerSystems
-const POM = InfrastructureOptimizationModels
+const POM = PowerOperationsModels
+const IOM = InfrastructureOptimizationModels
 const PFS = PowerFlows
 const PSB = PowerSystemCaseBuilder
 const PNM = PowerNetworkMatrices

@@ -19,7 +19,7 @@
 
 ##### Top Level Abstract Types #####
 # AbstractPowerModel is imported from InfrastructureSystems.Optimization
-# via the PowerModelsExt module header
+# via the PowerModels module header
 
 "Active power only models"
 abstract type AbstractActivePowerModel <: AbstractPowerModel end
