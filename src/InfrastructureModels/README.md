@@ -13,11 +13,9 @@ InfrastructureModels encompasses shared functionalities, best practices, and sty
   - [PowerModelsDistribution](https://github.com/lanl-ansi/PowerModelsDistribution.jl) - Electrical power distribution systems
   - [WaterModels](https://github.com/lanl-ansi/WaterModels.jl) - Potable water distribution systems
 Additionally, the following multi-infrastructure modeling packages have been developed,
-
   - [GasPowerModels](https://github.com/lanl-ansi/GasPowerModels.jl) - Natural gas and electrical power transmission systems
   - [PowerWaterModels](https://github.com/lanl-ansi/PowerWaterModels.jl) - Electrical power and potable water distribution systems
   - [PowerModelsITD](https://github.com/lanl-ansi/PowerModelsITD.jl) - Electrical power transmission and distribution
-
 For information about developing infrastructure modeling packages for new infrastructure types or new combinations of existing infrastructure types, please see the [developer section](https://lanl-ansi.github.io/InfrastructureModels.jl/stable/developer/) of the package documentation.
 
 ## License

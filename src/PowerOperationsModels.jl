@@ -84,7 +84,6 @@ import InfrastructureOptimizationModels:
     add_variables!,
     add_constraints!,
     add_to_expression!,
-    add_expressions!,
     objective_function!,
     initial_condition_variable,
     initial_condition_default,
@@ -234,7 +233,6 @@ using InfrastructureOptimizationModels:
     get_network_reduction,
     get_service_name,
     get_default_time_series_type,
-    get_reference_bus,
     get_template,
     get_model,
     get_formulation,
@@ -318,6 +316,8 @@ include("core/formulations.jl")
 include("core/network_formulations.jl")
 
 # Common models - expression infrastructure
+# Expression container creation (add_expressions!) and helpers
+include("common_models/add_expressions.jl")
 # Device-specific add_to_expression! implementations
 include("common_models/add_to_expression.jl")
 
