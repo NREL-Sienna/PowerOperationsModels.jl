@@ -301,7 +301,7 @@ function objective_function!(
     service::SR,
     ::ServiceModel{SR, T},
 ) where {SR <: PSY.AbstractReserve, T <: AbstractReservesFormulation}
-    add_proportional_cost!(container, ActivePowerReserveVariable(), service, T())
+    add_reserves_proportional_cost!(container, ActivePowerReserveVariable(), service, T())
     return
 end
 
@@ -517,11 +517,11 @@ function add_variable_cost!(
     service::T,
     ::V,
 ) where {T <: PSY.ReserveDemandCurve, U <: VariableType, V <: StepwiseCostReserve}
-    _add_variable_cost_to_objective!(container, U(), service, V())
+    _add_reserves_variable_cost_to_objective!(container, U(), service, V())
     return
 end
 
-function _add_variable_cost_to_objective!(
+function _add_reserves_variable_cost_to_objective!(
     container::OptimizationContainer,
     ::T,
     component::PSY.Reserve,
@@ -555,7 +555,7 @@ function _add_variable_cost_to_objective!(
     return
 end
 
-function add_proportional_cost!(
+function add_reserves_proportional_cost!(
     container::OptimizationContainer,
     ::U,
     service::T,

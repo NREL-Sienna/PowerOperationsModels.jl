@@ -266,7 +266,7 @@ function objective_function!(
     agcs::IS.FlattenIteratorWrapper{T},
     ::ServiceModel{<:PSY.AGC, U},
 ) where {T <: PSY.AGC, U <: PIDSmoothACE}
-    add_proportional_cost!(container, LiftVariable(), agcs, U())
+    add_service_proportional_cost!(container, LiftVariable(), agcs, U())
     return
 end
 
@@ -295,7 +295,7 @@ function add_feedforward_constraints!(
     return
 end
 
-function add_proportional_cost!(
+function add_service_proportional_cost!(
     container::OptimizationContainer,
     ::U,
     agcs::IS.FlattenIteratorWrapper{T},
