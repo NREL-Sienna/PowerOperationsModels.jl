@@ -81,6 +81,7 @@ end
     template = ProblemTemplate()
     set_device_model!(template, ThermalStandard, ThermalDispatchNoMin)
     set_device_model!(template, PowerLoad, StaticPowerLoad)
+    set_device_model!(template, DeviceModel(Line, StaticBranch))
     set_device_model!(template, TModelHVDCLine, LosslessLine)
     set_device_model!(template, InterconnectingConverter, LosslessConverter)
     set_hvdc_network_model!(template, TransportHVDCNetworkModel)
@@ -101,6 +102,7 @@ end
     template = ProblemTemplate()
     set_device_model!(template, ThermalStandard, ThermalDispatchNoMin)
     set_device_model!(template, PowerLoad, StaticPowerLoad)
+    set_device_model!(template, DeviceModel(Line, StaticBranch))
     set_device_model!(template, TModelHVDCLine, DCLossyLine)
     ipc_model = DeviceModel(
         InterconnectingConverter,

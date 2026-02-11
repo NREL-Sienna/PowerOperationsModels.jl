@@ -63,7 +63,7 @@ Formulation type to enable thermal compact dispatch
 struct ThermalCompactDispatch <: AbstractThermalDispatchFormulation end
 
 ############################# Electric Load Formulations ###################################
-abstract type AbstractLoadFormulation <: AbstractDeviceFormulation end
+# AbstractLoadFormulation is imported from IS.Optimization via IOM
 abstract type AbstractControllablePowerLoadFormulation <: AbstractLoadFormulation end
 
 """
@@ -87,7 +87,7 @@ struct ReserveLimitedRegulation <: AbstractRegulationFormulation end
 struct DeviceLimitedRegulation <: AbstractRegulationFormulation end
 
 ########################### Renewable Generation Formulations ##############################
-abstract type AbstractRenewableFormulation <: AbstractDeviceFormulation end
+# AbstractRenewableFormulation is imported from IS.Optimization via IOM
 abstract type AbstractRenewableDispatchFormulation <: AbstractRenewableFormulation end
 abstract type AbstractSecurityConstrainedRenewableDispatchFormulation <:
               AbstractRenewableDispatchFormulation end
@@ -221,20 +221,8 @@ DC Voltage HVDC network model, where currents are solved based on DC voltage dif
 """
 struct VoltageDispatchHVDCNetworkModel <: AbstractHVDCNetworkModel end
 
-"""
-Abstract type for Service Formulations (a.k.a Models)
-
-# Example
-
-```julia
-import PowerOperationsModels
-const POM = PowerOperationsModels
-struct MyServiceFormulation <: IOM.AbstractServiceFormulation end
-```
-"""
-abstract type AbstractServiceFormulation end
-
-abstract type AbstractReservesFormulation <: AbstractServiceFormulation end
+########################### Service Formulations ###########################################
+# AbstractServiceFormulation and AbstractReservesFormulation are imported from IS.Optimization via IOM
 
 abstract type AbstractSecurityConstrainedReservesFormulation <: AbstractReservesFormulation end
 

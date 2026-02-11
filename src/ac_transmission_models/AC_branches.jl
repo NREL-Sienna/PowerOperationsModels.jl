@@ -25,7 +25,8 @@ get_parameter_multiplier(::FixValueParameter, ::PSY.ACTransmission, ::AbstractBr
 get_parameter_multiplier(::LowerBoundValueParameter, ::PSY.ACTransmission, ::AbstractBranchFormulation) = 1.0
 get_parameter_multiplier(::UpperBoundValueParameter, ::PSY.ACTransmission, ::AbstractBranchFormulation) = 1.0
 
-get_variable_multiplier(::PhaseShifterAngle, d::PSY.PhaseShiftingTransformer, ::PhaseAngleControl) = 1.0/PSY.get_x(d)
+# Per-device reactance multiplier (1/get_x(d)) computed inline at add_to_expression! call sites.
+get_variable_multiplier(::PhaseShifterAngle, ::Type{<:PSY.PhaseShiftingTransformer}, ::PhaseAngleControl) = 1.0
 
 get_multiplier_value(::AbstractDynamicBranchRatingTimeSeriesParameter, d::PSY.ACTransmission, ::StaticBranch) = 1.0/PSY.get_base_power(d)
 

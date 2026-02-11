@@ -104,6 +104,7 @@ end
     template = ProblemTemplate(NetworkModel(CopperPlatePowerModel))
     set_device_model!(template, ThermalStandard, ThermalStandardUnitCommitment)
     set_device_model!(template, PowerLoad, StaticPowerLoad)
+    set_device_model!(template, DeviceModel(Line, StaticBranch))
     source_model = DeviceModel(
         Source,
         ImportExportSourceModel;

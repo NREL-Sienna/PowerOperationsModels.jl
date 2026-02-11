@@ -65,6 +65,10 @@ import InfrastructureSystems.Optimization:
 import InfrastructureSystems.Optimization:
     AbstractDeviceFormulation,
     AbstractThermalFormulation,
+    AbstractLoadFormulation,
+    AbstractRenewableFormulation,
+    AbstractServiceFormulation,
+    AbstractReservesFormulation,
     AbstractPowerModel,
     AbstractHVDCNetworkModel
 
@@ -226,6 +230,9 @@ include("mt_hvdc_models/hvdcsystems_constructor.jl")
 include("network_models/hvdc_networks.jl")
 include("network_models/hvdc_network_constructor.jl")
 
+# Operation Problem Templates (must come after all device/service formulations)
+include("core/operation_problem_templates.jl")
+
 # TODO: Add more model includes as they are ready
 # include("static_injector_models/static_injection_security_constrained_models.jl")
 # include("network_models/security_constrained_models.jl")
@@ -341,6 +348,11 @@ export SimulationBuildStatus
 # Problem Types
 export DefaultDecisionProblem
 export DefaultEmulationProblem
+export EconomicDispatchProblem
+export UnitCommitmentProblem
+export AGCReserveDeployment
+export template_unit_commitment
+export template_economic_dispatch
 
 # Settings and Data Types
 export Settings
@@ -503,6 +515,8 @@ export PTDFBranchFlow
 # Exports - Parameter Types (defined in core/parameters.jl)
 #################################################################################
 export ActivePowerTimeSeriesParameter
+export ActivePowerOutTimeSeriesParameter
+export ActivePowerInTimeSeriesParameter
 export ReactivePowerTimeSeriesParameter
 export RequirementTimeSeriesParameter
 export UpperBoundValueParameter

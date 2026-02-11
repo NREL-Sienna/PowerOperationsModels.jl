@@ -6,7 +6,7 @@ get_variable_binary(::HVDCPiecewiseLossVariable, ::Type{<:PSY.TwoTerminalHVDC}, 
 get_variable_binary(::HVDCActivePowerReceivedFromVariable, ::Type{<:PSY.TwoTerminalHVDC}, ::AbstractTwoTerminalDCLineFormulation,) = false
 get_variable_binary(::HVDCActivePowerReceivedToVariable, ::Type{<:PSY.TwoTerminalHVDC}, ::AbstractTwoTerminalDCLineFormulation,) = false
 get_variable_binary(::HVDCPiecewiseBinaryLossVariable, ::Type{<:PSY.TwoTerminalHVDC}, ::AbstractTwoTerminalDCLineFormulation,) = true
-get_variable_binary(_, ::Type{<:PSY.TwoTerminalHVDC}, ::AbstractTwoTerminalDCLineFormulation) = false
+get_variable_binary(::VariableType, ::Type{<:PSY.TwoTerminalHVDC}, ::AbstractTwoTerminalDCLineFormulation) = false
 get_variable_binary(::FlowActivePowerVariable, ::Type{<:PSY.TwoTerminalHVDC}, ::AbstractTwoTerminalDCLineFormulation) = false
 get_variable_binary(::HVDCFlowDirectionVariable, ::Type{<:PSY.TwoTerminalHVDC}, ::AbstractTwoTerminalDCLineFormulation) = true
 get_variable_multiplier(::FlowActivePowerVariable, ::Type{<:PSY.TwoTerminalHVDC}, _) = NaN
@@ -14,25 +14,14 @@ get_parameter_multiplier(::FixValueParameter, ::PSY.TwoTerminalHVDC, ::AbstractT
 get_variable_multiplier(::FlowActivePowerFromToVariable, ::Type{<:PSY.TwoTerminalHVDC}, ::AbstractTwoTerminalDCLineFormulation) = -1.0
 get_variable_multiplier(::FlowActivePowerToFromVariable, ::Type{<:PSY.TwoTerminalHVDC}, ::AbstractTwoTerminalDCLineFormulation) = -1.0
 get_variable_multiplier(::HVDCLosses, ::Type{<:PSY.TwoTerminalHVDC}, ::HVDCTwoTerminalDispatch) = -1.0
-#=
+#= Per-device loss check (l1 == l0 == 0 → 0.0, else -1.0) should be computed inline
+   at the call site if this distinction is needed.
 function get_variable_multiplier(
     ::HVDCLosses,
-    ::PSY.TwoTerminalHVDC,
+    ::Type{<:PSY.TwoTerminalHVDC},
     ::HVDCTwoTerminalDispatch,
 )
-    loss = PSY.get_loss(d)
-    if !isa(loss, PSY.LinearCurve)
-        error(
-            "HVDCTwoTerminalDispatch of branch $(PSY.get_name(d)) only accepts LinearCurve for loss models.",
-        )
-    end
-    l1 = PSY.get_proportional_term(loss)
-    l0 = PSY.get_constant_term(loss)
-    if l1 == 0.0 && l0 == 0.0
-        return 0.0
-    else
-        return -1.0
-    end
+    return -1.0
 end
 =#
 

@@ -303,7 +303,7 @@ function add_to_expression!(
                 add_proportional_to_jump_expression!(
                     expression[ref_bus_from, t],
                     variable[name, t],
-                    get_variable_multiplier(U(), d, W()),
+                    get_variable_multiplier(U(), V, W()),
                 )
             end
         end
@@ -337,7 +337,7 @@ function add_to_expression!(
             add_proportional_to_jump_expression!(
                 expression[area_name, t],
                 variable[name, t],
-                get_variable_multiplier(U(), d, W()),
+                get_variable_multiplier(U(), V, W()),
             )
         end
     end
@@ -1024,17 +1024,19 @@ function _add_to_expression!(
         name = PSY.get_name(d)
         bus_no_ = PSY.get_number(PSY.get_bus(d))
         bus_no = PNM.get_mapped_bus_number(network_reduction, bus_no_)
+        # Per-device P_min for compact dispatch OnVariable
+        p_min = PSY.get_active_power_limits(d).min
         for t in get_time_steps(container)
             if PSY.get_must_run(d)
                 add_proportional_to_jump_expression!(
                     expression[bus_no, t],
-                    get_variable_multiplier(U(), d, W()),
+                    p_min * get_variable_multiplier(U(), V, W()),
                 )
             else
                 add_proportional_to_jump_expression!(
                     expression[bus_no, t],
                     variable[name, t],
-                    get_variable_multiplier(U(), d, W()),
+                    p_min * get_variable_multiplier(U(), V, W()),
                 )
             end
         end
@@ -1061,17 +1063,19 @@ function add_to_expression!(
         name = PSY.get_name(d)
         bus = PSY.get_bus(d)
         area_name = PSY.get_name(PSY.get_area(bus))
+        # Per-device P_min for compact dispatch OnVariable
+        p_min = PSY.get_active_power_limits(d).min
         for t in get_time_steps(container)
             if PSY.get_must_run(d)
                 add_proportional_to_jump_expression!(
                     expression[area_name, t],
-                    get_variable_multiplier(U(), d, W()),
+                    p_min * get_variable_multiplier(U(), V, W()),
                 )
             else
                 add_proportional_to_jump_expression!(
                     expression[area_name, t],
                     variable[name, t],
-                    get_variable_multiplier(U(), d, W()),
+                    p_min * get_variable_multiplier(U(), V, W()),
                 )
             end
         end
@@ -1240,11 +1244,13 @@ function add_to_expression!(
         name = PSY.get_name(d)
         device_bus = PSY.get_bus(d)
         ref_bus = get_reference_bus(network_model, device_bus)
+        # Per-device P_min for compact dispatch OnVariable
+        p_min = PSY.get_active_power_limits(d).min
         for t in get_time_steps(container)
             add_proportional_to_jump_expression!(
                 expression[ref_bus, t],
                 variable[name, t],
-                get_variable_multiplier(U(), d, W()),
+                p_min * get_variable_multiplier(U(), V, W()),
             )
         end
     end
@@ -1488,16 +1494,18 @@ function add_to_expression!(
         name = PSY.get_name(d)
         bus_no = PNM.get_mapped_bus_number(network_reduction, PSY.get_bus(d))
         ref_index = _ref_index(network_model, PSY.get_bus(d))
+        # Per-device P_min for compact dispatch OnVariable
+        p_min = PSY.get_active_power_limits(d).min
         for t in get_time_steps(container)
             add_proportional_to_jump_expression!(
                 sys_expr[ref_index, t],
                 variable[name, t],
-                get_variable_multiplier(U(), d, W()),
+                p_min * get_variable_multiplier(U(), V, W()),
             )
             add_proportional_to_jump_expression!(
                 nodal_expr[bus_no, t],
                 variable[name, t],
-                get_variable_multiplier(U(), d, W()),
+                p_min * get_variable_multiplier(U(), V, W()),
             )
         end
     end
@@ -1717,17 +1725,19 @@ function add_to_expression!(
         bus_no_from =
             PNM.get_mapped_bus_number(network_reduction, PSY.get_arc(d).from)
         bus_no_to = PNM.get_mapped_bus_number(network_reduction, PSY.get_arc(d).to)
+        # Per-device reactance multiplier for phase shifter
+        x_mult = 1.0 / PSY.get_x(d)
         for t in get_time_steps(container)
             flow_variable = var[PSY.get_name(d), t]
             add_proportional_to_jump_expression!(
                 expression[bus_no_from, t],
                 flow_variable,
-                -get_variable_multiplier(U(), d, V()),
+                -x_mult * get_variable_multiplier(U(), PSY.PhaseShiftingTransformer, V()),
             )
             add_proportional_to_jump_expression!(
                 expression[bus_no_to, t],
                 flow_variable,
-                get_variable_multiplier(U(), d, V()),
+                x_mult * get_variable_multiplier(U(), PSY.PhaseShiftingTransformer, V()),
             )
         end
     end
@@ -1790,11 +1800,12 @@ function add_to_expression!(
     container::OptimizationContainer,
     ::Type{InterfaceTotalFlow},
     ::Type{T},
-    service::PSY.TransmissionInterface,
+    service::S,
     model::ServiceModel{PSY.TransmissionInterface, U},
 ) where {
     T <: Union{InterfaceFlowSlackUp, InterfaceFlowSlackDown},
     U <: Union{ConstantMaxInterfaceFlow, VariableMaxInterfaceFlow},
+    S <: PSY.TransmissionInterface,
 }
     expression = get_expression(container, InterfaceTotalFlow(), PSY.TransmissionInterface)
     service_name = PSY.get_name(service)
@@ -1803,7 +1814,7 @@ function add_to_expression!(
         add_proportional_to_jump_expression!(
             expression[service_name, t],
             variable[t],
-            get_variable_multiplier(T(), service, U()),
+            get_variable_multiplier(T(), S, U()),
         )
     end
     return
@@ -2598,10 +2609,12 @@ function add_to_expression!(
     variable = get_variable(container, U(), PSY.AGC)
     for s in services, t in time_steps
         name = PSY.get_name(s)
+        # Per-device bias multiplier for AGC frequency deviation
+        bias_mult = -10 * PSY.get_bias(s)
         add_proportional_to_jump_expression!(
             expression[name, t],
             variable[t],
-            get_variable_multiplier(U(), s, W()),
+            bias_mult * get_variable_multiplier(U(), V, W()),
         )
     end
     return

@@ -41,7 +41,8 @@ get_variable_lower_bound(::LiftVariable, ::PSY.AGC, ::AbstractAGCFormulation) = 
 initial_condition_default(::AreaControlError, d::PSY.AGC, ::AbstractAGCFormulation) = PSY.get_initial_ace(d)
 initial_condition_variable(::AreaControlError, d::PSY.AGC, ::AbstractAGCFormulation) = AreaMismatchVariable()
 
-get_variable_multiplier(::SteadyStateFrequencyDeviation, d::PSY.AGC, ::AbstractAGCFormulation) = -10 * PSY.get_bias(d)
+# Per-device bias multiplier (-10 * get_bias(d)) computed inline at add_to_expression! call sites.
+get_variable_multiplier(::SteadyStateFrequencyDeviation, ::Type{<:PSY.AGC}, ::AbstractAGCFormulation) = 1.0
 
 #! format: on
 
