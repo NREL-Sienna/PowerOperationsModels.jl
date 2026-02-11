@@ -1,16 +1,8 @@
 ############################## Network Model Formulations ##################################
-# Network formulations using abstract types from InfrastructureSystems.Optimization
-# Concrete PowerModels types (ACPPowerModel, DCPPowerModel, etc.) are provided
-# by the PowerModels submodule.
-
-"""
-Abstract type for PTDF-based power flow formulations.
-"""
-abstract type AbstractPTDFModel <: AbstractPowerModel end
-
-"""
-Linear active power approximation using the power transfer distribution factor [PTDF](https://nrel-sienna.github.io/PowerNetworkMatrices.jl/stable/tutorials/tutorial_PTDF_matrix/) matrix and line outage distribution factors [LODF](https://nrel-sienna.github.io/PowerNetworkMatrices.jl/stable/tutorials/tutorial_LODF_matrix/) for branches outages.
-"""
+# AbstractPTDFModel must subtype PM.AbstractDCPModel so that dispatch on
+# PM.AbstractDCPModel (e.g. _get_flow_variable_vector) catches PTDF models.
+# This can't live in IS because IS doesn't know about PM.
+abstract type AbstractPTDFModel <: PM.AbstractDCPModel end
 abstract type AbstractSecurityConstrainedPTDFModel <: AbstractPTDFModel end
 
 """
@@ -26,12 +18,15 @@ struct SecurityConstrainedPTDFPowerModel <: AbstractSecurityConstrainedPTDFModel
 """
 Infinite capacity approximation of network flow to represent entire system with a single node.
 """
-struct CopperPlatePowerModel <: AbstractPowerModel end
+struct CopperPlatePowerModel <: AbstractActivePowerModel end
 
 """
 Approximation to represent inter-area flow with each area represented as a single node.
 """
-struct AreaBalancePowerModel <: AbstractPowerModel end
+struct AreaBalancePowerModel <: AbstractActivePowerModel end
+
+# Default ProblemTemplate uses CopperPlatePowerModel (single-node network)
+IOM.ProblemTemplate() = IOM.ProblemTemplate(CopperPlatePowerModel)
 
 """
 Linear active power approximation using the power transfer distribution factor [PTDF](https://nrel-sienna.github.io/PowerNetworkMatrices.jl/stable/tutorials/tutorial_PTDF_matrix/) matrix. Balancing areas as well as synchrounous regions.

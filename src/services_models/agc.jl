@@ -1,5 +1,5 @@
 #! format: off
-get_variable_multiplier(_, ::Type{<:PSY.AGC}, ::AbstractAGCFormulation) = NaN
+get_variable_multiplier(::VariableType, ::Type{<:PSY.AGC}, ::AbstractAGCFormulation) = NaN
 ########################## ActivePowerVariable, AGC ###########################
 
 ########################## SteadyStateFrequencyDeviation ##################################

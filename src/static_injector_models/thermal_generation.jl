@@ -6,7 +6,7 @@ requires_initialization(::ThermalStandardDispatch) = true
 requires_initialization(::ThermalBasicCompactUnitCommitment) = false
 requires_initialization(::ThermalBasicUnitCommitment) = false
 
-get_variable_multiplier(_, ::Type{<:PSY.ThermalGen}, ::AbstractThermalFormulation) = 1.0
+get_variable_multiplier(::VariableType, ::Type{<:PSY.ThermalGen}, ::AbstractThermalFormulation) = 1.0
 get_variable_multiplier(::OnVariable, d::PSY.ThermalGen, ::Union{AbstractCompactUnitCommitment, ThermalCompactDispatch}) = PSY.get_active_power_limits(d).min
 get_expression_type_for_reserve(::ActivePowerReserveVariable, ::Type{<:PSY.ThermalGen}, ::Type{<:PSY.Reserve{PSY.ReserveUp}}) = ActivePowerRangeExpressionUB
 get_expression_type_for_reserve(::ActivePowerReserveVariable, ::Type{<:PSY.ThermalGen}, ::Type{<:PSY.Reserve{PSY.ReserveDown}}) = ActivePowerRangeExpressionLB
@@ -111,16 +111,16 @@ has_multistart_variables(::PSY.ThermalMultiStart, ::ThermalMultiStartUnitCommitm
 
 objective_function_multiplier(::VariableType, ::AbstractThermalFormulation)=OBJECTIVE_FUNCTION_POSITIVE
 
-sos_status(::PSY.ThermalGen, ::AbstractThermalDispatchFormulation)=SOSStatusVariable.NO_VARIABLE
-sos_status(::PSY.ThermalGen, ::AbstractThermalUnitCommitment)=SOSStatusVariable.VARIABLE
-sos_status(::PSY.ThermalMultiStart, ::AbstractStandardUnitCommitment)=SOSStatusVariable.VARIABLE
-sos_status(::PSY.ThermalMultiStart, ::ThermalMultiStartUnitCommitment)=SOSStatusVariable.VARIABLE
+sos_status(::Type{<:PSY.ThermalGen}, ::AbstractThermalDispatchFormulation)=SOSStatusVariable.NO_VARIABLE
+sos_status(::Type{<:PSY.ThermalGen}, ::AbstractThermalUnitCommitment)=SOSStatusVariable.VARIABLE
+sos_status(::Type{<:PSY.ThermalMultiStart}, ::AbstractStandardUnitCommitment)=SOSStatusVariable.VARIABLE
+sos_status(::Type{<:PSY.ThermalMultiStart}, ::ThermalMultiStartUnitCommitment)=SOSStatusVariable.VARIABLE
 
 # Startup cost interpretations!
 # Validators: check that the types match (formulation is optional) and redirect to the simpler methods
-start_up_cost(cost, ::PSY.ThermalGen, ::T, ::Union{AbstractThermalFormulation, Nothing} = nothing) where {T <: StartVariable} =
+start_up_cost(cost, ::Type{<:PSY.ThermalGen}, ::T, ::Union{AbstractThermalFormulation, Nothing} = nothing) where {T <: StartVariable} =
     start_up_cost(cost, T())
-start_up_cost(cost, ::PSY.ThermalMultiStart, ::T, ::ThermalMultiStartUnitCommitment = ThermalMultiStartUnitCommitment()) where {T <: MultiStartVariable} =
+start_up_cost(cost, ::Type{<:PSY.ThermalMultiStart}, ::T, ::ThermalMultiStartUnitCommitment = ThermalMultiStartUnitCommitment()) where {T <: MultiStartVariable} =
     start_up_cost(cost, T())
 
 # Implementations: given a single number, tuple, or StartUpStages and a variable, do the right thing
@@ -145,8 +145,8 @@ uses_compact_power(::PSY.ThermalGen, ::AbstractThermalFormulation)=false
 uses_compact_power(::PSY.ThermalGen, ::AbstractCompactUnitCommitment )=true
 uses_compact_power(::PSY.ThermalGen, ::ThermalCompactDispatch)=true
 
-variable_cost(cost::PSY.OperationalCost, ::ActivePowerVariable, ::PSY.ThermalGen, ::AbstractThermalFormulation)=PSY.get_variable(cost)
-variable_cost(cost::PSY.OperationalCost, ::PowerAboveMinimumVariable, ::PSY.ThermalGen, ::AbstractThermalFormulation)=PSY.get_variable(cost)
+variable_cost(cost::PSY.OperationalCost, ::ActivePowerVariable, ::Type{<:PSY.ThermalGen}, ::AbstractThermalFormulation)=PSY.get_variable(cost)
+variable_cost(cost::PSY.OperationalCost, ::PowerAboveMinimumVariable, ::Type{<:PSY.ThermalGen}, ::AbstractThermalFormulation)=PSY.get_variable(cost)
 
 """
 Theoretical Cost at power output zero. Mathematically is the intercept with the y-axis
@@ -166,6 +166,7 @@ function _onvar_cost(::OptimizationContainer, cost_function::PSY.FuelCurve{PSY.P
 end
 
 # this one implementation is thermal-specific, and requires the component.
+# (well, really just the name of the component.)
 function _onvar_cost(container::OptimizationContainer, cost_function::Union{PSY.FuelCurve{PSY.LinearCurve}, PSY.FuelCurve{PSY.QuadraticCurve}}, d::T, t::Int) where {T <: PSY.ThermalGen}
     value_curve = PSY.get_value_curve(cost_function)
     cost_component = PSY.get_function_data(value_curve)
@@ -258,22 +259,8 @@ function get_min_max_limits(
     return PSY.get_active_power_limits(device)
 end
 
-"""
-Range constraints for thermal compact dispatch
-"""
-function add_constraints!(
-    container::OptimizationContainer,
-    T::Type{<:PowerVariableLimitsConstraint},
-    U::Type{<:Union{PowerAboveMinimumVariable, ExpressionType}},
-    devices::IS.FlattenIteratorWrapper{V},
-    model::DeviceModel{V, W},
-    network_model::NetworkModel{X},
-) where {V <: PSY.ThermalGen, W <: ThermalCompactDispatch, X <: AbstractPowerModel}
-    if !has_semicontinuous_feedforward(model, PowerAboveMinimumVariable)
-        add_range_constraints!(container, T, U, devices, model, X)
-    end
-    return
-end
+# removed: add_constraints! for compact formulations. body was identical to 
+# the AbstractThermalDispatch version.
 
 """
 Min and max active power limits of generators for thermal dispatch compact formulations
@@ -786,8 +773,8 @@ function add_constraints!(
     )
 
     for ic in initial_conditions
-        name = PSY.get_name(get_component(ic))
-        if !PSY.get_must_run(get_component(ic))
+        name = PSY.get_name(PSY.get_component(ic))
+        if !PSY.get_must_run(PSY.get_component(ic))
             constraint[name, 1] = JuMP.@constraint(
                 get_jump_model(container),
                 varon[name, 1] == get_value(ic) + varstart[name, 1] - varstop[name, 1]
@@ -800,7 +787,7 @@ function add_constraints!(
     end
 
     for ic in initial_conditions
-        if PSY.get_must_run(get_component(ic))
+        if PSY.get_must_run(PSY.get_component(ic))
             continue
         else
             name = get_component_name(ic)
@@ -1298,8 +1285,8 @@ function add_constraints!(
     )
 
     for t in time_steps, (ix, ic) in enumerate(initial_conditions_offtime)
-        name = PSY.get_name(get_component(ic))
-        startup_types = PSY.get_start_types(get_component(ic))
+        name = PSY.get_name(PSY.get_component(ic))
+        startup_types = PSY.get_start_types(PSY.get_component(ic))
         time_limits = _convert_hours_to_timesteps(
             PSY.get_start_time_limits(get_component(ic)),
             resolution,

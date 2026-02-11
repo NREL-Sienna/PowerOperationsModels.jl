@@ -6,15 +6,13 @@ Abstract type for Device Formulations (a.k.a Models)
 ```julia
 import PowerOperationsModels
 const POM = PowerOperationsModels
-struct MyCustomDeviceFormulation <: POM.AbstractDeviceFormulation end
+struct MyCustomDeviceFormulation <: IOM.AbstractDeviceFormulation end
 ```
 """
 
 ########################### Thermal Generation Formulations ################################
-abstract type AbstractThermalFormulation <: AbstractDeviceFormulation end
-
-abstract type AbstractThermalDispatchFormulation <: AbstractThermalFormulation end
-abstract type AbstractThermalUnitCommitment <: AbstractThermalFormulation end
+# AbstractThermalFormulation: in IS
+# AbstractThermalDispatchFormuation, UnitCommentment: in IOM
 
 abstract type AbstractStandardUnitCommitment <: AbstractThermalUnitCommitment end
 abstract type AbstractCompactUnitCommitment <: AbstractThermalUnitCommitment end
@@ -126,7 +124,7 @@ Abstract type for Branch Formulations (a.k.a Models)
 ```julia
 import PowerOperationsModels
 const POM = PowerOperationsModels
-struct MyCustomBranchFormulation <: POM.AbstractBranchFormulation end
+struct MyCustomBranchFormulation <: IOM.AbstractBranchFormulation end
 ```
 """
 abstract type AbstractBranchFormulation <: AbstractDeviceFormulation end
@@ -231,7 +229,7 @@ Abstract type for Service Formulations (a.k.a Models)
 ```julia
 import PowerOperationsModels
 const POM = PowerOperationsModels
-struct MyServiceFormulation <: POM.AbstractServiceFormulation end
+struct MyServiceFormulation <: IOM.AbstractServiceFormulation end
 ```
 """
 abstract type AbstractServiceFormulation end

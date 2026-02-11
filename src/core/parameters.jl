@@ -145,7 +145,7 @@ abstract type AuxVariableValueParameter <: RightHandSideParameter end
 # Event Parameters
 #################################################################################
 
-abstract type EventParameter <: ParameterType end
+# EventParameter: moved into IOM.
 
 """
 Parameter to define component availability status updated from the system state

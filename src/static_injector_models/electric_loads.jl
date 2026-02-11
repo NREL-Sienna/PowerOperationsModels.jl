@@ -1,7 +1,7 @@
 #! format: off
 ########################### ElectricLoad ####################################
 
-get_variable_multiplier(_, ::Type{<:PSY.ElectricLoad}, ::AbstractLoadFormulation) = -1.0
+get_variable_multiplier(::VariableType, ::Type{<:PSY.ElectricLoad}, ::AbstractLoadFormulation) = -1.0
 
 ########################### ActivePowerVariable, ElectricLoad ####################################
 
@@ -35,8 +35,7 @@ proportional_cost(cost::PSY.OperationalCost, ::OnVariable, ::PSY.ElectricLoad, :
 
 objective_function_multiplier(::VariableType, ::AbstractControllablePowerLoadFormulation)=OBJECTIVE_FUNCTION_NEGATIVE
 
-variable_cost(::Nothing, ::PSY.ElectricLoad, ::ActivePowerVariable, ::AbstractControllablePowerLoadFormulation)=1.0
-variable_cost(cost::PSY.OperationalCost, ::ActivePowerVariable, ::PSY.ElectricLoad, ::AbstractControllablePowerLoadFormulation)=PSY.get_variable(cost)
+variable_cost(cost::PSY.OperationalCost, ::ActivePowerVariable, ::Type{<:PSY.ElectricLoad}, ::AbstractControllablePowerLoadFormulation)=PSY.get_variable(cost)
 
 #! format: on
 

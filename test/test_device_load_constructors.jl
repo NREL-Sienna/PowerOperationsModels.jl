@@ -98,8 +98,8 @@ end
         optimizer = HiGHS_optimizer,
         system_to_file = false,
         optimizer_solve_log_print = true)
-    @test build!(model; output_dir = test_path) == POM.ModelBuildStatus.BUILT
-    @test solve!(model) == POM.RunStatus.SUCCESSFULLY_FINALIZED
+    @test build!(model; output_dir = test_path) == IOM.ModelBuildStatus.BUILT
+    @test solve!(model) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
     results = OptimizationProblemResults(model)
     expr = read_expression(
         results,
@@ -175,8 +175,8 @@ end
         )
 
         @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
-              POM.ModelBuildStatus.BUILT
-        @test solve!(model) == POM.RunStatus.SUCCESSFULLY_FINALIZED
+              IOM.ModelBuildStatus.BUILT
+        @test solve!(model) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
     end
 end
 
@@ -220,7 +220,7 @@ end
         )
 
         @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
-              POM.ModelBuildStatus.BUILT
-        @test solve!(model) == POM.RunStatus.SUCCESSFULLY_FINALIZED
+              IOM.ModelBuildStatus.BUILT
+        @test solve!(model) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
     end
 end

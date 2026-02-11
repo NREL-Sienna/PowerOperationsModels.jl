@@ -80,5 +80,5 @@ convert_result_to_natural_units(
 ) = true
 
 "Whether the auxiliary variable is calculated using a `PowerFlowEvaluationModel`"
-is_from_power_flow(::Type{<:AuxVariableType}) = false
+# Default is_from_power_flow(::Type{<:AuxVariableType}) = false is in IOM interfaces.jl
 is_from_power_flow(::Type{<:PowerFlowAuxVariableType}) = true

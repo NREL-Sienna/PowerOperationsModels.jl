@@ -1,14 +1,16 @@
+#################################################################################
+# Variable types defined in POM
+# Types used by IOM's infrastructure code (ActivePowerVariable, OnVariable, etc.)
+# come from IOM via `using InfrastructureOptimizationModels`.
+# Only POM-specific types are defined here.
+#################################################################################
+
+# POM-specific abstract types (matching PSI hierarchy)
 abstract type AbstractContingencyVariableType <: VariableType end
-abstract type SparseVariableType <: VariableType end
-abstract type InterpolationVariableType <: SparseVariableType end
-abstract type BinaryInterpolationVariableType <: SparseVariableType end
-
-"""
-Struct to dispatch the creation of Active Power Variables
-
-Docs abbreviation: ``p``
-"""
-struct ActivePowerVariable <: VariableType end
+abstract type MultiStartVariable <: VariableType end
+abstract type AbstractACActivePowerFlow <: VariableType end
+abstract type AbstractACReactivePowerFlow <: VariableType end
+abstract type AbstractPiecewiseLinearBlockOffer <: SparseVariableType end
 
 """
 Struct to dispatch the creation of Post-Contingency Active Power Change Variables.
@@ -24,30 +26,6 @@ Docs abbreviation: ``\\Delta rsv_{r,g,c}``
 """
 struct PostContingencyActivePowerReserveDeploymentVariable <:
        AbstractContingencyVariableType end
-
-"""
-Struct to dispatch the creation of Active Power Variables above minimum power for Thermal Compact formulations
-
-Docs abbreviation: ``\\Delta p``
-"""
-struct PowerAboveMinimumVariable <: VariableType end
-
-"""
-Struct to dispatch the creation of Active Power Input Variables for 2-directional devices. For instance storage or pump-hydro
-
-Docs abbreviation: ``p^\\text{in}``
-"""
-struct ActivePowerInVariable <: VariableType end
-
-"""
-Struct to dispatch the creation of Active Power Output Variables for 2-directional devices. For instance storage or pump-hydro
-
-Docs abbreviation: ``p^\\text{out}``
-"""
-struct ActivePowerOutVariable <: VariableType end
-
-"Multi-start startup variables"
-abstract type MultiStartVariable <: VariableType end
 
 """
 Struct to dispatch the creation of Hot Start Variable for Thermal units with temperature considerations
@@ -80,13 +58,6 @@ struct EnergyVariable <: VariableType end
 struct LiftVariable <: VariableType end
 
 """
-Struct to dispatch the creation of a binary commitment status variable
-
-Docs abbreviation: ``u``
-"""
-struct OnVariable <: VariableType end
-
-"""
 Struct to dispatch the creation of Reactive Power Variables
 
 Docs abbreviation: ``q``
@@ -106,27 +77,6 @@ Struct to dispatch the creation of Active Power Reserve Variables
 Docs abbreviation: ``r``
 """
 struct ActivePowerReserveVariable <: VariableType end
-
-"""
-Struct to dispatch the creation of Service Requirement Variables
-
-Docs abbreviation: ``\\text{req}``
-"""
-struct ServiceRequirementVariable <: VariableType end
-
-"""
-Struct to dispatch the creation of Binary Start Variables
-
-Docs abbreviation: ``v``
-"""
-struct StartVariable <: VariableType end
-
-"""
-Struct to dispatch the creation of Binary Stop Variables
-
-Docs abbreviation: ``w``
-"""
-struct StopVariable <: VariableType end
 
 struct SteadyStateFrequencyDeviation <: VariableType end
 
@@ -188,12 +138,6 @@ Docs abbreviation: ``i_l^{dc}``
 struct DCLineCurrent <: VariableType end
 
 """
-Struct to dispatch the creation of Voltage Variables for DC formulations
-Docs abbreviation: ``v^{dc}``
-"""
-struct DCVoltage <: VariableType end
-
-"""
 Struct to dispatch the creation of Squared Voltage Variables for DC formulations
 Docs abbreviation: ``v^{sq,dc}``
 """
@@ -249,59 +193,55 @@ struct AuxBilinearConverterVariable <: VariableType end
 
 """
 Struct to dispatch the creation of Auxiliary Variable for Squared Converter Bilinear term: v * i
-    
+
 Docs abbreviation: ``\\gamma_c^{sq,dc}``
 """
 struct AuxBilinearSquaredConverterVariable <: VariableType end
 
 """
 Struct to dispatch the creation of Continuous Interpolation Variable for Squared Converter Voltage
-    
+
 Docs abbreviation: ``\\delta_c^{v}``
 """
 struct InterpolationSquaredVoltageVariable <: InterpolationVariableType end
 
 """
 Struct to dispatch the creation of Binary Interpolation Variable for Squared Converter Voltage
-    
+
 Docs abbreviation: ``z_c^{v}``
 """
 struct InterpolationBinarySquaredVoltageVariable <: BinaryInterpolationVariableType end
 
 """
 Struct to dispatch the creation of Continuous Interpolation Variable for Squared Converter Current
-    
+
 Docs abbreviation: ``\\delta_c^{i}``
 """
 struct InterpolationSquaredCurrentVariable <: InterpolationVariableType end
 
 """
 Struct to dispatch the creation of Binary Interpolation Variable for Squared Converter Current
-    
+
 Docs abbreviation: ``z_c^{i}``
 """
 struct InterpolationBinarySquaredCurrentVariable <: BinaryInterpolationVariableType end
 
 """
 Struct to dispatch the creation of Continuous Interpolation Variable for Squared Converter AuxVar
-    
+
 Docs abbreviation: ``\\delta_c^{\\gamma}``
 """
 struct InterpolationSquaredBilinearVariable <: InterpolationVariableType end
 
 """
 Struct to dispatch the creation of Binary Interpolation Variable for Squared Converter AuxVar
-    
+
 Docs abbreviation: ``z_c^{\\gamma}``
 """
 struct InterpolationBinarySquaredBilinearVariable <: BinaryInterpolationVariableType end
 
 #########################################################
 #########################################################
-
-abstract type AbstractACActivePowerFlow <: VariableType end
-
-abstract type AbstractACReactivePowerFlow <: VariableType end
 
 """
 Struct to dispatch the creation of bidirectional Active Power Flow Variables
@@ -511,15 +451,6 @@ Docs abbreviation: ``z``
 struct HVDCPiecewiseBinaryLossVariable <: SparseVariableType end
 
 """
-Struct to dispatch the creation of piecewise linear cost variables for objective function
-
-Docs abbreviation: ``\\delta``
-"""
-struct PiecewiseLinearCostVariable <: SparseVariableType end
-
-abstract type AbstractPiecewiseLinearBlockOffer <: SparseVariableType end
-
-"""
 Struct to dispatch the creation of piecewise linear block incremental offer variables for objective function
 
 Docs abbreviation: ``\\delta``
@@ -558,19 +489,6 @@ Struct to dispatch the creation of Slack variables for LowerBoundFeedforward
 Docs abbreviation: ``p^\\text{ff,lbsl}``
 """
 struct LowerBoundFeedForwardSlack <: VariableType end
-
-"""
-Struct to dispatch the creation of Slack variables for rate of change constraints up limits
-
-Docs abbreviation: ``p^\\text{sl,up}``
-"""
-struct RateofChangeConstraintSlackUp <: VariableType end
-"""
-Struct to dispatch the creation of Slack variables for rate of change constraints down limits
-
-Docs abbreviation: ``p^\\text{sl,dn}``
-"""
-struct RateofChangeConstraintSlackDown <: VariableType end
 
 const MULTI_START_VARIABLES = Tuple(IS.get_all_concrete_subtypes(MultiStartVariable))
 

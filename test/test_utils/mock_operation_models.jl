@@ -183,7 +183,7 @@ function mock_construct_network!(problem::IOM.DecisionModel{MockOperationProblem
 end
 
 function mock_uc_ed_simulation_problems(uc_horizon, ed_horizon)
-    return SimulationModels([
+    return IOM.SimulationModels([
         DecisionModel(MockOperationProblem; horizon = uc_horizon, name = "UC"),
         DecisionModel(
             MockOperationProblem;
@@ -200,7 +200,7 @@ function create_simulation_build_test_problems(
     sys_uc = PSB.build_system(PSITestSystems, "c_sys5_uc"),
     sys_ed = PSB.build_system(PSITestSystems, "c_sys5_ed"),
 )
-    return SimulationModels(;
+    return IOM.SimulationModels(;
         decision_models = [
             DecisionModel(template_uc, sys_uc; name = "UC", optimizer = HiGHS_optimizer),
             DecisionModel(template_ed, sys_ed; name = "ED", optimizer = HiGHS_optimizer),
@@ -219,7 +219,7 @@ end
 
 function setup_ic_model_container!(model::DecisionModel)
     # This function is only for testing purposes.
-    if !POM.isempty(model)
+    if !IOM.isempty(model)
         IOM.reset!(model)
     end
 

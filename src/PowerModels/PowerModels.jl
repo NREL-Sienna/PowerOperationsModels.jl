@@ -8,8 +8,10 @@ import LinearAlgebra
 import Logging
 import SparseArrays
 
-# Import base abstract type from InfrastructureSystems.Optimization
+# Shared types — const aliases so PM.Foo === IS.Optimization.Foo
 const AbstractPowerModel = InfrastructureSystems.Optimization.AbstractPowerModel
+const AbstractActivePowerModel = InfrastructureSystems.Optimization.AbstractActivePowerModel
+const AbstractACPModel = InfrastructureSystems.Optimization.AbstractACPModel
 
 const _pm_global_keys = Set(["time_series", "per_unit"])
 const pm_it_name = "pm"

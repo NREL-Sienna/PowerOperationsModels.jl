@@ -115,7 +115,4 @@ const IGNORABLE_FILES = [
 ]
 const RESULTS_DIR = "results"
 
-# POM-specific enums (not duplicated from IOM)
-IS.@scoped_enum(SOSStatusVariable, NO_VARIABLE = 1, PARAMETER = 2, VARIABLE = 3,)
-
 IS.@scoped_enum(COMPACT_PWL_STATUS, VALID = 1, INVALID = 2, UNDETERMINED = 3)

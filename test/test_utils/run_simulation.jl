@@ -38,7 +38,7 @@ function run_simulation(
         template_ed,
         ed_network_model,
     )
-    models = SimulationModels(;
+    models = IOM.SimulationModels(;
         decision_models = [
             DecisionModel(
                 template_uc,
@@ -61,6 +61,7 @@ function run_simulation(
         models = models,
         feedforwards = Dict(
             "ED" => [
+                # FIXME feedforwards don't belong here.
                 SemiContinuousFeedforward(;
                     component_type = ThermalStandard,
                     source = OnVariable,
@@ -79,7 +80,7 @@ function run_simulation(
     )
 
     build_out = build!(sim; console_level = Logging.Error)
-    @test build_out == POM.SimulationBuildStatus.BUILT
+    @test build_out == IOM.SimulationBuildStatus.BUILT
 
     exports = Dict(
         "models" => [
@@ -102,7 +103,7 @@ function run_simulation(
         "optimizer_stats" => true,
     )
     execute_out = execute!(sim; exports = exports, in_memory = in_memory)
-    @test execute_out == POM.RunStatus.SUCCESSFULLY_FINALIZED
+    @test execute_out == IOM.RunStatus.SUCCESSFULLY_FINALIZED
 
     return sim
 end
