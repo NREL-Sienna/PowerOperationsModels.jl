@@ -102,35 +102,7 @@ Parameter to define cost function coefficient
 struct CostFunctionParameter <: ObjectiveFunctionParameter end
 
 # startup, shutdown, fuel cost parameters: in IOM
-
-"Parameters to define the cost at the minimum available power"
-abstract type AbstractCostAtMinParameter <: ObjectiveFunctionParameter end
-
-"[`AbstractCostAtMinParameter`](@ref) for the incremental case (power source)"
-struct IncrementalCostAtMinParameter <: AbstractCostAtMinParameter end
-
-"[`AbstractCostAtMinParameter`](@ref) for the decremental case (power sink)"
-struct DecrementalCostAtMinParameter <: AbstractCostAtMinParameter end
-
-"Parameters to define the slopes of a piecewise linear cost function"
-abstract type AbstractPiecewiseLinearSlopeParameter <: ObjectiveFunctionParameter end
-
-"[`AbstractPiecewiseLinearSlopeParameter`](@ref) for the incremental case (power source)"
-struct IncrementalPiecewiseLinearSlopeParameter <: AbstractPiecewiseLinearSlopeParameter end
-
-"[`AbstractPiecewiseLinearSlopeParameter`](@ref) for the decremental case (power sink)"
-struct DecrementalPiecewiseLinearSlopeParameter <: AbstractPiecewiseLinearSlopeParameter end
-
-"Parameters to define the breakpoints of a piecewise linear function"
-abstract type AbstractPiecewiseLinearBreakpointParameter <: TimeSeriesParameter end
-
-"[`AbstractPiecewiseLinearBreakpointParameter`](@ref) for the incremental case (power source)"
-struct IncrementalPiecewiseLinearBreakpointParameter <:
-       AbstractPiecewiseLinearBreakpointParameter end
-
-"[`AbstractPiecewiseLinearBreakpointParameter`](@ref) for the decremental case (power sink)"
-struct DecrementalPiecewiseLinearBreakpointParameter <:
-       AbstractPiecewiseLinearBreakpointParameter end
+# Offer curve parameter types (CostAtMin, PiecewiseLinearSlope, PiecewiseLinearBreakpoint): moved into IOM
 
 #################################################################################
 # Auxiliary Variable Value Parameters

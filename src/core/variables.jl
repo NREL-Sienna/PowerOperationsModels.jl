@@ -10,7 +10,7 @@ abstract type AbstractContingencyVariableType <: VariableType end
 abstract type MultiStartVariable <: VariableType end
 abstract type AbstractACActivePowerFlow <: VariableType end
 abstract type AbstractACReactivePowerFlow <: VariableType end
-abstract type AbstractPiecewiseLinearBlockOffer <: SparseVariableType end
+# AbstractPiecewiseLinearBlockOffer: moved into IOM
 
 """
 Struct to dispatch the creation of Post-Contingency Active Power Change Variables.
@@ -64,12 +64,7 @@ Docs abbreviation: ``q``
 """
 struct ReactivePowerVariable <: VariableType end
 
-"""
-Struct to dispatch the creation of binary storage charge reservation variable
-
-Docs abbreviation: ``u^\\text{st}``
-"""
-struct ReservationVariable <: VariableType end
+# ReservationVariable: moved to IOM (used in range_constraint.jl)
 
 """
 Struct to dispatch the creation of Active Power Reserve Variables
@@ -450,19 +445,7 @@ Docs abbreviation: ``z``
 """
 struct HVDCPiecewiseBinaryLossVariable <: SparseVariableType end
 
-"""
-Struct to dispatch the creation of piecewise linear block incremental offer variables for objective function
-
-Docs abbreviation: ``\\delta``
-"""
-struct PiecewiseLinearBlockIncrementalOffer <: AbstractPiecewiseLinearBlockOffer end
-
-"""
-Struct to dispatch the creation of piecewise linear block decremental offer variables for objective function
-
-Docs abbreviation: ``\\delta_d``
-"""
-struct PiecewiseLinearBlockDecrementalOffer <: AbstractPiecewiseLinearBlockOffer end
+# PiecewiseLinearBlockIncrementalOffer, PiecewiseLinearBlockDecrementalOffer: moved into IOM
 
 """
 Struct to dispatch the creation of Interface Flow Slack Up variables

@@ -82,7 +82,11 @@ const IOM = InfrastructureOptimizationModels
 # Import utility functions that core files will extend with new methods
 import InfrastructureOptimizationModels:
     should_write_resulting_value,
-    convert_result_to_natural_units
+    convert_result_to_natural_units,
+    # Network model compatibility checks (extended in core/network_formulations.jl)
+    requires_all_branch_models,
+    supports_branch_filtering,
+    ignores_branch_filtering
 
 # Import functions that POM extends with device-specific implementations
 # These are the main extension points where POM provides concrete implementations
@@ -149,6 +153,34 @@ import InfrastructureOptimizationModels:
     _get_initial_condition_type,
     initialize_hvdc_system!
 
+# Market bid cost: import IOM functions that POM extends with device-specific methods
+import InfrastructureOptimizationModels:
+    _has_market_bid_cost,
+    _consider_parameter,
+    validate_occ_component,
+    _include_min_gen_power_in_constraint,
+    _include_constant_min_gen_power_in_constraint,
+    add_variable_cost_to_objective!,
+    _vom_offer_direction,
+    _add_pwl_constraint!,
+    add_pwl_term!,
+    get_output_offer_curves,
+    # Internal utilities used by market bid overrides and proportional_cost
+    is_time_variant,
+    apply_maybe_across_time_series,
+    _validate_eltype,
+    objective_function_multiplier,
+    get_piecewise_curve_per_system_unit,
+    add_pwl_block_offer_constraints!,
+    has_service_model,
+    IncrementalOffer,
+    DecrementalOffer,
+    get_input_offer_curves,
+    add_constraint_dual!,
+    assign_dual_variable!,
+    _calculate_dual_variable_value!,
+    add_dual_container!
+
 using InfrastructureOptimizationModels
 
 # Note: add_feedforward_arguments!, add_feedforward_constraints!,
@@ -195,6 +227,9 @@ include("static_injector_models/electric_loads.jl")
 include("static_injector_models/load_constructor.jl")
 include("static_injector_models/source.jl")
 include("static_injector_models/source_constructor.jl")
+
+# Market bid cost: device-specific overloads for IOM's generic market_bid.jl
+include("common_models/market_bid_overrides.jl")
 
 # AC Transmission Models
 include("ac_transmission_models/AC_branches.jl")

@@ -43,15 +43,13 @@ struct SecurityConstrainedAreaPTDFPowerModel <: AbstractSecurityConstrainedPTDFM
 # These functions define capabilities for different network formulations
 #################################################################################
 
-supports_branch_filtering(::Type{<:AbstractPowerModel}) = false
+# Defaults are in IOM; POM only provides overrides for specific formulations
 supports_branch_filtering(::Type{<:AbstractPTDFModel}) = true
 supports_branch_filtering(::Type{<:AbstractSecurityConstrainedPTDFModel}) = true
 
-ignores_branch_filtering(::Type{<:AbstractPowerModel}) = false
 ignores_branch_filtering(::Type{CopperPlatePowerModel}) = true
 ignores_branch_filtering(::Type{AreaBalancePowerModel}) = true
 
-requires_all_branch_models(::Type{<:AbstractPowerModel}) = true
 requires_all_branch_models(::Type{<:AbstractPTDFModel}) = false
 requires_all_branch_models(::Type{CopperPlatePowerModel}) = false
 requires_all_branch_models(::Type{AreaBalancePowerModel}) = false

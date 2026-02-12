@@ -278,53 +278,9 @@ _unwrap_for_param(::ParameterType, ts_elem, expected_axs) = ts_elem
 
 #################################################################################
 # Piecewise linear parameter helpers
-# NOTE: These depend on TimeSeries, _get_parameter_field, get_output_offer_curves
-# which are not yet available in POM. Commented out until MarketBidCost is migrated.
+# NOTE: _unwrap_for_param overloads, get_max_tranches, make_tranche_axis, and
+# lookup_additional_axes belong in PSI (multi-timestep update path), not POM.
 #################################################################################
-
-# _get_max_tranches(data::Vector{IS.PiecewiseStepData}) = maximum(length.(data))
-# _get_max_tranches(data::TimeSeries.TimeArray) = _get_max_tranches(values(data))
-# _get_max_tranches(data::AbstractDict) = maximum(_get_max_tranches.(values(data)))
-
-# function get_max_tranches(device::PSY.Device, piecewise_ts::IS.TimeSeriesKey)
-#     data = PSY.get_data(PSY.get_time_series(device, piecewise_ts))
-#     max_tranches = _get_max_tranches(data)
-#     return max_tranches
-# end
-
-# make_tranche_axis(n_tranches) = "tranche_" .* string.(1:n_tranches)
-
-# """
-# Get any additional axes from a parameter array, i.e., those that aren't the first
-# (component) or the last (time)
-# """
-# lookup_additional_axes(parameter_array) = axes(parameter_array)[2:(end - 1)]
-
-# function _unwrap_for_param(
-#     ::AbstractPiecewiseLinearSlopeParameter,
-#     ts_elem::IS.PiecewiseStepData,
-#     expected_axs,
-# )
-#     max_len = length(only(expected_axs))
-#     y_coords = IS.get_y_coords(ts_elem)
-#     @assert length(y_coords) <= max_len
-#     fill_value = 0.0
-#     padded_y_coords = vcat(y_coords, fill(fill_value, max_len - length(y_coords)))
-#     return padded_y_coords
-# end
-
-# function _unwrap_for_param(
-#     ::AbstractPiecewiseLinearBreakpointParameter,
-#     ts_elem::IS.PiecewiseStepData,
-#     expected_axs,
-# )
-#     max_len = length(only(expected_axs))
-#     x_coords = IS.get_x_coords(ts_elem)
-#     @assert length(x_coords) <= max_len
-#     fill_value = x_coords[end]
-#     padded_x_coords = vcat(x_coords, fill(fill_value, max_len - length(x_coords)))
-#     return padded_x_coords
-# end
 
 #################################################################################
 # _add_parameters! for ObjectiveFunctionParameter

@@ -17,10 +17,7 @@ end
         add_parameters!(container, FuelCostParameter, devices, model)
     end
 
-    if any(typeof.(PSY.get_operation_cost.(devices)) .== PSY.MarketBidCost)
-        error("cannot handle MBC right now")
-    end
-    #process_market_bid_parameters!(container, devices, model)
+    process_market_bid_parameters!(container, devices, model)
 end
 
 function construct_device!(

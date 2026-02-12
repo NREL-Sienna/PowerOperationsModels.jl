@@ -49,7 +49,7 @@ add_proportional_cost!(
 ) where {U <: OnVariable, T <: PSY.ControllableLoad} =
     add_proportional_cost_maybe_time_variant!(
         container,
-        U,
+        U(),
         devices,
         PowerLoadInterruption(),
     )
@@ -253,15 +253,23 @@ is_time_variant_term(
 ) =
     is_time_variant(PSY.get_decremental_initial_input(cost))
 
-proportional_cost(
+function proportional_cost(
     container::OptimizationContainer,
     cost::PSY.MarketBidCost,
     ::OnVariable,
-    comp::PSY.ControllableLoad,
+    comp::T,
     ::PowerLoadInterruption,
     t::Int,
-) =
-    _lookup_maybe_time_variant_param(container, comp, t,
-        Val(is_time_variant(PSY.get_decremental_initial_input(cost))),
-        PSY.get_initial_input ∘ PSY.get_decremental_offer_curves ∘ PSY.get_operation_cost,
-        DecrementalCostAtMinParameter())
+) where {T <: PSY.ControllableLoad}
+    if is_time_variant(PSY.get_decremental_initial_input(cost))
+        name = get_name(comp)
+        param_arr = get_parameter_array(container, DecrementalCostAtMinParameter(), T)
+        param_mult =
+            get_parameter_multiplier_array(container, DecrementalCostAtMinParameter(), T)
+        return param_arr[name, t] * param_mult[name, t]
+    else
+        return PSY.get_initial_input(
+            PSY.get_decremental_offer_curves(PSY.get_operation_cost(comp)),
+        )
+    end
+end

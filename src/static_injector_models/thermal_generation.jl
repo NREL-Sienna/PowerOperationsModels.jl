@@ -96,11 +96,18 @@ function proportional_cost(container::OptimizationContainer, cost::PSY.ThermalGe
 end
 is_time_variant_term(::OptimizationContainer, ::PSY.ThermalGenerationCost, ::OnVariable, ::PSY.ThermalGen, ::AbstractThermalFormulation, t::Int) = false
 
-proportional_cost(container::OptimizationContainer, cost::PSY.MarketBidCost, ::OnVariable, comp::PSY.ThermalGen, ::AbstractThermalFormulation, t::Int) =
-    _lookup_maybe_time_variant_param(container, comp, t,
-    Val(is_time_variant(PSY.get_incremental_initial_input(cost))),
-    PSY.get_initial_input ∘ PSY.get_incremental_offer_curves ∘ PSY.get_operation_cost,
-    IncrementalCostAtMinParameter())
+function proportional_cost(container::OptimizationContainer, cost::PSY.MarketBidCost, ::OnVariable, comp::T, ::AbstractThermalFormulation, t::Int) where {T <: PSY.ThermalGen}
+    if is_time_variant(PSY.get_incremental_initial_input(cost))
+        name = get_name(comp)
+        # inelegant: an iterator wrapping either param_array[name, :] .* param_mult[name, :]
+        # (load values lazily) or repeat(constant_value) would be closer to what we want.
+        param_arr = get_parameter_array(container, IncrementalCostAtMinParameter(), T)
+        param_mult = get_parameter_multiplier_array(container, IncrementalCostAtMinParameter(), T)
+        return param_arr[name, t] * param_mult[name, t]
+    else
+        return PSY.get_initial_input(PSY.get_incremental_offer_curves(PSY.get_operation_cost(comp)))
+    end
+end
 is_time_variant_term(::OptimizationContainer, cost::PSY.MarketBidCost, ::OnVariable, ::PSY.ThermalGen, ::AbstractThermalFormulation, t::Int) =
     is_time_variant(PSY.get_incremental_initial_input(cost))
 

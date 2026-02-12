@@ -29,8 +29,7 @@ function construct_device!(
         add_variables!(container, ReservationVariable, devices, D())
     end
 
-    #process_import_export_parameters!(container, devices, model)
-    error("process_import_export_parameters! not yet implemented in POM")
+    process_import_export_parameters!(container, devices, model)
 
     add_to_expression!(
         container,
@@ -192,8 +191,7 @@ function construct_device!(
         add_variables!(container, ReservationVariable, devices, D())
     end
 
-    #process_import_export_parameters!(container, devices, model)
-    error("process_import_export_parameters! not yet implemented in POM")
+    process_import_export_parameters!(container, devices, model)
 
     add_to_expression!(
         container,
