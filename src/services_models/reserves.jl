@@ -41,7 +41,6 @@ get_parameter_multiplier(::VariableValueParameter, d::Type{<:PSY.AbstractReserve
 get_initial_parameter_value(::VariableValueParameter, d::Type{<:PSY.AbstractReserve}, ::AbstractReservesFormulation) = 0.0
 
 objective_function_multiplier(::ServiceRequirementVariable, ::StepwiseCostReserve) = -1.0
-sos_status(::Type{<:PSY.ReserveDemandCurve}, ::StepwiseCostReserve)=SOSStatusVariable.NO_VARIABLE
 uses_compact_power(::PSY.ReserveDemandCurve, ::StepwiseCostReserve)=false
 #! format: on
 

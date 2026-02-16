@@ -22,9 +22,6 @@ get_multiplier_value(::AbstractPiecewiseLinearBreakpointParameter, ::PSY.Renewab
 
 ########################Objective Function##################################################
 objective_function_multiplier(::ActivePowerVariable, ::AbstractRenewableDispatchFormulation)=OBJECTIVE_FUNCTION_NEGATIVE
-
-variable_cost(cost::PSY.OperationalCost, ::ActivePowerVariable, ::Type{<:PSY.RenewableDispatch}, ::AbstractRenewableDispatchFormulation)=PSY.get_variable(cost)
-
 #! format: on
 
 get_initial_conditions_device_model(

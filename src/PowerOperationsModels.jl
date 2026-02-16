@@ -129,16 +129,13 @@ import InfrastructureOptimizationModels:
     # Parameter addition (POM provides concrete implementations)
     add_parameters!,
     # Cost/status functions (IOM has default stubs, POM adds device-specific methods)
-    sos_status,
     get_operation_cost,
     get_must_run,
     # Build-pipeline extension points (IOM calls these in build_impl!, POM provides implementations)
     construct_services!,
     construct_network!,
     construct_hvdc_network!,
-    add_power_flow_data!,
     calculate_aux_variable_value!,
-    write_results!,
     is_from_power_flow,
     # Bulk-added via systematic search of POM→IOM references:
     # Functions POM extends with new methods
@@ -148,7 +145,6 @@ import InfrastructureOptimizationModels:
     add_variable!,
     requires_initialization,
     get_min_max_limits,
-    variable_cost,
     start_up_cost,
     _get_initial_condition_type,
     initialize_hvdc_system!

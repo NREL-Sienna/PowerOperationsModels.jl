@@ -35,8 +35,6 @@ proportional_cost(cost::PSY.OperationalCost, ::OnVariable, ::PSY.ElectricLoad, :
 
 objective_function_multiplier(::VariableType, ::AbstractControllablePowerLoadFormulation)=OBJECTIVE_FUNCTION_NEGATIVE
 
-variable_cost(cost::PSY.OperationalCost, ::ActivePowerVariable, ::Type{<:PSY.ElectricLoad}, ::AbstractControllablePowerLoadFormulation)=PSY.get_variable(cost)
-
 #! format: on
 
 # proportional cost: connects to common implementation in IOM

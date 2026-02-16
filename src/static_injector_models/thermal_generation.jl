@@ -119,11 +119,6 @@ has_multistart_variables(::PSY.ThermalMultiStart, ::ThermalMultiStartUnitCommitm
 
 objective_function_multiplier(::VariableType, ::AbstractThermalFormulation)=OBJECTIVE_FUNCTION_POSITIVE
 
-sos_status(::Type{<:PSY.ThermalGen}, ::AbstractThermalDispatchFormulation)=SOSStatusVariable.NO_VARIABLE
-sos_status(::Type{<:PSY.ThermalGen}, ::AbstractThermalUnitCommitment)=SOSStatusVariable.VARIABLE
-sos_status(::Type{<:PSY.ThermalMultiStart}, ::AbstractStandardUnitCommitment)=SOSStatusVariable.VARIABLE
-sos_status(::Type{<:PSY.ThermalMultiStart}, ::ThermalMultiStartUnitCommitment)=SOSStatusVariable.VARIABLE
-
 # Startup cost interpretations!
 # Validators: check that the types match (formulation is optional) and redirect to the simpler methods
 start_up_cost(cost, ::Type{<:PSY.ThermalGen}, ::T, ::Union{AbstractThermalFormulation, Nothing} = nothing) where {T <: StartVariable} =
@@ -152,9 +147,6 @@ start_up_cost(cost::StartUpStages, ::StartVariable) = maximum(cost)
 uses_compact_power(::PSY.ThermalGen, ::AbstractThermalFormulation)=false
 uses_compact_power(::PSY.ThermalGen, ::AbstractCompactUnitCommitment )=true
 uses_compact_power(::PSY.ThermalGen, ::ThermalCompactDispatch)=true
-
-variable_cost(cost::PSY.OperationalCost, ::ActivePowerVariable, ::Type{<:PSY.ThermalGen}, ::AbstractThermalFormulation)=PSY.get_variable(cost)
-variable_cost(cost::PSY.OperationalCost, ::PowerAboveMinimumVariable, ::Type{<:PSY.ThermalGen}, ::AbstractThermalFormulation)=PSY.get_variable(cost)
 
 """
 Theoretical Cost at power output zero. Mathematically is the intercept with the y-axis
