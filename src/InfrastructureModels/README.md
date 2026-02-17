@@ -17,7 +17,5 @@ Additionally, the following multi-infrastructure modeling packages have been dev
   - [PowerWaterModels](https://github.com/lanl-ansi/PowerWaterModels.jl) - Electrical power and potable water distribution systems
   - [PowerModelsITD](https://github.com/lanl-ansi/PowerModelsITD.jl) - Electrical power transmission and distribution
 For information about developing infrastructure modeling packages for new infrastructure types or new combinations of existing infrastructure types, please see the [developer section](https://lanl-ansi.github.io/InfrastructureModels.jl/stable/developer/) of the package documentation.
-
 ## License
-
 This code is provided under a [modified BSD license](https://github.com/lanl-ansi/InfrastructureModels.jl/blob/master/LICENSE.md) as part of the Multi-Infrastructure Control and Optimization Toolkit (MICOT), LA-CC-13-108.

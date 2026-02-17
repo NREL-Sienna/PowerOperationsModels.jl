@@ -118,7 +118,7 @@ function add_variables!(
     return
 end
 
-function objective_function!(
+function add_to_objective_function!(
     container::OptimizationContainer,
     sys::PSY.System,
     network_model::NetworkModel{T},
@@ -136,7 +136,7 @@ function objective_function!(
     return
 end
 
-function objective_function!(
+function add_to_objective_function!(
     container::OptimizationContainer,
     sys::PSY.System,
     network_model::NetworkModel{T},
@@ -154,7 +154,7 @@ function objective_function!(
     return
 end
 
-function objective_function!(
+function add_to_objective_function!(
     container::OptimizationContainer,
     sys::PSY.System,
     network_model::NetworkModel{T},
@@ -172,7 +172,7 @@ function objective_function!(
     return
 end
 
-function objective_function!(
+function add_to_objective_function!(
     container::OptimizationContainer,
     sys::PSY.System,
     network_model::NetworkModel{T},

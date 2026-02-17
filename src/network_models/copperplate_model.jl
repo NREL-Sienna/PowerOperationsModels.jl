@@ -20,6 +20,51 @@ function add_constraints!(
     return
 end
 
+########################### Dual variable handling ####################################
+# CopperPlate and PTDF constraints are keyed on System, not ACBus,
+# so dual registration and calculation need special handling.
+
+function add_constraint_dual!(
+    container::OptimizationContainer,
+    sys::PSY.System,
+    model::NetworkModel{T},
+) where {T <: Union{CopperPlatePowerModel, AbstractPTDFModel}}
+    if !isempty(get_duals(model))
+        for constraint_type in get_duals(model)
+            assign_dual_variable!(container, constraint_type, sys, model)
+        end
+    end
+    return
+end
+
+function assign_dual_variable!(
+    container::OptimizationContainer,
+    constraint_type::Type{CopperPlateBalanceConstraint},
+    ::U,
+    network_model::NetworkModel{<:PM.AbstractPowerModel},
+) where {U <: PSY.System}
+    time_steps = get_time_steps(container)
+    ref_buses = get_reference_buses(network_model)
+    add_dual_container!(container, constraint_type, U, ref_buses, time_steps)
+    return
+end
+
+function _calculate_dual_variable_value!(
+    container::OptimizationContainer,
+    key::ConstraintKey{CopperPlateBalanceConstraint, PSY.System},
+    ::PSY.System,
+)
+    constraint_container = get_constraint(container, key)
+    dual_variable_container = get_duals(container)[key]
+    for subnet in axes(constraint_container)[1], t in axes(constraint_container)[2]
+        # See https://jump.dev/JuMP.jl/stable/manual/solutions/#Dual-solution-values
+        dual_variable_container[subnet, t] = jump_value(constraint_container[subnet, t])
+    end
+    return
+end
+
+########################### Area Balance Constraints ###################################
+
 function add_constraints!(
     container::OptimizationContainer,
     ::Type{T},

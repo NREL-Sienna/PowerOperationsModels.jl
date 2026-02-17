@@ -1,7 +1,7 @@
 #! format: off
 ########################### ElectricLoad ####################################
 
-get_variable_multiplier(_, ::Type{<:PSY.ElectricLoad}, ::AbstractLoadFormulation) = -1.0
+get_variable_multiplier(::VariableType, ::Type{<:PSY.ElectricLoad}, ::AbstractLoadFormulation) = -1.0
 
 ########################### ActivePowerVariable, ElectricLoad ####################################
 
@@ -35,10 +35,22 @@ proportional_cost(cost::PSY.OperationalCost, ::OnVariable, ::PSY.ElectricLoad, :
 
 objective_function_multiplier(::VariableType, ::AbstractControllablePowerLoadFormulation)=OBJECTIVE_FUNCTION_NEGATIVE
 
-variable_cost(::Nothing, ::PSY.ElectricLoad, ::ActivePowerVariable, ::AbstractControllablePowerLoadFormulation)=1.0
-variable_cost(cost::PSY.OperationalCost, ::ActivePowerVariable, ::PSY.ElectricLoad, ::AbstractControllablePowerLoadFormulation)=PSY.get_variable(cost)
-
 #! format: on
+
+# proportional cost: connects to common implementation in IOM
+# see also the definition in thermal_generation.jl
+add_proportional_cost!(
+    container::OptimizationContainer,
+    ::U,
+    devices::IS.FlattenIteratorWrapper{T},
+    ::PowerLoadInterruption,
+) where {U <: OnVariable, T <: PSY.ControllableLoad} =
+    add_proportional_cost_maybe_time_variant!(
+        container,
+        U(),
+        devices,
+        PowerLoadInterruption(),
+    )
 
 function get_default_time_series_names(
     ::Type{<:PSY.ElectricLoad},
@@ -173,7 +185,7 @@ function add_constraints!(
 end
 
 ############################## FormulationControllable Load Cost ###########################
-function objective_function!(
+function add_to_objective_function!(
     container::OptimizationContainer,
     devices::IS.FlattenIteratorWrapper{T},
     ::DeviceModel{T, U},
@@ -183,7 +195,7 @@ function objective_function!(
     return
 end
 
-function objective_function!(
+function add_to_objective_function!(
     container::OptimizationContainer,
     devices::IS.FlattenIteratorWrapper{T},
     ::DeviceModel{T, U},
@@ -239,15 +251,23 @@ is_time_variant_term(
 ) =
     is_time_variant(PSY.get_decremental_initial_input(cost))
 
-proportional_cost(
+function proportional_cost(
     container::OptimizationContainer,
     cost::PSY.MarketBidCost,
     ::OnVariable,
-    comp::PSY.ControllableLoad,
+    comp::T,
     ::PowerLoadInterruption,
     t::Int,
-) =
-    _lookup_maybe_time_variant_param(container, comp, t,
-        Val(is_time_variant(PSY.get_decremental_initial_input(cost))),
-        PSY.get_initial_input ∘ PSY.get_decremental_offer_curves ∘ PSY.get_operation_cost,
-        DecrementalCostAtMinParameter())
+) where {T <: PSY.ControllableLoad}
+    if is_time_variant(PSY.get_decremental_initial_input(cost))
+        name = get_name(comp)
+        param_arr = get_parameter_array(container, DecrementalCostAtMinParameter(), T)
+        param_mult =
+            get_parameter_multiplier_array(container, DecrementalCostAtMinParameter(), T)
+        return param_arr[name, t] * param_mult[name, t]
+    else
+        return PSY.get_initial_input(
+            PSY.get_decremental_offer_curves(PSY.get_operation_cost(comp)),
+        )
+    end
+end

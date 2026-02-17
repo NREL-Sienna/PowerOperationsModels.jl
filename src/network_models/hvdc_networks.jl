@@ -1,5 +1,7 @@
 ## To add method of upper_bounds and lower_bounds for DCVoltage
 get_variable_binary(::DCVoltage, ::Type{PSY.DCBus}, ::AbstractHVDCNetworkModel) = false
+get_variable_warm_start_value(::DCVoltage, ::PSY.DCBus, ::AbstractHVDCNetworkModel) =
+    nothing
 get_variable_lower_bound(::DCVoltage, d::PSY.DCBus, ::AbstractHVDCNetworkModel) =
     PSY.get_voltage_limits(d).min
 get_variable_upper_bound(::DCVoltage, d::PSY.DCBus, ::AbstractHVDCNetworkModel) =

@@ -6,15 +6,13 @@ Abstract type for Device Formulations (a.k.a Models)
 ```julia
 import PowerOperationsModels
 const POM = PowerOperationsModels
-struct MyCustomDeviceFormulation <: POM.AbstractDeviceFormulation end
+struct MyCustomDeviceFormulation <: IOM.AbstractDeviceFormulation end
 ```
 """
 
 ########################### Thermal Generation Formulations ################################
-abstract type AbstractThermalFormulation <: AbstractDeviceFormulation end
-
-abstract type AbstractThermalDispatchFormulation <: AbstractThermalFormulation end
-abstract type AbstractThermalUnitCommitment <: AbstractThermalFormulation end
+# AbstractThermalFormulation: in IS
+# AbstractThermalDispatchFormuation, UnitCommentment: in IOM
 
 abstract type AbstractStandardUnitCommitment <: AbstractThermalUnitCommitment end
 abstract type AbstractCompactUnitCommitment <: AbstractThermalUnitCommitment end
@@ -65,7 +63,7 @@ Formulation type to enable thermal compact dispatch
 struct ThermalCompactDispatch <: AbstractThermalDispatchFormulation end
 
 ############################# Electric Load Formulations ###################################
-abstract type AbstractLoadFormulation <: AbstractDeviceFormulation end
+# AbstractLoadFormulation is imported from IS.Optimization via IOM
 abstract type AbstractControllablePowerLoadFormulation <: AbstractLoadFormulation end
 
 """
@@ -89,7 +87,7 @@ struct ReserveLimitedRegulation <: AbstractRegulationFormulation end
 struct DeviceLimitedRegulation <: AbstractRegulationFormulation end
 
 ########################### Renewable Generation Formulations ##############################
-abstract type AbstractRenewableFormulation <: AbstractDeviceFormulation end
+# AbstractRenewableFormulation is imported from IS.Optimization via IOM
 abstract type AbstractRenewableDispatchFormulation <: AbstractRenewableFormulation end
 abstract type AbstractSecurityConstrainedRenewableDispatchFormulation <:
               AbstractRenewableDispatchFormulation end
@@ -126,7 +124,7 @@ Abstract type for Branch Formulations (a.k.a Models)
 ```julia
 import PowerOperationsModels
 const POM = PowerOperationsModels
-struct MyCustomBranchFormulation <: POM.AbstractBranchFormulation end
+struct MyCustomBranchFormulation <: IOM.AbstractBranchFormulation end
 ```
 """
 abstract type AbstractBranchFormulation <: AbstractDeviceFormulation end
@@ -223,20 +221,8 @@ DC Voltage HVDC network model, where currents are solved based on DC voltage dif
 """
 struct VoltageDispatchHVDCNetworkModel <: AbstractHVDCNetworkModel end
 
-"""
-Abstract type for Service Formulations (a.k.a Models)
-
-# Example
-
-```julia
-import PowerOperationsModels
-const POM = PowerOperationsModels
-struct MyServiceFormulation <: POM.AbstractServiceFormulation end
-```
-"""
-abstract type AbstractServiceFormulation end
-
-abstract type AbstractReservesFormulation <: AbstractServiceFormulation end
+########################### Service Formulations ###########################################
+# AbstractServiceFormulation and AbstractReservesFormulation are imported from IS.Optimization via IOM
 
 abstract type AbstractSecurityConstrainedReservesFormulation <: AbstractReservesFormulation end
 

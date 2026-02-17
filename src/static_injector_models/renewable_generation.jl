@@ -1,5 +1,5 @@
 #! format: off
-get_variable_multiplier(_, ::Type{<:PSY.RenewableGen}, ::AbstractRenewableFormulation) = 1.0
+get_variable_multiplier(::VariableType, ::Type{<:PSY.RenewableGen}, ::AbstractRenewableFormulation) = 1.0
 get_expression_type_for_reserve(::ActivePowerReserveVariable, ::Type{<:PSY.RenewableGen}, ::Type{<:PSY.Reserve{PSY.ReserveUp}}) = ActivePowerRangeExpressionUB
 get_expression_type_for_reserve(::ActivePowerReserveVariable, ::Type{<:PSY.RenewableGen}, ::Type{<:PSY.Reserve{PSY.ReserveDown}}) = ActivePowerRangeExpressionLB
 ########################### ActivePowerVariable, RenewableGen #################################
@@ -22,10 +22,6 @@ get_multiplier_value(::AbstractPiecewiseLinearBreakpointParameter, ::PSY.Renewab
 
 ########################Objective Function##################################################
 objective_function_multiplier(::ActivePowerVariable, ::AbstractRenewableDispatchFormulation)=OBJECTIVE_FUNCTION_NEGATIVE
-
-variable_cost(::Nothing, ::ActivePowerVariable, ::PSY.RenewableDispatch, ::AbstractRenewableDispatchFormulation)=0.0
-variable_cost(cost::PSY.OperationalCost, ::ActivePowerVariable, ::PSY.RenewableDispatch, ::AbstractRenewableDispatchFormulation)=PSY.get_variable(cost)
-
 #! format: on
 
 get_initial_conditions_device_model(
@@ -155,7 +151,7 @@ function add_constraints!(
 end
 
 ##################################### renewable generation cost ############################
-function objective_function!(
+function add_to_objective_function!(
     container::OptimizationContainer,
     devices::IS.FlattenIteratorWrapper{T},
     ::DeviceModel{T, U},

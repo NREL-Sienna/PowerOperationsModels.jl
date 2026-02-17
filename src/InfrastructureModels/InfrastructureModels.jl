@@ -1,5 +1,6 @@
 module InfrastructureModels
 
+import InfrastructureSystems
 import JuMP
 import Memento
 

@@ -12,8 +12,9 @@ macro def(name, definition)
     end
 end
 
-"root of the infrastructure model formulation type hierarchy"
-abstract type AbstractInfrastructureModel end
+"root of the infrastructure model formulation type hierarchy (defined in IS)"
+const AbstractInfrastructureModel =
+    InfrastructureSystems.Optimization.AbstractInfrastructureModel
 
 "a macro for adding the standard InfrastructureModels fields to a type definition"
 InfrastructureModels.@def im_fields begin

@@ -76,7 +76,7 @@ struct MinInterfaceFlowLimitParameter <: TimeSeriesParameter end
 # Variable Value Parameters
 #################################################################################
 
-abstract type VariableValueParameter <: RightHandSideParameter end
+# VariableValueParameter: moved into IOM.
 
 """
 Parameter to define variable upper bound
@@ -88,15 +88,9 @@ Parameter to define variable lower bound
 """
 struct LowerBoundValueParameter <: VariableValueParameter end
 
-"""
-Parameter to define unit commitment status updated from the system state
-"""
-struct OnStatusParameter <: VariableValueParameter end
+# OnStatusParameter: moved into IOM.
 
-"""
-Parameter to FixValueParameter
-"""
-struct FixValueParameter <: VariableValueParameter end
+# FixValueParameter: moved into IOM.
 
 #################################################################################
 # Objective Function Parameters
@@ -107,45 +101,8 @@ Parameter to define cost function coefficient
 """
 struct CostFunctionParameter <: ObjectiveFunctionParameter end
 
-"""
-Parameter to define fuel cost time series
-"""
-struct FuelCostParameter <: ObjectiveFunctionParameter end
-
-"Parameter to define startup cost time series"
-struct StartupCostParameter <: ObjectiveFunctionParameter end
-
-"Parameter to define shutdown cost time series"
-struct ShutdownCostParameter <: ObjectiveFunctionParameter end
-
-"Parameters to define the cost at the minimum available power"
-abstract type AbstractCostAtMinParameter <: ObjectiveFunctionParameter end
-
-"[`AbstractCostAtMinParameter`](@ref) for the incremental case (power source)"
-struct IncrementalCostAtMinParameter <: AbstractCostAtMinParameter end
-
-"[`AbstractCostAtMinParameter`](@ref) for the decremental case (power sink)"
-struct DecrementalCostAtMinParameter <: AbstractCostAtMinParameter end
-
-"Parameters to define the slopes of a piecewise linear cost function"
-abstract type AbstractPiecewiseLinearSlopeParameter <: ObjectiveFunctionParameter end
-
-"[`AbstractPiecewiseLinearSlopeParameter`](@ref) for the incremental case (power source)"
-struct IncrementalPiecewiseLinearSlopeParameter <: AbstractPiecewiseLinearSlopeParameter end
-
-"[`AbstractPiecewiseLinearSlopeParameter`](@ref) for the decremental case (power sink)"
-struct DecrementalPiecewiseLinearSlopeParameter <: AbstractPiecewiseLinearSlopeParameter end
-
-"Parameters to define the breakpoints of a piecewise linear function"
-abstract type AbstractPiecewiseLinearBreakpointParameter <: TimeSeriesParameter end
-
-"[`AbstractPiecewiseLinearBreakpointParameter`](@ref) for the incremental case (power source)"
-struct IncrementalPiecewiseLinearBreakpointParameter <:
-       AbstractPiecewiseLinearBreakpointParameter end
-
-"[`AbstractPiecewiseLinearBreakpointParameter`](@ref) for the decremental case (power sink)"
-struct DecrementalPiecewiseLinearBreakpointParameter <:
-       AbstractPiecewiseLinearBreakpointParameter end
+# startup, shutdown, fuel cost parameters: in IOM
+# Offer curve parameter types (CostAtMin, PiecewiseLinearSlope, PiecewiseLinearBreakpoint): moved into IOM
 
 #################################################################################
 # Auxiliary Variable Value Parameters
@@ -157,7 +114,7 @@ abstract type AuxVariableValueParameter <: RightHandSideParameter end
 # Event Parameters
 #################################################################################
 
-abstract type EventParameter <: ParameterType end
+# EventParameter: moved into IOM.
 
 """
 Parameter to define component availability status updated from the system state

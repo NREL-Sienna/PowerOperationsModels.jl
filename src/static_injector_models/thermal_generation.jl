@@ -6,8 +6,9 @@ requires_initialization(::ThermalStandardDispatch) = true
 requires_initialization(::ThermalBasicCompactUnitCommitment) = false
 requires_initialization(::ThermalBasicUnitCommitment) = false
 
-get_variable_multiplier(_, ::Type{<:PSY.ThermalGen}, ::AbstractThermalFormulation) = 1.0
-get_variable_multiplier(::OnVariable, d::PSY.ThermalGen, ::Union{AbstractCompactUnitCommitment, ThermalCompactDispatch}) = PSY.get_active_power_limits(d).min
+get_variable_multiplier(::VariableType, ::Type{<:PSY.ThermalGen}, ::AbstractThermalFormulation) = 1.0
+# Per-device P_min multiplier computed inline at add_to_expression! call sites.
+get_variable_multiplier(::OnVariable, ::Type{<:PSY.ThermalGen}, ::Union{AbstractCompactUnitCommitment, ThermalCompactDispatch}) = 1.0
 get_expression_type_for_reserve(::ActivePowerReserveVariable, ::Type{<:PSY.ThermalGen}, ::Type{<:PSY.Reserve{PSY.ReserveUp}}) = ActivePowerRangeExpressionUB
 get_expression_type_for_reserve(::ActivePowerReserveVariable, ::Type{<:PSY.ThermalGen}, ::Type{<:PSY.Reserve{PSY.ReserveDown}}) = ActivePowerRangeExpressionLB
 
@@ -95,11 +96,18 @@ function proportional_cost(container::OptimizationContainer, cost::PSY.ThermalGe
 end
 is_time_variant_term(::OptimizationContainer, ::PSY.ThermalGenerationCost, ::OnVariable, ::PSY.ThermalGen, ::AbstractThermalFormulation, t::Int) = false
 
-proportional_cost(container::OptimizationContainer, cost::PSY.MarketBidCost, ::OnVariable, comp::PSY.ThermalGen, ::AbstractThermalFormulation, t::Int) =
-    _lookup_maybe_time_variant_param(container, comp, t,
-    Val(is_time_variant(PSY.get_incremental_initial_input(cost))),
-    PSY.get_initial_input ∘ PSY.get_incremental_offer_curves ∘ PSY.get_operation_cost,
-    IncrementalCostAtMinParameter())
+function proportional_cost(container::OptimizationContainer, cost::PSY.MarketBidCost, ::OnVariable, comp::T, ::AbstractThermalFormulation, t::Int) where {T <: PSY.ThermalGen}
+    if is_time_variant(PSY.get_incremental_initial_input(cost))
+        name = get_name(comp)
+        # inelegant: an iterator wrapping either param_array[name, :] .* param_mult[name, :]
+        # (load values lazily) or repeat(constant_value) would be closer to what we want.
+        param_arr = get_parameter_array(container, IncrementalCostAtMinParameter(), T)
+        param_mult = get_parameter_multiplier_array(container, IncrementalCostAtMinParameter(), T)
+        return param_arr[name, t] * param_mult[name, t]
+    else
+        return PSY.get_initial_input(PSY.get_incremental_offer_curves(PSY.get_operation_cost(comp)))
+    end
+end
 is_time_variant_term(::OptimizationContainer, cost::PSY.MarketBidCost, ::OnVariable, ::PSY.ThermalGen, ::AbstractThermalFormulation, t::Int) =
     is_time_variant(PSY.get_incremental_initial_input(cost))
 
@@ -111,16 +119,11 @@ has_multistart_variables(::PSY.ThermalMultiStart, ::ThermalMultiStartUnitCommitm
 
 objective_function_multiplier(::VariableType, ::AbstractThermalFormulation)=OBJECTIVE_FUNCTION_POSITIVE
 
-sos_status(::PSY.ThermalGen, ::AbstractThermalDispatchFormulation)=SOSStatusVariable.NO_VARIABLE
-sos_status(::PSY.ThermalGen, ::AbstractThermalUnitCommitment)=SOSStatusVariable.VARIABLE
-sos_status(::PSY.ThermalMultiStart, ::AbstractStandardUnitCommitment)=SOSStatusVariable.VARIABLE
-sos_status(::PSY.ThermalMultiStart, ::ThermalMultiStartUnitCommitment)=SOSStatusVariable.VARIABLE
-
 # Startup cost interpretations!
 # Validators: check that the types match (formulation is optional) and redirect to the simpler methods
-start_up_cost(cost, ::PSY.ThermalGen, ::T, ::Union{AbstractThermalFormulation, Nothing} = nothing) where {T <: StartVariable} =
+start_up_cost(cost, ::Type{<:PSY.ThermalGen}, ::T, ::Union{AbstractThermalFormulation, Nothing} = nothing) where {T <: StartVariable} =
     start_up_cost(cost, T())
-start_up_cost(cost, ::PSY.ThermalMultiStart, ::T, ::ThermalMultiStartUnitCommitment = ThermalMultiStartUnitCommitment()) where {T <: MultiStartVariable} =
+start_up_cost(cost, ::Type{<:PSY.ThermalMultiStart}, ::T, ::ThermalMultiStartUnitCommitment = ThermalMultiStartUnitCommitment()) where {T <: MultiStartVariable} =
     start_up_cost(cost, T())
 
 # Implementations: given a single number, tuple, or StartUpStages and a variable, do the right thing
@@ -145,9 +148,6 @@ uses_compact_power(::PSY.ThermalGen, ::AbstractThermalFormulation)=false
 uses_compact_power(::PSY.ThermalGen, ::AbstractCompactUnitCommitment )=true
 uses_compact_power(::PSY.ThermalGen, ::ThermalCompactDispatch)=true
 
-variable_cost(cost::PSY.OperationalCost, ::ActivePowerVariable, ::PSY.ThermalGen, ::AbstractThermalFormulation)=PSY.get_variable(cost)
-variable_cost(cost::PSY.OperationalCost, ::PowerAboveMinimumVariable, ::PSY.ThermalGen, ::AbstractThermalFormulation)=PSY.get_variable(cost)
-
 """
 Theoretical Cost at power output zero. Mathematically is the intercept with the y-axis
 """
@@ -166,6 +166,7 @@ function _onvar_cost(::OptimizationContainer, cost_function::PSY.FuelCurve{PSY.P
 end
 
 # this one implementation is thermal-specific, and requires the component.
+# (well, really just the name of the component.)
 function _onvar_cost(container::OptimizationContainer, cost_function::Union{PSY.FuelCurve{PSY.LinearCurve}, PSY.FuelCurve{PSY.QuadraticCurve}}, d::T, t::Int) where {T <: PSY.ThermalGen}
     value_curve = PSY.get_value_curve(cost_function)
     cost_component = PSY.get_function_data(value_curve)
@@ -258,22 +259,8 @@ function get_min_max_limits(
     return PSY.get_active_power_limits(device)
 end
 
-"""
-Range constraints for thermal compact dispatch
-"""
-function add_constraints!(
-    container::OptimizationContainer,
-    T::Type{<:PowerVariableLimitsConstraint},
-    U::Type{<:Union{PowerAboveMinimumVariable, ExpressionType}},
-    devices::IS.FlattenIteratorWrapper{V},
-    model::DeviceModel{V, W},
-    network_model::NetworkModel{X},
-) where {V <: PSY.ThermalGen, W <: ThermalCompactDispatch, X <: AbstractPowerModel}
-    if !has_semicontinuous_feedforward(model, PowerAboveMinimumVariable)
-        add_range_constraints!(container, T, U, devices, model, X)
-    end
-    return
-end
+# removed: add_constraints! for compact formulations. body was identical to 
+# the AbstractThermalDispatch version.
 
 """
 Min and max active power limits of generators for thermal dispatch compact formulations
@@ -786,8 +773,8 @@ function add_constraints!(
     )
 
     for ic in initial_conditions
-        name = PSY.get_name(get_component(ic))
-        if !PSY.get_must_run(get_component(ic))
+        name = PSY.get_name(PSY.get_component(ic))
+        if !PSY.get_must_run(PSY.get_component(ic))
             constraint[name, 1] = JuMP.@constraint(
                 get_jump_model(container),
                 varon[name, 1] == get_value(ic) + varstart[name, 1] - varstop[name, 1]
@@ -800,7 +787,7 @@ function add_constraints!(
     end
 
     for ic in initial_conditions
-        if PSY.get_must_run(get_component(ic))
+        if PSY.get_must_run(PSY.get_component(ic))
             continue
         else
             name = get_component_name(ic)
@@ -1298,8 +1285,8 @@ function add_constraints!(
     )
 
     for t in time_steps, (ix, ic) in enumerate(initial_conditions_offtime)
-        name = PSY.get_name(get_component(ic))
-        startup_types = PSY.get_start_types(get_component(ic))
+        name = PSY.get_name(PSY.get_component(ic))
+        startup_types = PSY.get_start_types(PSY.get_component(ic))
         time_limits = _convert_hours_to_timesteps(
             PSY.get_start_time_limits(get_component(ic)),
             resolution,
@@ -1452,10 +1439,27 @@ function add_constraints!(
     return
 end
 
+# proportional cost: connects to common implementation in IOM
+# see also the definition in with electric_loads.jl
+skip_proportional_cost(d::PSY.ThermalGen) = get_must_run(d)
+
+add_proportional_cost!(
+    container::OptimizationContainer,
+    ::U,
+    devices::IS.FlattenIteratorWrapper{T},
+    formulation::AbstractThermalFormulation,
+) where {U <: OnVariable, T <: PSY.ThermalGen} =
+    add_proportional_cost_maybe_time_variant!(
+        container,
+        U(),
+        devices,
+        formulation,
+    )
+
 ########################### Objective Function Calls#############################################
 # These functions are custom implementations of the cost data. In the file objective_functions.jl there are default implementations. Define these only if needed.
 
-function objective_function!(
+function add_to_objective_function!(
     container::OptimizationContainer,
     devices::IS.FlattenIteratorWrapper{T},
     device_model::DeviceModel{T, U},
@@ -1472,7 +1476,7 @@ function objective_function!(
     return
 end
 
-function objective_function!(
+function add_to_objective_function!(
     container::OptimizationContainer,
     devices::IS.FlattenIteratorWrapper{T},
     device_model::DeviceModel{T, U},
@@ -1489,7 +1493,7 @@ function objective_function!(
     return
 end
 
-function objective_function!(
+function add_to_objective_function!(
     container::OptimizationContainer,
     devices::IS.FlattenIteratorWrapper{PSY.ThermalMultiStart},
     device_model::DeviceModel{PSY.ThermalMultiStart, U},
@@ -1508,7 +1512,7 @@ function objective_function!(
     return
 end
 
-function objective_function!(
+function add_to_objective_function!(
     container::OptimizationContainer,
     devices::IS.FlattenIteratorWrapper{T},
     device_model::DeviceModel{T, U},
@@ -1522,7 +1526,7 @@ function objective_function!(
     return
 end
 
-function objective_function!(
+function add_to_objective_function!(
     container::OptimizationContainer,
     devices::IS.FlattenIteratorWrapper{T},
     device_model::DeviceModel{T, U},
@@ -1536,7 +1540,7 @@ function objective_function!(
     return
 end
 
-function objective_function!(
+function add_to_objective_function!(
     ::OptimizationContainer,
     ::IS.FlattenIteratorWrapper{PSY.ThermalMultiStart},
     ::DeviceModel{PSY.ThermalMultiStart, ThermalDispatchNoMin},
@@ -1547,4 +1551,95 @@ function objective_function!(
             "ThermalDispatchNoMin cost function is not compatible with ThermalMultiStart Devices.",
         ),
     )
+end
+
+"""
+Add PWL cost terms for ThermalDispatchNoMin formulation.
+Rejects non-convex or negative-slope PWL data since ThermalDispatchNoMin
+cannot use SOS-2 formulations.
+"""
+function IOM._add_pwl_term!(
+    container::IOM.OptimizationContainer,
+    component::T,
+    cost_function::Union{
+        PSY.CostCurve{PSY.PiecewisePointCurve},
+        PSY.FuelCurve{PSY.PiecewisePointCurve},
+    },
+    ::U,
+    ::V,
+) where {T <: PSY.ThermalGen, U <: IOM.VariableType, V <: ThermalDispatchNoMin}
+    name = PSY.get_name(component)
+    value_curve = PSY.get_value_curve(cost_function)
+    cost_component = PSY.get_function_data(value_curve)
+    base_power = IOM.get_model_base_power(container)
+    device_base_power = PSY.get_base_power(component)
+    power_units = PSY.get_power_units(cost_function)
+
+    # Normalize data
+    data = IOM.get_piecewise_pointcurve_per_system_unit(
+        cost_component,
+        power_units,
+        base_power,
+        device_base_power,
+    )
+    @debug "PWL cost function detected for device $(name) using $V"
+    slopes = PSY.get_slopes(data)
+    if any(slopes .< 0) || !PSY.is_convex(data)
+        throw(
+            IS.InvalidValue(
+                "The PWL cost data provided for generator $(name) is not compatible with $U.",
+            ),
+        )
+    end
+
+    # Compact PWL data does not exist anymore
+    x_coords = PSY.get_x_coords(data)
+    if x_coords[1] != 0.0
+        y_coords = PSY.get_y_coords(data)
+        x_first = round(x_coords[1]; digits = 3)
+        y_first = round(y_coords[1]; digits = 3)
+        slope_first = round(slopes[1]; digits = 3)
+        guess_y_zero = y_coords[1] - slopes[1] * x_coords[1]
+        @warn(
+            "PWL has no 0.0 intercept for generator $(name). First point is given at (x = $(x_first), y = $(y_first)). Adding a first intercept at (x = 0.0, y = $(round(guess_y_zero, digits = 3)) to have equal initial slope $(slope_first)"
+        )
+        if guess_y_zero < 0.0
+            error(
+                "Added zero intercept has negative cost for generator $(name). Consider using other formulation or improve data.",
+            )
+        end
+        intercept_point = (x = 0.0, y = guess_y_zero + IOM.COST_EPSILON)
+        data = PSY.PiecewiseLinearData(vcat(intercept_point, PSY.get_points(data)))
+        @assert PSY.is_convex(data)
+    end
+
+    time_steps = IOM.get_time_steps(container)
+    pwl_cost_expressions = Vector{JuMP.AffExpr}(undef, time_steps[end])
+    break_points = PSY.get_x_coords(data)
+    sos_val = IOM._get_sos_value(container, V, component)
+    temp_cost_function =
+        IOM.create_temporary_cost_function_in_system_per_unit(cost_function, data)
+    for t in time_steps
+        IOM._add_pwl_variables!(container, T, name, t, data)
+        power_var = IOM.get_variable(container, U(), T)[name, t]
+        IOM._add_pwl_constraint_standard!(
+            container,
+            component,
+            break_points,
+            sos_val,
+            t,
+            power_var,
+        )
+        pwl_cost =
+            IOM._get_pwl_cost_expression(
+                container,
+                component,
+                t,
+                temp_cost_function,
+                U(),
+                V(),
+            )
+        pwl_cost_expressions[t] = pwl_cost
+    end
+    return pwl_cost_expressions
 end

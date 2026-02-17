@@ -278,7 +278,12 @@ function construct_device!(
 
     add_feedforward_constraints!(container, model, devices)
 
-    objective_function!(container, devices, model, get_network_formulation(network_model))
+    add_to_objective_function!(
+        container,
+        devices,
+        model,
+        get_network_formulation(network_model),
+    )
 
     add_constraint_dual!(container, sys, model)
     return
@@ -1172,7 +1177,7 @@ function construct_service!(
         service = service,
     )
 
-    objective_function!(container, service, model)
+    add_to_objective_function!(container, service, model)
 
     add_feedforward_constraints!(container, model, service)
 

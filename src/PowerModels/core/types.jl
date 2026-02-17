@@ -18,11 +18,9 @@
 ================================================#
 
 ##### Top Level Abstract Types #####
-# AbstractPowerModel is imported from InfrastructureSystems.Optimization
-# via the PowerModels module header
-
-"Active power only models"
-abstract type AbstractActivePowerModel <: AbstractPowerModel end
+# AbstractPowerModel, AbstractActivePowerModel, and AbstractACPModel are
+# const aliases for InfrastructureSystems.Optimization types, defined in
+# the PowerModels module header (PowerModels.jl).
 
 "Variants that target conic solvers"
 abstract type AbstractConicModel <: AbstractPowerModel end
@@ -45,8 +43,7 @@ abstract type AbstractBFConicModel <: AbstractBFModel end
 
 ##### Exact Non-Convex Models #####
 
-""
-abstract type AbstractACPModel <: AbstractPowerModel end
+# AbstractACPModel is a const alias from IS (see PowerModels.jl header)
 
 """
 AC power flow Model with polar bus voltage variables.
@@ -149,7 +146,6 @@ mutable struct IVRPowerModel <: AbstractIVRModel
 end
 
 ##### Linear Approximations #####
-# AbstractDCPModel is imported from IS.Optimization
 
 """
 Linearized 'DC' power flow Model with polar voltage variables.

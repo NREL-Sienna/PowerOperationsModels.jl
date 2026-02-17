@@ -1,7 +1,7 @@
 #! format: off
 ############################### Reserve Variables #########################################
 
-get_variable_multiplier(_, ::Type{<:PSY.Reserve}, ::AbstractReservesFormulation) = NaN
+get_variable_multiplier(::VariableType, ::Type{<:PSY.Reserve}, ::AbstractReservesFormulation) = NaN
 ############################### PostContingencyActivePowerReserveDeploymentVariable, Reserve #########################################
 get_variable_binary(::PostContingencyActivePowerReserveDeploymentVariable, ::Type{<:PSY.Reserve}, ::AbstractSecurityConstrainedReservesFormulation) = false
 function get_variable_upper_bound(::PostContingencyActivePowerReserveDeploymentVariable, r::PSY.Reserve, d::PSY.Device, ::AbstractSecurityConstrainedReservesFormulation)
@@ -41,7 +41,6 @@ get_parameter_multiplier(::VariableValueParameter, d::Type{<:PSY.AbstractReserve
 get_initial_parameter_value(::VariableValueParameter, d::Type{<:PSY.AbstractReserve}, ::AbstractReservesFormulation) = 0.0
 
 objective_function_multiplier(::ServiceRequirementVariable, ::StepwiseCostReserve) = -1.0
-sos_status(::PSY.ReserveDemandCurve, ::StepwiseCostReserve)=SOSStatusVariable.NO_VARIABLE
 uses_compact_power(::PSY.ReserveDemandCurve, ::StepwiseCostReserve)=false
 #! format: on
 
@@ -161,7 +160,7 @@ function add_constraints!(
         get_variable(container, ActivePowerReserveVariable(), SR, service_name)
     use_slacks = get_use_slacks(model)
 
-    ts_vector = get_time_series(container, service, "requirement")
+    ts_vector = IOM.get_time_series(container, service, "requirement")
 
     use_slacks && (slack_vars = reserve_slacks!(container, service))
     requirement = PSY.get_requirement(service)
@@ -229,7 +228,7 @@ function add_constraints!(
     var_r = get_variable(container, ActivePowerReserveVariable(), SR, service_name)
     jump_model = get_jump_model(container)
     requirement = PSY.get_requirement(service)
-    ts_vector = get_time_series(container, service, "requirement")
+    ts_vector = IOM.get_time_series(container, service, "requirement")
     param_container =
         get_parameter(container, RequirementTimeSeriesParameter(), SR, service_name)
     param = get_parameter_column_refs(param_container, service_name)
@@ -296,7 +295,7 @@ function add_constraints!(
     return
 end
 
-function objective_function!(
+function add_to_objective_function!(
     container::OptimizationContainer,
     service::SR,
     ::ServiceModel{SR, T},
@@ -502,16 +501,17 @@ function add_constraints!(
     return
 end
 
-function objective_function!(
+function add_to_objective_function!(
     container::OptimizationContainer,
     service::PSY.ReserveDemandCurve{T},
     ::ServiceModel{PSY.ReserveDemandCurve{T}, SR},
 ) where {T <: PSY.ReserveDirection, SR <: StepwiseCostReserve}
-    add_variable_cost!(container, ServiceRequirementVariable(), service, SR())
+    add_reserves_variable_cost!(container, ServiceRequirementVariable(), service, SR())
     return
 end
 
-function add_variable_cost!(
+# originally was add_variable_cost!, but I don't see other call sites besides the above.
+function add_reserves_variable_cost!(
     container::OptimizationContainer,
     ::U,
     service::T,
@@ -531,6 +531,7 @@ function _add_reserves_variable_cost_to_objective!(
     @debug "PWL Variable Cost" _group = LOG_GROUP_COST_FUNCTIONS component_name
     # If array is full of tuples with zeros return 0.0
     time_steps = get_time_steps(container)
+    # FIXME clashes with name of a function...ick.
     variable_cost = PSY.get_variable(component)
     if variable_cost isa Nothing
         error("ReserveDemandCurve $(component.name) does not have cost data.")

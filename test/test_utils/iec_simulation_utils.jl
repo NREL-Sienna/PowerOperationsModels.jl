@@ -164,16 +164,16 @@ function run_iec_sim(sys::System, comp_name::String, ::Type{T};
     # (https://github.com/NREL-Sienna/PowerSimulations.jl/issues/1429)
 
     decisions = (
-        _read_one_value(res, POM.ActivePowerOutVariable, T, comp_name),
-        _read_one_value(res, POM.ActivePowerInVariable, T, comp_name),
+        _read_one_value(res, IOM.ActivePowerOutVariable, T, comp_name),
+        _read_one_value(res, IOM.ActivePowerInVariable, T, comp_name),
     )
 
-    output_var = read_variable_dict(res, POM.ActivePowerOutVariable, T)
-    input_var = read_variable_dict(res, POM.ActivePowerInVariable, T)
+    output_var = read_variable_dict(res, IOM.ActivePowerOutVariable, T)
+    input_var = read_variable_dict(res, IOM.ActivePowerInVariable, T)
 
     for key in keys(output_var)
-        output_on = output_var[key][!, "value"] .> POM.COST_EPSILON
-        input_on = input_var[key][!, "value"] .> POM.COST_EPSILON
+        output_on = output_var[key][!, "value"] .> IOM.COST_EPSILON
+        input_on = input_var[key][!, "value"] .> IOM.COST_EPSILON
         if reservation
             @test all(.~(output_on .& input_on))  # no simultaneous import/export
         else
@@ -191,8 +191,8 @@ function cost_due_to_time_varying_iec(
     res::IS.Results,
     ::Type{T},
 ) where {T <: PSY.Component}
-    power_in_vars = read_variable_dict(res, POM.ActivePowerInVariable, T)
-    power_out_vars = read_variable_dict(res, POM.ActivePowerOutVariable, T)
+    power_in_vars = read_variable_dict(res, IOM.ActivePowerInVariable, T)
+    power_out_vars = read_variable_dict(res, IOM.ActivePowerOutVariable, T)
     result = SortedDict{DateTime, DataFrame}()
 
     for step_dt in keys(power_in_vars)
@@ -221,7 +221,7 @@ function cost_due_to_time_varying_iec(
                 (-1.0, power_in_df, PSY.get_export_offer_curves),
             )
                 offer_curves = getter(cost)
-                if POM.is_time_variant(offer_curves)
+                if IOM.is_time_variant(offer_curves)
                     vc_ts = getter(comp, cost; start_time = step_dt)
                     @assert all(unique(power_df.DateTime) .== TimeSeries.timestamp(vc_ts))
                     step_df[!, gen_name] .+=

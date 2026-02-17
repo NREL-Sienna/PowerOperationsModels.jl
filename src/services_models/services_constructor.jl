@@ -142,7 +142,7 @@ function construct_service!(
         contributing_devices,
         model,
     )
-    objective_function!(container, service, model)
+    add_to_objective_function!(container, service, model)
 
     add_feedforward_constraints!(container, model, service)
 
@@ -199,7 +199,7 @@ function construct_service!(
         contributing_devices,
         model,
     )
-    objective_function!(container, service, model)
+    add_to_objective_function!(container, service, model)
 
     add_feedforward_constraints!(container, model, service)
 
@@ -249,7 +249,7 @@ function construct_service!(
 
     add_constraints!(container, RequirementConstraint, service, contributing_devices, model)
 
-    objective_function!(container, service, model)
+    add_to_objective_function!(container, service, model)
 
     add_feedforward_constraints!(container, model, service)
 
@@ -347,7 +347,7 @@ function construct_service!(
 
     add_constraint_dual!(container, sys, model)
 
-    objective_function!(container, services, model)
+    add_to_objective_function!(container, services, model)
     return
 end
 =#
@@ -451,7 +451,7 @@ function construct_service!(
         model,
     )
 
-    objective_function!(container, service, model)
+    add_to_objective_function!(container, service, model)
 
     add_feedforward_constraints!(container, model, service)
 
@@ -516,7 +516,7 @@ function construct_service!(
         model,
     )
 
-    objective_function!(container, service, model)
+    add_to_objective_function!(container, service, model)
 
     add_feedforward_constraints!(container, model, service)
 
@@ -624,7 +624,7 @@ function construct_service!(
     add_constraints!(container, InterfaceFlowLimit, service, model)
     add_feedforward_constraints!(container, model, service)
     add_constraint_dual!(container, sys, model)
-    objective_function!(container, service, model)
+    add_to_objective_function!(container, service, model)
     return
 end
 
@@ -670,7 +670,7 @@ function construct_service!(
     add_constraints!(container, InterfaceFlowLimit, service, model)
     add_feedforward_constraints!(container, model, service)
     add_constraint_dual!(container, sys, model)
-    objective_function!(container, service, model)
+    add_to_objective_function!(container, service, model)
     return
 end
 
@@ -727,7 +727,7 @@ function construct_service!(
     add_constraints!(container, InterfaceFlowLimit, service, model)
     add_feedforward_constraints!(container, model, service)
     add_constraint_dual!(container, sys, model)
-    objective_function!(container, service, model)
+    add_to_objective_function!(container, service, model)
     return
 end
 
@@ -774,7 +774,7 @@ function construct_service!(
     add_constraints!(container, InterfaceFlowLimit, service, model)
     add_feedforward_constraints!(container, model, service)
     add_constraint_dual!(container, sys, model)
-    objective_function!(container, service, model)
+    add_to_objective_function!(container, service, model)
     return
 end
 
@@ -885,6 +885,6 @@ function construct_service!(
     add_constraints!(container, InterfaceFlowLimit, service, model)
     add_feedforward_constraints!(container, model, service)
     add_constraint_dual!(container, sys, model)
-    objective_function!(container, service, model)
+    add_to_objective_function!(container, service, model)
     return
 end
