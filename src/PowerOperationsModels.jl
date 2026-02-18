@@ -223,6 +223,8 @@ include("static_injector_models/electric_loads.jl")
 include("static_injector_models/load_constructor.jl")
 include("static_injector_models/source.jl")
 include("static_injector_models/source_constructor.jl")
+include("static_injector_models/reactivepower_device.jl")
+include("static_injector_models/reactivepowerdevice_constructor.jl")
 
 # Market bid cost: device-specific overloads for IOM's generic market_bid.jl
 include("common_models/market_bid_overrides.jl")
@@ -583,6 +585,9 @@ export RenewableSecurityConstrainedFullDispatch
 
 # Source Formulations
 export ImportExportSourceModel
+
+# SynCons Formulations
+export SynchronousCondenserBasicDispatch
 
 # Branch Formulations
 export StaticBranch
