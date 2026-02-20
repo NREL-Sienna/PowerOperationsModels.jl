@@ -36,6 +36,7 @@ const PFS = PowerFlows
 const PSB = PowerSystemCaseBuilder
 const PNM = PowerNetworkMatrices
 const ISOPT = InfrastructureSystems.Optimization
+const PM = PowerOperationsModels.PowerModels
 
 const IS = InfrastructureSystems
 const BASE_DIR = string(dirname(dirname(pathof(InfrastructureOptimizationModels))))
