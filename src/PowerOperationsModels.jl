@@ -7,7 +7,6 @@ import Dates
 import InfrastructureSystems
 import InfrastructureSystems: @assert_op
 import JuMP
-import Memento
 import JuMP.Containers: DenseAxisArray, SparseAxisArray
 import PowerNetworkMatrices
 import PowerSystems
@@ -480,6 +479,77 @@ export HVDCFlowDirectionVariable
 export HVDCLosses
 export ConverterDCPower
 export ConverterCurrentDirection
+
+######## Hydro Formulations ########
+export HydroDispatchRunOfRiver
+export HydroDispatchRunOfRiverBudget
+export HydroCommitmentRunOfRiver
+export HydroWaterFactorModel
+export HydroWaterModelReservoir
+export HydroTurbineBilinearDispatch
+export HydroTurbineWaterLinearDispatch
+export HydroEnergyModelReservoir
+export HydroTurbineEnergyDispatch
+export HydroTurbineEnergyCommitment
+export HydroPumpEnergyDispatch
+export HydroPumpEnergyCommitment
+
+######## Hydro Variables ########
+export WaterSpillageVariable
+export HydroEnergyShortageVariable
+export HydroEnergySurplusVariable
+export HydroWaterShortageVariable
+export HydroWaterSurplusVariable
+export HydroReservoirHeadVariable
+export HydroReservoirVolumeVariable
+export HydroTurbineFlowRateVariable
+export HydroBalanceShortageVariable
+export HydroBalanceSurplusVariable
+export ActivePowerPumpVariable
+
+######## Hydro Aux Variables ########
+export HydroEnergyOutput
+
+######## Hydro parameters #######
+export EnergyTargetTimeSeriesParameter
+export EnergyBudgetTimeSeriesParameter
+export WaterTargetTimeSeriesParameter
+export WaterBudgetTimeSeriesParameter
+export InflowTimeSeriesParameter
+export OutflowTimeSeriesParameter
+export ReservoirTargetParameter
+export ReservoirLimitParameter
+export HydroUsageLimitParameter
+export WaterLevelBudgetParameter
+
+######## Hydro Initial Conditions #######
+export InitialReservoirVolume
+
+######## Hydro Constraints #######
+export EnergyTargetConstraint
+export WaterTargetConstraint
+export ActivePowerPumpReservationConstraint
+export ActivePowerPumpVariableLimitsConstraint
+export EnergyCapacityTimeSeriesLimitsConstraint
+export EnergyBudgetConstraint
+export WaterBudgetConstraint
+export ReservoirLevelLimitConstraint
+export ReservoirLevelTargetConstraint
+export TurbinePowerOutputConstraint
+export ReservoirHeadToVolumeConstraint
+export ReservoirInventoryConstraint
+export FeedForwardWaterLevelBudgetConstraint
+
+####### Hydro Expressions ########
+export HydroServedReserveUpExpression
+export HydroServedReserveDownExpression
+export TotalHydroPowerReservoirIncoming
+export TotalHydroPowerReservoirOutgoing
+export TotalSpillagePowerReservoirIncoming
+export TotalHydroFlowRateReservoirIncoming
+export TotalHydroFlowRateReservoirOutgoing
+export TotalSpillageFlowRateReservoirIncoming
+export TotalHydroFlowRateTurbineOutgoing
 
 #################################################################################
 # Exports - Constraint Types (defined in core/constraints.jl)
