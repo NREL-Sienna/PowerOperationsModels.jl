@@ -138,6 +138,22 @@ Parameter to define the level target for feedforward
 struct LevelTargetParameter <: VariableValueParameter end
 
 #################################################################################
+# Energy Storage Parameters
+#################################################################################
+
+"""
+Parameter to define energy limit
+"""
+struct EnergyLimitParameter <: VariableValueParameter end
+# TODO: Check if EnergyTargetParameter and EnergyLimitParameter should be removed
+# This affects feedforwards that can break if not defined
+struct EnergyTargetParameter <: VariableValueParameter end
+
+convert_result_to_natural_units(::Type{EnergyLimitParameter}) = true
+convert_result_to_natural_units(::Type{EnergyTargetParameter}) = true
+
+
+#################################################################################
 # Variable Value Parameters
 #################################################################################
 
@@ -152,10 +168,6 @@ struct UpperBoundValueParameter <: VariableValueParameter end
 Parameter to define variable lower bound
 """
 struct LowerBoundValueParameter <: VariableValueParameter end
-
-# OnStatusParameter: moved into IOM.
-
-# FixValueParameter: moved into IOM.
 
 #################################################################################
 # Objective Function Parameters
@@ -201,6 +213,7 @@ Parameter to record that the component changed in the availability status
 """
 struct AvailableStatusChangeCountdownParameter <: EventParameter end
 
+
 #################################################################################
 # Method extensions for should_write_resulting_value
 #################################################################################
@@ -231,6 +244,5 @@ convert_result_to_natural_units(::Type{ReservoirLimitParameter}) = true
 convert_result_to_natural_units(::Type{ReservoirTargetParameter}) = true
 convert_result_to_natural_units(::Type{EnergyTargetTimeSeriesParameter}) = true
 convert_result_to_natural_units(::Type{EnergyBudgetTimeSeriesParameter}) = true
-convert_result_to_natural_units(::Type{ReservoirTargetParameter}) = true
 convert_result_to_natural_units(::Type{InflowTimeSeriesParameter}) = false
 convert_result_to_natural_units(::Type{OutflowTimeSeriesParameter}) = false

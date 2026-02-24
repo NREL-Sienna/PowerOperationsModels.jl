@@ -445,8 +445,6 @@ Docs abbreviation: ``z``
 """
 struct HVDCPiecewiseBinaryLossVariable <: SparseVariableType end
 
-# PiecewiseLinearBlockIncrementalOffer, PiecewiseLinearBlockDecrementalOffer: moved into IOM
-
 """
 Struct to dispatch the creation of Interface Flow Slack Up variables
 
@@ -472,6 +470,10 @@ Struct to dispatch the creation of Slack variables for LowerBoundFeedforward
 Docs abbreviation: ``p^\\text{ff,lbsl}``
 """
 struct LowerBoundFeedForwardSlack <: VariableType end
+
+#################################################################################
+# Hydro Variables
+#################################################################################
 
 """
 Struct to dispatch the creation of energy (water) spillage variable representing energy released from a storage/reservoir not injected into the network
@@ -548,6 +550,76 @@ Auxiliary Variable for Hydro Models that solve for total energy output
 Docs abbreviation: ``E^\\text{hy,out}``
 """
 struct HydroEnergyOutput <: AuxVariableType end
+
+#################################################################################
+# Energy Storage Variables
+#################################################################################
+
+"""
+Ancillary service fraction assigned to Storage Discharging to product p
+
+Docs abbreviation: ``sb^{std}_{p,t}``
+"""
+struct AncillaryServiceVariableDischarge <: VariableType end
+
+"""
+Ancillary service fraction assigned to Storage Charging to product p
+
+Docs abbreviation: ``sb^{stc}_{p,t}``
+"""
+struct AncillaryServiceVariableCharge <: VariableType end
+
+"""
+Slack variable for energy storage levels < target storage levels
+
+Docs abbreviation: ``e^{st-}``
+"""
+struct StorageEnergyShortageVariable <: VariableType end
+
+"""
+Slack variable for energy storage levels > target storage levels
+
+Docs abbreviation: ``e^{st+}``
+"""
+struct StorageEnergySurplusVariable <: VariableType end
+
+"""
+Slack variable for the cycling limits to allow for more charging usage than the allowed limited
+
+Docs nomenclature: ``c^{ch-}``
+"""
+struct StorageChargeCyclingSlackVariable <: VariableType end
+
+"""
+Slack variable for the cycling limits to allow for more discharging usage than the allowed limited
+
+Docs nomenclature: ``c^{ds-}``
+"""
+struct StorageDischargeCyclingSlackVariable <: VariableType end
+
+"""
+Abstract used for StorageRegularization variables
+"""
+abstract type StorageRegularizationVariable <: VariableType end
+
+"""
+Slack variable for energy storage levels > target storage levels
+
+Docs nomenclature: ``z^{st, ch}``
+"""
+struct StorageRegularizationVariableCharge <: StorageRegularizationVariable end
+
+"""
+Slack variable for energy storage levels > target storage levels
+
+Docs abbreviation: ``z^{st, ds}``
+"""
+struct StorageRegularizationVariableDischarge <: StorageRegularizationVariable end
+
+"""
+Auxiliary Variable for Storage Models that solve for total energy output
+"""
+struct StorageEnergyOutput <: AuxVariableType end
 
 const MULTI_START_VARIABLES = Tuple(IS.get_all_concrete_subtypes(MultiStartVariable))
 

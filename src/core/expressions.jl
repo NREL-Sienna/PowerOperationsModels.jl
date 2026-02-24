@@ -76,6 +76,28 @@ of the energy balance for the system in medium term planning
 """
 struct EnergyBalanceExpression <: ExpressionType end
 
+#################################################################################
+# Energy Storage Expressions
+#################################################################################
+
+struct TotalReserveOffering <: ExpressionType end
+
+abstract type StorageReserveDischargeExpression <: ExpressionType end
+abstract type StorageReserveChargeExpression <: ExpressionType end
+
+# Used for the Power Limits constraints
+struct ReserveAssignmentBalanceUpDischarge <: StorageReserveDischargeExpression end
+struct ReserveAssignmentBalanceUpCharge <: StorageReserveChargeExpression end
+struct ReserveAssignmentBalanceDownDischarge <: StorageReserveDischargeExpression end
+struct ReserveAssignmentBalanceDownCharge <: StorageReserveChargeExpression end
+
+# Used for the SoC estimates
+struct ReserveDeploymentBalanceUpDischarge <: StorageReserveDischargeExpression end
+struct ReserveDeploymentBalanceUpCharge <: StorageReserveChargeExpression end
+struct ReserveDeploymentBalanceDownDischarge <: StorageReserveDischargeExpression end
+struct ReserveDeploymentBalanceDownCharge <: StorageReserveChargeExpression end
+
+
 # Method extensions for result writing
 should_write_resulting_value(::Type{InterfaceTotalFlow}) = true
 should_write_resulting_value(::Type{PTDFBranchFlow}) = true
@@ -84,6 +106,9 @@ should_write_resulting_value(::Type{HydroServedReserveUpExpression}) = true
 should_write_resulting_value(::Type{HydroServedReserveDownExpression}) = true
 should_write_resulting_value(::Type{TotalHydroFlowRateReservoirOutgoing}) = true
 should_write_resulting_value(::Type{TotalHydroFlowRateTurbineOutgoing}) = true
+
+should_write_resulting_value(::Type{StorageReserveDischargeExpression}) = true
+should_write_resulting_value(::Type{StorageReserveChargeExpression}) = true
 
 # Method extensions for unit conversion
 convert_result_to_natural_units(::Type{InterfaceTotalFlow}) = true
