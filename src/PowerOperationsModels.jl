@@ -5,7 +5,7 @@ module PowerOperationsModels
 #################################################################################
 import Dates
 import InfrastructureSystems
-import InfrastructureSystems: @assert_op
+import InfrastructureSystems: @assert_op, TableFormat
 import JuMP
 import JuMP.Containers: DenseAxisArray, SparseAxisArray
 import PowerNetworkMatrices
@@ -45,6 +45,8 @@ const ISOPT = InfrastructureSystems.Optimization
 
 const PSY = PowerSystems
 const PNM = PowerNetworkMatrices
+
+
 
 # Import abstract types from InfrastructureSystems.Optimization
 import InfrastructureSystems.Optimization:
@@ -96,12 +98,6 @@ import InfrastructureOptimizationModels:
     add_constraints!,
     add_to_expression!,
     add_to_objective_function!,
-    initial_condition_variable,
-    initial_condition_default,
-    get_initial_conditions_value,
-    update_initial_conditions!,
-    add_initial_condition!,
-    get_initial_conditions_device_model,
     # Variable/expression multiplier functions (have stubs in IOM)
     get_variable_multiplier,
     get_expression_multiplier,
@@ -189,6 +185,7 @@ using InfrastructureOptimizationModels
 # and extend should_write_resulting_value/convert_result_to_natural_units
 #################################################################################
 include("core/definitions.jl")
+include("core/physical_constant_definitions.jl")
 include("core/variables.jl")
 include("core/expressions.jl")
 include("core/constraints.jl")
@@ -197,6 +194,7 @@ include("core/parameters.jl")
 include("core/formulations.jl")
 include("core/network_formulations.jl")
 include("core/feedforward_interface.jl")
+include("core/initial_conditions.jl")
 
 # Common models - expression infrastructure
 # Expression container creation (add_expressions!) and helpers
@@ -224,6 +222,12 @@ include("static_injector_models/source.jl")
 include("static_injector_models/source_constructor.jl")
 include("static_injector_models/reactivepower_device.jl")
 include("static_injector_models/reactivepowerdevice_constructor.jl")
+include("static_injector_models/hydro_generation.jl")
+include("static_injector_models/hydrogeneration_constructor.jl")
+
+# Energy Storage Models
+include("energy_storage_models/storage_models.jl")
+include("energy_storage_models/storage_constructor.jl")
 
 # Market bid cost: device-specific overloads for IOM's generic market_bid.jl
 include("common_models/market_bid_overrides.jl")
@@ -263,10 +267,6 @@ include("network_models/hvdc_networks.jl")
 include("network_models/hvdc_network_constructor.jl")
 
 # Operation problem templates removed per design review.
-
-# TODO: Add more model includes as they are ready
-# include("static_injector_models/static_injection_security_constrained_models.jl")
-# include("network_models/security_constrained_models.jl")
 
 # Import private/internal helpers (use import to avoid undeclared warning)
 import InfrastructureOptimizationModels: _get_ramp_constraint_devices
@@ -517,6 +517,7 @@ export WaterTargetTimeSeriesParameter
 export WaterBudgetTimeSeriesParameter
 export InflowTimeSeriesParameter
 export OutflowTimeSeriesParameter
+export EnergyCapacityTimeSeriesParameter
 export ReservoirTargetParameter
 export ReservoirLimitParameter
 export HydroUsageLimitParameter
@@ -551,6 +552,53 @@ export TotalHydroFlowRateReservoirOutgoing
 export TotalSpillageFlowRateReservoirIncoming
 export TotalHydroFlowRateTurbineOutgoing
 
+######## Storage Formulations ########
+export StorageDispatchWithReserves
+
+# variables
+export AncillaryServiceVariableDischarge
+export AncillaryServiceVariableCharge
+export StorageEnergyShortageVariable
+export StorageEnergySurplusVariable
+export StorageChargeCyclingSlackVariable
+export StorageDischargeCyclingSlackVariable
+export StorageRegularizationVariableCharge
+export StorageRegularizationVariableDischarge
+
+# aux variables
+export StorageEnergyOutput
+
+# constraints
+export EnergyBalanceConstraint
+export StateofChargeLimitsConstraint
+export StateofChargeTargetConstraint
+export StorageCyclingCharge
+export StorageCyclingDischarge
+export StorageRegularizationConstraintCharge
+export StorageRegularizationConstraintDischarge
+export ReserveCoverageConstraint
+export ReserveCoverageConstraintEndOfPeriod
+export ReserveCompleteCoverageConstraint
+export ReserveCompleteCoverageConstraintEndOfPeriod
+export StorageTotalReserveConstraint
+export ReserveDischargeConstraint
+export ReserveChargeConstraint
+
+# expressions
+export TotalReserveOffering
+export ReserveAssignmentBalanceUpDischarge
+export ReserveAssignmentBalanceUpCharge
+export ReserveAssignmentBalanceDownDischarge
+export ReserveAssignmentBalanceDownCharge
+export ReserveDeploymentBalanceUpDischarge
+export ReserveDeploymentBalanceUpCharge
+export ReserveDeploymentBalanceDownDischarge
+export ReserveDeploymentBalanceDownCharge
+
+# parameters
+export EnergyLimitParameter
+export EnergyTargetParameter
+
 #################################################################################
 # Exports - Constraint Types (defined in core/constraints.jl)
 #################################################################################
@@ -568,9 +616,6 @@ export ActivePowerOutVariableTimeSeriesLimitsConstraint
 export ActivePowerInVariableTimeSeriesLimitsConstraint
 export PiecewiseLinearBlockIncrementalOfferConstraint
 export PiecewiseLinearBlockDecrementalOfferConstraint
-export RateLimitConstraint
-export RateLimitConstraintFromTo
-export RateLimitConstraintToFrom
 export RampConstraint
 export RampLimitConstraint
 export CopperPlateBalanceConstraint
