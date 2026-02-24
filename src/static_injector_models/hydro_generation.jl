@@ -2228,47 +2228,6 @@ function calculate_aux_variable_value!(
     return
 end
 
-function update_decision_state!(
-    state::SimulationState,
-    key::AuxVarKey{HydroEnergyOutput, T},
-    store_data::DenseAxisArray{Float64, 2},
-    simulation_time::Dates.DateTime,
-    model_params::ModelStoreParams,
-) where {T <: PSY.Component}
-    state_data = get_decision_state_data(state, key)
-    model_resolution = get_resolution(model_params)
-    state_resolution = get_data_resolution(state_data)
-    resolution_ratio = model_resolution ÷ state_resolution
-    state_timestamps = state_data.timestamps
-    IS.@assert_op resolution_ratio >= 1
-
-    if simulation_time > get_end_of_step_timestamp(state_data)
-        state_data_index = 1
-        state_data.timestamps[:] .= range(
-            simulation_time;
-            step = state_resolution,
-            length = get_num_rows(state_data),
-        )
-    else
-        state_data_index = find_timestamp_index(state_timestamps, simulation_time)
-    end
-
-    offset = resolution_ratio - 1
-    result_time_index = axes(store_data)[2]
-    set_update_timestamp!(state_data, simulation_time)
-    column_names = axes(state_data.values)[1]
-    for t in result_time_index
-        state_range = state_data_index:(state_data_index + offset)
-        for name in column_names, i in state_range
-            state_data.values[name, i] = store_data[name, t] / resolution_ratio
-        end
-        set_last_recorded_row!(state_data, state_range[end])
-        state_data_index += resolution_ratio
-    end
-
-    return
-end
-
 ##################################### Hydro generation cost ############################
 function objective_function!(
     container::OptimizationContainer,
@@ -2594,28 +2553,6 @@ function update_initial_conditions!(
             ic,
             get_last_recorded_value(var_val)[get_component_name(ic)],
         )
-    end
-    return
-end
-
-function update_initial_conditions!(
-    ics::Vector{T},
-    state::SimulationState,
-    ::Dates.Millisecond,
-) where {
-    T <: Union{
-        InitialCondition{InitialReservoirVolume, Float64},
-        InitialCondition{InitialReservoirVolume, JuMP.VariableRef},
-        InitialCondition{InitialReservoirVolume, Nothing},
-    },
-}
-    for ic in ics
-        var_val = get_system_state_value(
-            state,
-            HydroReservoirVolumeVariable(),
-            get_component_type(ic),
-        )
-        set_ic_quantity!(ic, var_val[get_component_name(ic)])
     end
     return
 end

@@ -495,7 +495,7 @@ end
 @testset "Test Hydro Pump Energy Dispatch Formulations " begin
     device_model = DeviceModel(
         HydroPumpTurbine,
-        HPS.HydroPumpEnergyDispatch;
+        HydroPumpEnergyDispatch;
         attributes = Dict{String, Any}(
             "reservation" => true,
             "energy_target" => true,
@@ -543,7 +543,7 @@ end
         template_uc,
         DeviceModel(
             HydroPumpTurbine,
-            HPS.HydroPumpEnergyDispatch;
+            HydroPumpEnergyDispatch;
             attributes = Dict{String, Any}(
                 "reservation" => true,
                 "energy_target" => true,
