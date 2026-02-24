@@ -381,12 +381,12 @@ end
 function instantiate_model(
     data::Dict{String, <:Any}, model_type::Type, build_method, ref_add_core!,
     global_keys::Set{String}; ref_extensions = [], kwargs...)
-    # NOTE, this model constructor will build the ref dict using the latest info from the data    
+    # NOTE, this model constructor will build the ref dict using the latest info from the data
     start_time = time()
 
     imo = InitializeInfrastructureModel(model_type, data, global_keys; kwargs...)
 
-    Memento.debug(_LOGGER, "initialize model time: $(time() - start_time)")
+    @debug("initialize model time: $(time() - start_time)")
 
     start_time = time()
     ref_add_core!(imo.ref)
@@ -395,11 +395,11 @@ function instantiate_model(
         ref_ext!(imo.ref, imo.data)
     end
 
-    Memento.debug(_LOGGER, "build ref time: $(time() - start_time)")
+    @debug("build ref time: $(time() - start_time)")
 
     start_time = time()
     build_method(imo)
-    Memento.debug(_LOGGER, "build method time: $(time() - start_time)")
+    @debug("build method time: $(time() - start_time)")
 
     return imo
 end
@@ -408,12 +408,12 @@ end
 function instantiate_model(
     data::Dict{String, <:Any}, model_type::Type, build_method, ref_add_core!,
     global_keys::Set{String}, it::Symbol; ref_extensions = [], kwargs...)
-    # NOTE, this model constructor will build the ref dict using the latest info from the data    
+    # NOTE, this model constructor will build the ref dict using the latest info from the data
     start_time = time()
 
     imo = InitializeInfrastructureModel(model_type, data, global_keys, it; kwargs...)
 
-    Memento.debug(_LOGGER, "initialize model time: $(time() - start_time)")
+    @debug("initialize model time: $(time() - start_time)")
 
     start_time = time()
     ref_add_core!(imo.ref)
@@ -422,64 +422,11 @@ function instantiate_model(
         ref_ext!(imo.ref, imo.data)
     end
 
-    Memento.debug(_LOGGER, "build ref time: $(time() - start_time)")
+    @debug("build ref time: $(time() - start_time)")
 
     start_time = time()
     build_method(imo)
-    Memento.debug(_LOGGER, "build method time: $(time() - start_time)")
+    @debug("build method time: $(time() - start_time)")
 
     return imo
-end
-
-""
-function optimize_model!(
-    aim::AbstractInfrastructureModel;
-    relax_integrality = false,
-    optimizer = nothing,
-    solution_processors = [],
-)
-    start_time = time()
-
-    if relax_integrality
-        JuMP.relax_integrality(aim.model)
-    end
-
-    if JuMP.mode(aim.model) != JuMP.DIRECT && optimizer !== nothing
-        if JuMP.backend(aim.model).optimizer === nothing
-            JuMP.set_optimizer(aim.model, optimizer)
-        else
-            Memento.warn(
-                _LOGGER,
-                "Model already contains optimizer, cannot use optimizer specified in `optimize_model!`",
-            )
-        end
-    end
-
-    if JuMP.mode(aim.model) != JuMP.DIRECT && JuMP.backend(aim.model).optimizer === nothing
-        Memento.error(
-            _LOGGER,
-            "No optimizer specified in `optimize_model!` or the given JuMP model.",
-        )
-    end
-
-    _, solve_time, solve_bytes_alloc, sec_in_gc = @timed JuMP.optimize!(aim.model)
-
-    try
-        solve_time = JuMP.solve_time(aim.model)
-    catch
-        Memento.warn(
-            _LOGGER,
-            "The given optimizer does not provide the SolveTime() attribute, falling back on @timed.  This is not a rigorous timing value.",
-        )
-    end
-
-    Memento.debug(_LOGGER, "JuMP model optimize time: $(time() - start_time)")
-
-    start_time = time()
-    result = build_result(aim, solve_time; solution_processors = solution_processors)
-    Memento.debug(_LOGGER, "solution build time: $(time() - start_time)")
-
-    aim.solution = result["solution"]
-
-    return result
 end
