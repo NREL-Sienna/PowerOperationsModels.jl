@@ -152,7 +152,6 @@ struct EnergyTargetParameter <: VariableValueParameter end
 convert_result_to_natural_units(::Type{EnergyLimitParameter}) = true
 convert_result_to_natural_units(::Type{EnergyTargetParameter}) = true
 
-
 #################################################################################
 # Variable Value Parameters
 #################################################################################
@@ -212,7 +211,6 @@ struct ReactivePowerOffsetParameter <: EventParameter end
 Parameter to record that the component changed in the availability status
 """
 struct AvailableStatusChangeCountdownParameter <: EventParameter end
-
 
 #################################################################################
 # Method extensions for should_write_resulting_value

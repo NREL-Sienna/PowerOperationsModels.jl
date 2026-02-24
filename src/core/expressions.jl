@@ -97,7 +97,6 @@ struct ReserveDeploymentBalanceUpCharge <: StorageReserveChargeExpression end
 struct ReserveDeploymentBalanceDownDischarge <: StorageReserveDischargeExpression end
 struct ReserveDeploymentBalanceDownCharge <: StorageReserveChargeExpression end
 
-
 # Method extensions for result writing
 should_write_resulting_value(::Type{InterfaceTotalFlow}) = true
 should_write_resulting_value(::Type{PTDFBranchFlow}) = true

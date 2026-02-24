@@ -12,22 +12,22 @@ Aqua.test_unbound_args(PowerOperationsModels)
 const LOG_FILE = "power-simulations-test.log"
 
 const DISABLED_TEST_FILES = [  # Can generate with ls -1 test | grep "test_.*.jl"
-    # "test_device_branch_constructors.jl",
-    # "test_device_hvdc.jl",
-    # "test_device_lcc.jl",
-    # "test_device_load_constructors.jl",
-    # "test_device_renewable_generation_constructors.jl",
-    # "test_device_source_constructors.jl",
-    # "test_device_synchronous_condenser_constructors.jl",
-    # "test_device_thermal_generation_constructors.jl",
-    # "test_formulation_combinations.jl",
-    # "test_import_export_cost.jl",
-    # "test_market_bid_cost.jl",
-    # "test_mbc_sanity_check.jl",
-    # "test_network_constructors.jl",
-    # "test_power_flow_in_the_loop.jl",
-    # "test_services_constructor.jl",
-    # "test_utils.jl",
+# "test_device_branch_constructors.jl",
+# "test_device_hvdc.jl",
+# "test_device_lcc.jl",
+# "test_device_load_constructors.jl",
+# "test_device_renewable_generation_constructors.jl",
+# "test_device_source_constructors.jl",
+# "test_device_synchronous_condenser_constructors.jl",
+# "test_device_thermal_generation_constructors.jl",
+# "test_formulation_combinations.jl",
+# "test_import_export_cost.jl",
+# "test_market_bid_cost.jl",
+# "test_mbc_sanity_check.jl",
+# "test_network_constructors.jl",
+# "test_power_flow_in_the_loop.jl",
+# "test_services_constructor.jl",
+# "test_utils.jl",
 ]
 
 LOG_LEVELS = Dict(
