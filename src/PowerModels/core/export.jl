@@ -45,4 +45,4 @@ for status_code_enum in [TerminationStatusCode, ResultStatusCode]
 end
 
 # from InfrastructureModels
-export ids, ref, var, con, sol, nw_ids, nws, optimize_model!, nw_id_default
+export ids, ref, var, con, sol, nw_ids, nws, nw_id_default

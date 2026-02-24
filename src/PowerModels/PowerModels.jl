@@ -1,7 +1,7 @@
 module PowerModels
 
 import ..InfrastructureModels as _IM
-import ..InfrastructureModels: optimize_model!, @im_fields, nw_id_default
+import ..InfrastructureModels: @im_fields, nw_id_default
 import InfrastructureSystems
 import JuMP
 import LinearAlgebra
@@ -27,7 +27,6 @@ include("core/constraint.jl")
 include("core/expression_template.jl")
 include("core/relaxation_scheme.jl")
 include("core/objective.jl")
-include("core/solution.jl")
 include("form/iv.jl")
 
 include("form/acp.jl")
@@ -49,9 +48,6 @@ include("prob/opf_bf.jl")
 include("prob/opf_iv.jl")
 include("prob/ots.jl")
 # include("prob/test.jl")
-
-include("util/obbt.jl")
-include("util/flow_limit_cuts.jl")
 
 # this must come last to support automated export
 include("core/export.jl")
