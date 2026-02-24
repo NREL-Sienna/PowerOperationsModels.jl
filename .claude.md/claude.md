@@ -1,10 +1,11 @@
 # Claude Code Guidelines for PowerOperationsModels.jl
 
-## Project Overview
+**Package role:** Utility foundation library
+**Julia compat:** ^1.10
 
-**PowerOperationsModels.jl** is a Julia package that contains optimization models for power system components. It is part of the NLR Sienna ecosystem for power system modeling and simulation.
+## Overview
 
-**Note:** NREL (National Renewable Energy Laboratory) no longer exists and has been renamed to NLR (National Laboratory of the Rockies). References to "NREL-Sienna" in the codebase refer to the organization now known as Sienna only and the official name is NLR National Laboratory of the Rockies (formerly known as NREL).
+Modeling library for power systems operations. For general Sienna coding practices, conventions, and performance guidelines, see [Sienna.md](Sienna.md). Always check both files before making plans or changes. **Update [claude.md](claude.md) whenever the file/directory structure changes.**
 
 ## Design Philosophy: Layered Abstractions
 
@@ -101,69 +102,123 @@ src/InfrastructureModels/
 
 ## Repository Structure
 
-This is a **dual-structure repository**:
+> **Maintenance note:** Update this section whenever files or directories are added, moved, or removed. Stale structure documentation leads to incorrect assumptions during planning.
 
 ```
 PowerOperationsModels.jl/
-├── src/                                    # POM: Device-specific models
-│   ├── PowerOperationsModels.jl            # Main module entry point
-│   ├── core/                               # Type definitions
+├── src/
+│   ├── PowerOperationsModels.jl            # Main module entry point (all includes/exports here)
+│   ├── area_interchange.jl                 # Area interchange balance
+│   ├── core/                               # Type definitions (no implementation logic)
+│   │   ├── definitions.jl                  # Shared constants and aliases
+│   │   ├── physical_constant_definitions.jl# Physical constants (base MVA, etc.)
 │   │   ├── variables.jl                    # Variable types (ActivePowerVariable, etc.)
+│   │   ├── auxiliary_variables.jl          # Auxiliary variable types
 │   │   ├── constraints.jl                  # Constraint types
 │   │   ├── expressions.jl                  # Expression types
 │   │   ├── parameters.jl                   # Parameter types
-│   │   ├── formulations.jl                 # Device formulation abstractions
-│   │   └── network_formulations.jl         # Network model formulations
-│   ├── static_injector_models/             # Generator, load, source models
+│   │   ├── formulations.jl                 # Device formulation abstract types
+│   │   ├── network_formulations.jl         # Network model formulation types
+│   │   ├── initial_conditions.jl           # Initial condition types
+│   │   ├── feedforward_interface.jl        # Feedforward constraint interface
+│   │   └── default_interface_methods.jl    # Default fallback implementations
+│   ├── common_models/                      # Shared model-building utilities
+│   │   ├── add_expressions.jl              # add_expressions! implementations
+│   │   ├── add_parameters.jl               # add_parameters! implementations
+│   │   ├── add_to_expression.jl            # add_to_expression! implementations
+│   │   ├── make_system_expressions.jl      # System-level expression construction
+│   │   ├── market_bid_overrides.jl         # Market bid cost overrides
+│   │   └── reserve_range_constraints.jl    # Reserve range constraint helpers
+│   ├── initial_conditions/
+│   │   ├── device_initial_conditions.jl    # Device IC initialization
+│   │   └── update_initial_conditions.jl    # IC update between solves
+│   ├── static_injector_models/             # Generator and load device models
 │   │   ├── thermal_generation.jl           # Thermal unit formulations
+│   │   ├── thermalgeneration_constructor.jl
 │   │   ├── renewable_generation.jl         # Renewable formulations
+│   │   ├── renewablegeneration_constructor.jl
+│   │   ├── hydro_generation.jl             # Hydro formulations
+│   │   ├── hydrogeneration_constructor.jl
 │   │   ├── electric_loads.jl               # Load formulations
-│   │   └── *_constructor.jl                # Construction dispatch
-│   ├── ac_transmission_models/             # AC branch models
-│   ├── twoterminal_hvdc_models/            # Two-terminal HVDC
-│   ├── mt_hvdc_models/                     # Multi-terminal HVDC
-│   ├── services_models/                    # Reserves, AGC, interfaces
-│   ├── network_models/                     # Network formulations
+│   │   ├── load_constructor.jl
+│   │   ├── source.jl                       # Generic source model
+│   │   ├── source_constructor.jl
+│   │   ├── reactivepower_device.jl         # Reactive power device (SynCon)
+│   │   ├── reactivepowerdevice_constructor.jl
+│   │   └── static_injection_security_constrained_models.jl
+│   ├── ac_transmission_models/
+│   │   ├── AC_branches.jl                  # AC line/transformer formulations
+│   │   └── branch_constructor.jl
+│   ├── twoterminal_hvdc_models/
+│   │   ├── TwoTerminalDC_branches.jl       # Two-terminal HVDC formulations
+│   │   └── branch_constructor.jl
+│   ├── mt_hvdc_models/
+│   │   ├── HVDCsystems.jl                  # Multi-terminal HVDC formulations
+│   │   └── hvdcsystems_constructor.jl
+│   ├── services_models/
+│   │   ├── reserves.jl                     # Reserve formulations
+│   │   ├── reserve_group.jl                # Reserve group constraints
+│   │   ├── agc.jl                          # AGC formulations
+│   │   ├── transmission_interface.jl       # Transmission interface limits
+│   │   ├── service_slacks.jl               # Service slack variables
+│   │   └── services_constructor.jl
+│   ├── network_models/
+│   │   ├── copperplate_model.jl            # CopperPlate (no network)
+│   │   ├── area_balance_model.jl           # Area-level balance
+│   │   ├── hvdc_networks.jl                # HVDC network models
+│   │   ├── hvdc_network_constructor.jl
+│   │   ├── network_slack_variables.jl      # Network slack variables
+│   │   ├── pm_translator.jl                # PowerModels data translation
+│   │   ├── powermodels_interface.jl        # PM formulation interface
+│   │   ├── security_constrained_models.jl  # N-1 security constraints
+│   │   ├── instantiate_network_model.jl    # Network model instantiation
+│   │   └── network_constructor.jl
 │   ├── InfrastructureModels/               # Embedded InfrastructureModels submodule
-│   │   ├── InfrastructureModels.jl         # Submodule entry point
-│   │   └── core/                           # Base types and infrastructure
+│   │   ├── InfrastructureModels.jl
+│   │   └── core/                           # Base types, data, constraints, solution
 │   └── PowerModels/                        # Embedded PowerModels submodule
-│       ├── PowerModels.jl                  # Submodule entry point
+│       ├── PowerModels.jl
 │       ├── core/                           # Formulation infrastructure
-│       ├── form/                           # Power flow formulations
-│       ├── prob/                           # Problem definitions
-│       └── util/                           # Utilities
-│
-├── InfrastructureOptimizationModels.jl/    # IOM: Optimization infrastructure
-│   └── src/
-│       ├── InfrastructureOptimizationModels.jl
-│       ├── core/                           # Fundamental structures
-│       │   ├── optimization_container.jl   # Central JuMP container
-│       │   ├── device_model.jl             # Device model specification
-│       │   ├── service_model.jl            # Service model specification
-│       │   ├── network_model.jl            # Network model wrapper
-│       │   └── initial_conditions.jl       # IC types
-│       ├── common_models/                  # Reusable construction patterns
-│       │   ├── add_variable.jl             # Variable addition interface
-│       │   ├── add_constraints.jl          # Constraint interface
-│       │   ├── add_to_expression.jl        # Expression building
-│       │   ├── construct_device.jl         # Device construction dispatcher
-│       │   └── objective_function.jl       # Objective interface
-│       ├── operation/                      # Model execution
-│       │   ├── decision_model.jl           # Single-shot optimization
-│       │   ├── emulation_model.jl          # Rolling-horizon simulation
-│       │   └── problem_template.jl         # Problem specification
-│       ├── objective_function/             # Cost implementations
-│       ├── initial_conditions/             # IC handling
-│       └── utils/                          # Utilities
-│
-├── InfrastructureSystems.jl/               # IS: Base infrastructure (dependency)
-│
-├── test/                                   # Integration tests
-├── docs/                                   # Documentation
-├── Project.toml                            # Package dependencies
-└── Manifest.toml                           # Locked dependencies
+│       ├── form/                           # AC/DC power flow formulations
+│       ├── prob/                           # OPF/OTS problem definitions
+│       └── util/                           # Flow limit cuts, OBBT
+├── ext/
+│   └── PowerFlowsExt/
+│       └── PowerFlowsExt.jl                # PowerFlows.jl extension
+├── test/
+│   ├── runtests.jl
+│   ├── includes.jl
+│   ├── test_device_thermal_generation_constructors.jl
+│   ├── test_device_renewable_generation_constructors.jl
+│   ├── test_device_hydro_constructors.jl
+│   ├── test_device_load_constructors.jl
+│   ├── test_device_source_constructors.jl
+│   ├── test_device_branch_constructors.jl
+│   ├── test_device_hvdc.jl
+│   ├── test_device_lcc.jl
+│   ├── test_device_synchronous_condenser_constructors.jl
+│   ├── test_utils/                         # Shared test helpers and systems
+│   │   ├── common_operation_model.jl
+│   │   ├── mock_operation_models.jl
+│   │   ├── model_checks.jl
+│   │   ├── operations_problem_templates.jl
+│   │   ├── solver_definitions.jl
+│   │   ├── iec_test_systems.jl
+│   │   ├── iec_simulation_utils.jl
+│   │   ├── mbc_system_utils.jl
+│   │   └── add_market_bid_cost.jl
+│   └── performance/
+│       └── performance_test.jl
+├── scripts/
+│   └── formatter/
+│       ├── formatter_code.jl               # Run with: julia -e 'include("scripts/formatter/formatter_code.jl")'
+│       └── Project.toml
+├── docs/
+├── Project.toml
+└── Manifest.toml
 ```
+
+IOM (`InfrastructureOptimizationModels.jl`) and IS (`InfrastructureSystems.jl`) are **external package dependencies**, not subdirectories of this repo. They are resolved via `Project.toml`.
 
 ## Key Dependencies
 
@@ -178,17 +233,18 @@ PowerOperationsModels.jl/
 
 ## Type Aliases
 
-```julia
-const PM = PowerModels
-const PSY = PowerSystems
-const IOM = InfrastructureOptimizationModels
-const IS = InfrastructureSystems
-const ISOPT = InfrastructureSystems.Optimization
-const MOI = MathOptInterface
-const PNM = PowerNetworkMatrices
-const PFS = PowerFlows
-```
+We don't create const type aliases anymore, the preferd way to work is to use `import PowerSystems as PSY` or more generally `import DEPENDENCY as DEP` for any other package.
 
+```julia
+import PowerModels as PM
+import PowerSystems as PSY
+import InfrastructureOptimizationModels as IOM
+import InfrastructureSystems as IS
+import InfrastructureSystems.Optimization as ISOPT
+import MathOptInterface as MOI
+import PowerNetworkMatrices as PNM
+import PowerFlows as PFS
+```
 ## Architecture Patterns
 
 ### Device Model Construction (Two-Stage Pattern)
@@ -241,14 +297,7 @@ end
 
 ## Coding Style Requirements
 
-This repository follows the [InfrastructureSystems.jl Style Guide](https://nrel-sienna.github.io/InfrastructureSystems.jl/stable/style/):
-
-### Naming Conventions
-
-- **Types**: `PascalCase` (e.g., `ActivePowerVariable`, `FlowRateConstraint`)
-- **Functions**: `snake_case` (e.g., `add_variables!`, `construct_device!`)
-- **Constants**: `SCREAMING_SNAKE_CASE` (e.g., `LOG_GROUP_BRANCH_CONSTRUCTIONS`)
-- **Mutating functions**: End with `!` (e.g., `build!`, `solve!`, `add_constraints!`)
+Naming conventions, documentation practices, performance guidelines, and general Julia style are in [Sienna.md](Sienna.md). POM-specific conventions:
 
 ### Code Organization
 
@@ -272,56 +321,6 @@ function add_constraints!(
     model::DeviceModel{D, F},
     network_model::NetworkModel{N},
 ) where {T <: ConstraintType, U <: Union{Vector, IS.FlattenIteratorWrapper}, D <: PSY.Device, F, N}
-```
-
-### Documentation
-
-Follow [InfrastructureSystems.jl Documentation Best Practices](https://nrel-sienna.github.io/InfrastructureSystems.jl/stable/docs_best_practices/explanation/):
-
-```julia
-"""
-$(TYPEDSIGNATURES)
-
-Brief description of what the function does.
-
-# Arguments
-- `container::OptimizationContainer`: The optimization container
-- `devices`: Iterable of devices to process
-
-# Returns
-Nothing, modifies `container` in place.
-"""
-function add_variables!(container, devices)
-    # implementation
-end
-```
-
-## Julia Performance Best Practices
-
-All code must follow Julia performance best practices:
-
-### Type Stability
-- Ensure functions are type-stable (return type depends only on input types)
-- Avoid containers with abstract element types
-- Use `@code_warntype` to check for type instabilities
-
-### Avoid Global Variables
-- Never use non-const global variables in performance-critical code
-- Pass data through function arguments
-
-### Preallocate Arrays
-```julia
-# Good: Preallocated
-results = Vector{Float64}(undef, n)
-for i in 1:n
-    results[i] = compute(i)
-end
-```
-
-### Use Views for Slices
-```julia
-# Good: Creates view (no allocation)
-subarray = @view array[1:100]
 ```
 
 ## Testing
