@@ -1,6 +1,6 @@
 #! format: off
-get_variable_multiplier(::SystemBalanceSlackUp, ::Type{<: Union{PSY.ACBus, PSY.Area, PSY.System}}, _) = 1.0
-get_variable_multiplier(::SystemBalanceSlackDown, ::Type{<: Union{PSY.ACBus, PSY.Area, PSY.System}}, _) = -1.0
+get_variable_multiplier(::SystemBalanceSlackUp, ::Type{<: Union{PSY.ACBus, PSY.Area, PSY.System}}, ::AbstractDeviceFormulation) = 1.0
+get_variable_multiplier(::SystemBalanceSlackDown, ::Type{<: Union{PSY.ACBus, PSY.Area, PSY.System}}, ::AbstractDeviceFormulation) = -1.0
 #! format: on
 
 function add_variables!(

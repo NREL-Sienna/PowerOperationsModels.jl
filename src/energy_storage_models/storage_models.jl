@@ -1,7 +1,7 @@
 #! format: off
 requires_initialization(::AbstractStorageFormulation) = false
 
-get_variable_multiplier(_, ::Type{<:PSY.Storage}, ::AbstractStorageFormulation) = NaN
+get_variable_multiplier(::VariableType, ::Type{<:PSY.Storage}, ::AbstractStorageFormulation) = NaN
 ########################### ActivePowerInVariable, Storage #################################
 get_variable_binary(::ActivePowerInVariable, ::Type{<:PSY.Storage}, ::AbstractStorageFormulation) = false
 get_variable_lower_bound(::ActivePowerInVariable, d::PSY.Storage, ::AbstractStorageFormulation) = 0.0
