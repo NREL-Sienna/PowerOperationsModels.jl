@@ -3,6 +3,8 @@
 
 struct MockOperationProblem <: IOM.DefaultDecisionProblem end
 struct MockEmulationProblem <: IOM.DefaultEmulationProblem end
+struct EconomicDispatchProblem <: IOM.DefaultDecisionProblem end
+struct UnitCommitmentProblem <: IOM.DefaultDecisionProblem end
 
 function IOM.DecisionModel(
     ::Type{MockOperationProblem},

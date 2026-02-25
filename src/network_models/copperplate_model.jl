@@ -41,7 +41,7 @@ function assign_dual_variable!(
     container::OptimizationContainer,
     constraint_type::Type{CopperPlateBalanceConstraint},
     ::U,
-    network_model::NetworkModel{<:PM.AbstractPowerModel},
+    network_model::NetworkModel{<:AbstractPowerModel},
 ) where {U <: PSY.System}
     time_steps = get_time_steps(container)
     ref_buses = get_reference_buses(network_model)

@@ -1219,8 +1219,6 @@ end
 
     mock_construct_device!(model, device_model)
     moi_tests(model, 480, 0, 504, 120, 120, true)
-    # FIXME errors with
-    # "UndefVarError: `ActivePowerVariableTimeSeriesLimitsConstraint` not defined in `Main`"
     key = IOM.ConstraintKey(
         ActivePowerVariableTimeSeriesLimitsConstraint,
         ThermalStandard,

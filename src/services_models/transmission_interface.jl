@@ -1,5 +1,5 @@
 #! format: off
-get_variable_binary(_, ::Type{PSY.TransmissionInterface}, ::ConstantMaxInterfaceFlow) = false
+get_variable_binary(::VariableType, ::Type{PSY.TransmissionInterface}, ::ConstantMaxInterfaceFlow) = false
 get_variable_lower_bound(::InterfaceFlowSlackUp, ::PSY.TransmissionInterface, ::ConstantMaxInterfaceFlow) = 0.0
 get_variable_lower_bound(::InterfaceFlowSlackDown, ::PSY.TransmissionInterface, ::ConstantMaxInterfaceFlow) = 0.0
 

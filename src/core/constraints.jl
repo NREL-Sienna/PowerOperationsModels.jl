@@ -575,7 +575,7 @@ struct ReactivePowerOutageConstraint <: EventConstraint end
 Struct to create the constraints that set the current flowing through a DC line.
 ```math
 \\begin{align*}
-& i_l^{dc} = \\frac{1}{r_l} (v_{from,l} - v_{to,l}), \\quad \\forall t \\in \\{1,\\dots, T\\} 
+& i_l^{dc} = \\frac{1}{r_l} (v_{from,l} - v_{to,l}), \\quad \\forall t \\in \\{1,\\dots, T\\}
 \\end{align*}
 ```
 """
@@ -676,8 +676,380 @@ The specified constraint is formulated as:
 \\begin{align*}
 & i_c^{dc} = i_c^+ - i_c^-, \\quad \\forall t \\in \\{1,\\dots, T\\}  \\\\
 & i_c^+ \\le I_{max} \\cdot \\nu_c,  \\quad \\forall t \\in \\{1,\\dots, T\\}  \\\\
-& i_c^+ \\le I_{max} \\cdot (1 - \\nu_c),  \\quad \\forall t \\in \\{1,\\dots, T\\}  
+& i_c^+ \\le I_{max} \\cdot (1 - \\nu_c),  \\quad \\forall t \\in \\{1,\\dots, T\\}
 \\end{align*}
 ```
 """
 struct CurrentAbsoluteValueConstraint <: ConstraintType end
+
+#################################################################################
+# Hydro Constraints
+#################################################################################
+
+struct EnergyLimitConstraint <: ConstraintType end
+"""
+Struct to create the constraint that set-up the target for reservoir formulations.
+
+For more information check [HydroPowerSimulations Formulations](@ref HydroPowerSimulations-Formulations).
+
+The specified constraint is formulated as:
+
+```math
+e_t + e^\\text{shortage} + e^\\text{surplus} = \\text{EnergyTargetTimeSeriesParameter}_t, \\quad \\forall t \\in \\{1,\\dots, T\\}
+```
+"""
+struct EnergyTargetConstraint <: ConstraintType end
+
+"""
+Struct to create the constraint that set-up the target for reservoir formulations. It can use head or volume as the storage variable.
+
+For more information check [HydroPowerSimulations Formulations](@ref HydroPowerSimulations-Formulations).
+
+The specified constraint is formulated as:
+
+```math
+l_t + l^\\text{shortage} + l^\\text{surplus} = \\text{WaterTargetTimeSeriesParameter}_t, \\quad \\forall t \\in \\{1,\\dots, T\\}
+```
+"""
+struct WaterTargetConstraint <: ConstraintType end
+struct EnergyShortageVariableLimitsConstraint <: ConstraintType end
+
+"""
+Struct to create the constraint that limits the budget for reservoir formulations.
+
+For more information check [HydroPowerSimulations Formulations](@ref HydroPowerSimulations-Formulations).
+
+The specified constraint is formulated as:
+
+```math
+\\sum_{t=1}^T p^\\text{hy}_t \\le \\sum_{t=1}^T \\text{EnergyBudgetTimeSeriesParameter}_t,
+```
+"""
+struct EnergyBudgetConstraint <: ConstraintType end
+"""
+Struct to create the constraint that limits the budget for reservoir formulations.
+
+For more information check [HydroPowerSimulations Formulations](@ref HydroPowerSimulations-Formulations).
+
+The specified constraint is formulated as:
+
+```math
+\\sum_{t=1}^T f^\\text{hy}_t \\le \\sum_{t=1}^T \\text{WaterBudgetTimeSeriesParameter}_t,
+```
+"""
+struct WaterBudgetConstraint <: ConstraintType end
+struct EnergyCapacityConstraint <: ConstraintType end
+
+"""
+Struct to create the constraint that limits the pump power  for hydro pump formulations.
+
+For more information check [HydroPowerSimulations Formulations](@ref HydroPowerSimulations-Formulations).
+
+The specified constraint is formulated as:
+
+```math
+p^\\text{pump}_t \\le \\text{ActivePowerTimeSeriesParameter}_t,
+```
+"""
+struct ActivePowerPumpVariableLimitsConstraint <: ConstraintType end
+
+"""
+Struct to create the constraint that limits the pump power based on the reservoir variable for hydro pump formulations.
+
+For more information check [HydroPowerSimulations Formulations](@ref HydroPowerSimulations-Formulations).
+
+The specified constraint is formulated as:
+
+```math
+p^\\text{pump}_t \\le P^\\text{max,pump} \\cdot (1 - \\text{ReservationVariable}_t),
+```
+"""
+struct ActivePowerPumpReservationConstraint <: ConstraintType end
+
+"""
+Struct to create the constraint that limits the pump power  for hydro pump formulations.
+
+For more information check [HydroPowerSimulations Formulations](@ref HydroPowerSimulations-Formulations).
+
+The specified constraint is formulated as:
+
+```math
+e^\\text{pump}_t \\le \\text{EnergyCapacityTimeSeriesParameter}_t,
+```
+"""
+struct EnergyCapacityTimeSeriesLimitsConstraint <: ConstraintType end
+
+"""
+Struct to create the constraint that limits the hydro usage for hydro formulations.
+
+For more information check [HydroPowerSimulations Formulations](@ref HydroPowerSimulations-Formulations).
+
+The specified constraint is formulated as:
+
+```math
+\\sum_{t=1}^T E^\\text{hy}_t \\le  \\text{HydroUsageLimitParameter}_T,
+```
+"""
+struct FeedForwardHydroUsageLimitConstraint <: ConstraintType end
+
+"""
+Struct to model turbine outflow limits
+
+For more information check [HydroPowerSimulations Formulations](@ref HydroPowerSimulations-Formulations).
+
+The specified constraint is formulated as:
+
+```math
+\\ p_{t} = \\Delta t (f^{Tu}_{t-1}(0.5 K_1 (v_{t} + v_{t-1}) + K_2))
+```
+"""
+struct HydroPowerConstraint <: ConstraintType end
+
+"""
+Struct to create the constraint for hydro reservoir storage
+
+For more information check [HydroPowerSimulations Formulations](@ref HydroPowerSimulations-Formulations).
+
+The specified constraint is formulated as:
+
+```math
+\\ v_{t} = v_{t-1} + \\Delta t (f^{UR}_{t-1} - f^{Sp}_{t-1} - f^{Tu}_{t-1})
+```
+"""
+struct ReservoirInventoryConstraint <: ConstraintType end
+
+"""
+Struct to limit the turbine flow
+
+```math
+QW^{min} \\le \\sum_{j \\in J(i)}^T wq_{jt} \\le  QW^{max},
+```
+"""
+struct TurbineFlowLimitConstraint <: ConstraintType end
+
+"""
+Struct to model turbine power output as a function of head
+
+```math
+p_{t} = \\eta \\rho g h_{t} f^{Tu}_{t},
+```
+"""
+struct TurbinePowerOutputConstraint <: ConstraintType end
+
+"""
+Struct to model reservoir stored volume/head limits
+
+```math
+h_{t}^{min} \\le h_{t} \\le h_{t}^{max},
+```
+"""
+struct ReservoirLevelLimitConstraint <: ConstraintType end
+
+"""
+Struct to model the final (target) volume/head storage constraint
+
+```math
+v_{T} = V^\\text{target},
+```
+"""
+struct ReservoirLevelTargetConstraint <: ConstraintType end
+
+"""
+Struct to model the transformation from head to volume constraint
+
+```math
+v_{t} = h_{t} \\text{head_to_volume},
+```
+"""
+struct ReservoirHeadToVolumeConstraint <: ConstraintType end
+
+"""
+Feedforward constraint to limit the water level budget for reservoir formulations.
+"""
+struct FeedForwardWaterLevelBudgetConstraint <: ConstraintType end
+
+"""
+Constraint to limit the active power pump variable during an event
+"""
+struct ActivePowerPumpOutageConstraint <: EventConstraint end
+
+#################################################################################
+# Energy Storage Constraints
+#################################################################################
+
+"""
+Struct to create the state of charge target constraint at the end of period.
+Used when the attribute `energy_target = true`.
+
+The specified constraint is formulated as:
+
+```math
+e^{st}_{T} + e^{st+} - e^{st-} = E^{st}_{T},
+```
+"""
+struct StateofChargeTargetConstraint <: ConstraintType end
+
+"""
+Struct to create the state of charge constraint limits.
+
+The specified constraint is formulated as:
+
+```math
+E_{st}^{min} \\le e^{st}_{t} \\le E_{st}^{max}, \\quad \\forall t \\in \\{1,\\dots, T\\}
+```
+"""
+struct StateofChargeLimitsConstraint <: ConstraintType end
+
+"""
+Struct to create the storage cycling limits for the charge variable.
+Used when `cycling_limits = true`.
+
+The specified constraint is formulated as:
+
+```math
+\\sum_{t \\in \\mathcal{T}} \\left(\\sum_{p \\in \\mathcal{P}^{\\text{as}_\\text{dn}}} R^*_{p,t} sb_{stc,p,t} + p^{st,ch}_{t} \\right)\\eta^{ch}_{st} \\Delta t - c^{ch-} \\leq C_{st} E^{max}_{st}
+```
+"""
+struct StorageCyclingCharge <: ConstraintType end
+"""
+Struct to create the storage cycling limits for the discharge variable.
+Used when `cycling_limits = true`.
+
+The specified constraint is formulated as:
+
+```math
+\\sum_{t \\in \\mathcal{T}} \\left(\\sum_{p \\in \\mathcal{P}^{\\text{as}_\\text{up}}} R^*_{p,t} sb_{std,p,t} + p^{st,ds}_{t}\\right)\\frac{1}{\\eta^{ds}_{st}} \\Delta t - c^{ds-} \\leq C_{st} E^{max}_{st}
+```
+"""
+struct StorageCyclingDischarge <: ConstraintType end
+
+## AS Provision Energy Constraints
+"""
+Struct to specify the lower and upper bounds of the discharge variable considering reserves.
+
+The specified constraints are formulated as:
+
+```math
+\\begin{align*}
+& p^{st, ds}_{t} + \\sum_{p \\in \\mathcal{P}^{\\text{as}_\\text{up}}} sb_{std,p,t} \\leq \\text{ss}^{st}_{t}P^{max,ds}_{st} \\quad \\forall t \\in \\{1,\\dots, T\\} \\\\
+& p^{st, ds}_{t} - \\sum_{p \\in \\mathcal{P}^{\text{as}_\\text{dn}}} sb_{std,p,t} \\geq 0, \\quad \\forall t \\in \\{1,\\dots, T\\}
+\\end{align*}
+```
+"""
+struct ReserveDischargeConstraint <: ConstraintType end
+
+"""
+Struct to specify the lower and upper bounds of the charge variable considering reserves.
+
+The specified constraints are formulated as:
+
+```math
+\\begin{align*}
+&p^{st, ch}_{t} + \\sum_{p \\in \\mathcal{P}^{\\text{as}_\\text{dn}}} sb_{stc,p,t} \\leq (1 - \\text{ss}^{st}_{t})P^{max,ch}_{st}, \\quad \\forall t \\in \\{1,\\dots, T\\} \\\\
+& p^{st, ch}_{t} - \\sum_{p \\in \\mathcal{P}^{\\text{as}_\\text{up}}} sb_{stc,p,t} \\geq 0, \\quad \\forall t \\in \\{1,\\dots, T\\}
+\\end{align*}
+```
+"""
+struct ReserveChargeConstraint <: ConstraintType end
+
+"""
+Struct to specify the individual product ancillary service coverage at the beginning of the period for charge and discharge variables.
+
+The specified constraints are formulated as:
+
+```math
+\\begin{align*}
+& sb_{stc,p,1}  \\eta^{ch}_{st} N_{p} \\Delta t \\le E_{st}^{max} - e^{st}_0, \\quad \\forall p \\in \\mathcal{P}^{as_{dn}} \\\\
+& sb_{stc,p,t}  \\eta^{ch}_{st} N_{p} \\Delta t \\le E_{st}^{max} - e^{st}_{t-1}, \\quad \\forall p \\in \\mathcal{P}^{as_{dn}},  \\forall t \\in \\{2,\\dots, T\\} \\\\
+& sb_{std,p,1}  \\frac{1}{\\eta^{ds}_{st}} N_{p} \\Delta t \\leq e^{st}_0 - E^{min}_{st}, \\quad \\forall p \\in \\mathcal{P}^{as_{up}} \\\\
+& sb_{std,p,t}  \\frac{1}{\\eta^{ds}_{st}} N_{p} \\Delta t \\leq e^{st}_{t-1} - E^{min}_{st}, \\quad \\forall p \\in \\mathcal{P}^{as_{up}},  \\forall t \\in \\{2,\\dots, T\\}
+\\end{align*}
+```
+"""
+struct ReserveCoverageConstraint <: ConstraintType end
+"""
+Struct to specify the individual product ancillary service coverage at the end of the period for charge and discharge variables.
+
+The specified constraints are formulated as:
+
+```math
+\\begin{align*}
+& sb_{stc,p,t}  \\eta^{ch}_{st} N_{p} \\Delta t \\le E_{st}^{max} - e^{st}_{t}, \\quad \\forall p \\in \\mathcal{P}^{as_{dn}}, \\forall t \\in \\{1,\\dots, T\\} \\\\
+& sb_{std,p,t}  \\frac{1}{\\eta^{ds}_{st}} N_{p} \\Delta t \\leq e^{st}_{t}- E^{min}_{st}, \\quad \\forall p \\in \\mathcal{P}^{as_{up}}, \\forall t \\in \\{1,\\dots, T\\}
+\\end{align*}
+```
+"""
+struct ReserveCoverageConstraintEndOfPeriod <: ConstraintType end
+
+"""
+Struct to specify all products ancillary service coverage at the beginning of the period for charge and discharge variables.
+Used when the attribute `complete_coverage = true`.
+
+The specified constraints are formulated as:
+
+```math
+\\begin{align*}
+& \\sum_{p \\in \\mathcal{P}^{\\text{as}_\\text{dn}}} sb_{stc,p,1}  \\eta^{ch}_{st} N_{p} \\Delta t \\le E_{st}^{max} - e^{st}_0 \\\\
+& \\sum_{p \\in \\mathcal{P}^{\\text{as}_\\text{dn}}}  sb_{stc,p,t} \\eta^{ch}_{st} N_{p} \\Delta t \\le E_{st}^{max} - e^{st}_{t-1}, \\quad \\forall t \\in \\{2,\\dots, T\\} \\\\
+& \\sum_{p \\in \\mathcal{P}^{\\text{as}_\\text{up}}} sb_{std,p,1}  \\frac{1}{\\eta^{ds}_{st}} N_{p} \\Delta t \\leq e^{st}_0 - E^{min}_{st} \\\\
+& \\sum_{p \\in \\mathcal{P}^{\\text{as}_\\text{up}}} sb_{std,p,t}  \\frac{1}{\\eta^{ds}_{st}} N_{p} \\Delta t \\leq e^{st}_{t-1}- E^{min}_{st}, \\quad \\forall t \\in \\{2,\\dots, T\\}
+\\end{align*}
+```
+"""
+struct ReserveCompleteCoverageConstraint <: ConstraintType end
+
+"""
+Struct to specify all products ancillary service coverage at the end of the period for charge and discharge variables.
+Used when the attribute `complete_coverage = true`.
+
+The specified constraints are formulated as:
+
+```math
+\\begin{align*}
+& \\sum_{p \\in \\mathcal{P}^{\\text{as}_\\text{dn}}}  sb_{stc,p,t}  \\eta^{ch}_{st} N_{p} \\Delta t \\le E_{st}^{max} - e^{st}_{t}, \\quad \\forall t \\in \\{1,\\dots, T\\}  \\\\
+& \\sum_{p \\in \\mathcal{P}^{\\text{as}_\\text{up}}} sb_{std,p,t}  \\frac{1}{\\eta^{ds}_{st}} N_{p} \\Delta t \\leq e^{st}_{t}- E^{min}_{st}, \\quad \\forall t \\in \\{1,\\dots, T\\}
+\\end{align*}
+```
+"""
+struct ReserveCompleteCoverageConstraintEndOfPeriod <: ConstraintType end
+
+"""
+Struct to specify an auxiliary constraint for adding charge and discharge into a single active power reserve variable.
+
+The specified constraint is formulated as:
+
+```math
+sb_{stc, p, t} + sb_{std, p, t} = r_{p,t}, \\quad \\forall p \\in \\mathcal{P}, \\forall t \\in \\{1,\\dots, T\\}
+```
+"""
+struct StorageTotalReserveConstraint <: ConstraintType end
+
+"""
+Struct to specify the auxiliary constraints for regularization terms in the objective function for the charge variable.
+Used when the attribute `regularization = true`.
+
+The specified constraints are formulated as:
+
+```math
+\\begin{align*}
+& \\left(\\sum_{p \\in \\mathcal{P}^{\\text{as}_\\text{dn}}} R^*_{p,t-1} sb_{stc,p,t-1} + p^{st,ch}_{t-1}  - \\sum_{p \\in \\mathcal{P}^{\\text{as}_\\text{up}}} R^*_{p,t-1} sb_{stc,p,t-1}\\right) - \\left(\\sum_{p \\in \\mathcal{P}^{\\text{as}_\\text{dn}}} R^*_{p,t} sb_{stc,p,t} + p^{st,ch}_{t}  - \\sum_{p \\in \\mathcal{P}^{\\text{as}_\\text{up}}} R^*_{p,t} sb_{stc,p,t}\\right) \\le z^{st, ch}_{t}, \\forall t \\in \\{2,\\dots, T\\}\\\\
+& \\left(\\sum_{p \\in \\mathcal{P}^{\\text{as}_\\text{dn}}} R^*_{p,t-1} sb_{stc,p,t-1} + p^{st,ch}_{t-1}  - \\sum_{p \\in \\mathcal{P}^{\\text{as}_\\text{up}}} R^*_{p,t-1} sb_{stc,p,t-1}\\right) - \\left(\\sum_{p \\in \\mathcal{P}^{\\text{as}_\\text{dn}}} R^*_{p,t} sb_{stc,p,t} + p^{st,ch}_{t}  - \\sum_{p \\in \\mathcal{P}^{\\text{as}_\\text{up}}} R^*_{p,t} sb_{stc,p,t}\\right) \\ge -z^{st, ch}_{t}, \\forall t \\in \\{2,\\dots, T\\}
+\\end{align*}
+```
+"""
+struct StorageRegularizationConstraintCharge <: ConstraintType end
+
+"""
+Struct to specify the auxiliary constraints for regularization terms in the objective function for the discharge variable.
+Used when the attribute `regularization = true`.
+
+The specified constraints are formulated as:
+
+```math
+\\begin{align*}
+& \\left(\\sum_{p \\in \\mathcal{P}^{\\text{as}_\\text{up}}} R^*_{p,t-1} sb_{std,p,t-1} + p^{st,ds}_{t-1} - \\sum_{p \\in \\mathcal{P}^{\\text{as}_\\text{dn}}} R^*_{p,t-1} sb_{std,p,t-1}\\right) -\\left(\\sum_{p \\in \\mathcal{P}^{\\text{as}_\\text{up}}} R^*_{p,t} sb_{std,p,t} + p^{st,ds}_{t} - \\sum_{p \\in \\mathcal{P}^{\\text{as}_\text{dn}}} R^*_{p,t} sb_{std,p,t}\\right) \\le z^{st, ds}_{t}, \\forall t \\in \\{2,\\dots, T\\}\\\\
+& \\left(\\sum_{p \\in \\mathcal{P}^{\\text{as}_\\text{up}}} R^*_{p,t-1} sb_{std,p,t-1} + p^{st,ds}_{t-1} - \\sum_{p \\in \\mathcal{P}^{\\text{as}_\\text{dn}}} R^*_{p,t-1} sb_{std,p,t-1}\\right) -\\left(\\sum_{p \\in \\mathcal{P}^{\\text{as}_\\text{up}}} R^*_{p,t} sb_{std,p,t} + p^{st,ds}_{t} - \\sum_{p \\in \\mathcal{P}^{\\text{as}_\text{dn}}} R^*_{p,t} sb_{std,p,t}\\right) \\ge -z^{st, ds}_{t}, \\forall t \\in \\{2,\\dots, T\\}
+\\end{align*}
+```
+"""
+struct StorageRegularizationConstraintDischarge <: ConstraintType end
