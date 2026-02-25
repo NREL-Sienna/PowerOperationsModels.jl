@@ -37,7 +37,7 @@ function add_to_expression!(
     for d in devices, t in get_time_steps(container)
         bus_no = PNM.get_mapped_bus_number(network_reduction, PSY.get_bus(d))
         name = PSY.get_name(d)
-        _add_to_jump_expression!(
+        add_proportional_to_jump_expression!(
             get_expression(container, T(), PSY.ACBus)[bus_no, t],
             get_parameter_column_refs(param_container, name)[t],
             multiplier[name, t],
@@ -83,7 +83,7 @@ function add_to_expression!(
                 param_value = 1.0
                 mult = get_multiplier_value(U(), d, W())
             end
-            _add_to_jump_expression!(
+            add_proportional_to_jump_expression!(
                 get_expression(container, T(), PSY.ACBus)[bus_no, t],
                 param_value,
                 mult,
@@ -247,7 +247,7 @@ function add_to_expression!(
                 param_value = 1.0
                 mult = get_multiplier_value(U(), d, W())
             end
-            _add_to_jump_expression!(
+            add_proportional_to_jump_expression!(
                 get_expression(container, T(), PSY.Area)[area_name, t],
                 param_value,
                 mult,
@@ -1182,7 +1182,7 @@ function add_to_expression!(
         ref_bus = get_reference_bus(network_model, device_bus)
         name = PSY.get_name(d)
         for t in get_time_steps(container)
-            _add_to_jump_expression!(
+            add_proportional_to_jump_expression!(
                 expression[ref_bus, t],
                 get_parameter_column_refs(param_container, name)[t],
                 multiplier[name, t],
@@ -1228,7 +1228,7 @@ function add_to_expression!(
                 param_value = 1.0
                 mult = get_multiplier_value(U(), d, W())
             end
-            _add_to_jump_expression(
+            add_proportional_to_jump_expression!(
                 expression[ref_bus, t],
                 param_value,
                 mult,
@@ -1394,8 +1394,8 @@ function add_to_expression!(
         ref_index = _ref_index(network_model, device_bus)
         param = get_parameter_column_refs(param_container, name)
         for t in get_time_steps(container)
-            _add_to_jump_expression!(sys_expr[ref_index, t], param[t], multiplier[name, t])
-            _add_to_jump_expression!(nodal_expr[bus_no, t], param[t], multiplier[name, t])
+            add_proportional_to_jump_expression!(sys_expr[ref_index, t], param[t], multiplier[name, t])
+            add_proportional_to_jump_expression!(nodal_expr[bus_no, t], param[t], multiplier[name, t])
         end
     end
     return
@@ -1443,8 +1443,8 @@ function add_to_expression!(
                 param = 1.0
                 mult = get_multiplier_value(U(), d, W())
             end
-            _add_to_jump_expression!(sys_expr[ref_index, t], param, mult)
-            _add_to_jump_expression!(nodal_expr[bus_no, t], param, mult)
+            add_proportional_to_jump_expression!(sys_expr[ref_index, t], param, mult)
+            add_proportional_to_jump_expression!(nodal_expr[bus_no, t], param, mult)
         end
     end
     return
