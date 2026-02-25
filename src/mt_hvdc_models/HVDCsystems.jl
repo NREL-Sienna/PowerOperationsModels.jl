@@ -575,7 +575,7 @@ function add_constraints!(
 ) where {
     U <: PSY.InterconnectingConverter,
     V <: QuadraticLossConverter,
-    X <: PM.AbstractActivePowerModel,
+    X <: AbstractActivePowerModel,
 }
     time_steps = get_time_steps(container)
     varcurrent = get_variable(container, ConverterCurrent(), U)
@@ -636,7 +636,7 @@ function add_constraints!(
 ) where {
     U <: PSY.InterconnectingConverter,
     V <: QuadraticLossConverter,
-    X <: PM.AbstractActivePowerModel,
+    X <: AbstractActivePowerModel,
 }
     time_steps = get_time_steps(container)
     varcurrent = get_variable(container, ConverterCurrent(), U)
@@ -726,7 +726,7 @@ function add_constraints!(
 ) where {
     U <: PSY.InterconnectingConverter,
     V <: QuadraticLossConverter,
-    X <: PM.AbstractActivePowerModel,
+    X <: AbstractActivePowerModel,
 }
     time_steps = get_time_steps(container)
     var_sq_current = get_variable(container, SquaredConverterCurrent(), U)

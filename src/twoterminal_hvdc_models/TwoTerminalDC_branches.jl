@@ -613,7 +613,7 @@ function add_constraints!(
     ::Type{T},
     devices::IS.FlattenIteratorWrapper{U},
     ::DeviceModel{U, HVDCTwoTerminalDispatch},
-    ::NetworkModel{<:PM.AbstractDCPModel},
+    ::NetworkModel{<:AbstractDCPModel},
 ) where {
     T <: Union{FlowRateConstraintToFrom, FlowRateConstraintFromTo},
     U <: PSY.TwoTerminalHVDC,
@@ -709,7 +709,7 @@ function add_constraints!(
     ::Type{HVDCPowerBalance},
     devices::IS.FlattenIteratorWrapper{T},
     ::DeviceModel{T, <:AbstractTwoTerminalDCLineFormulation},
-    ::NetworkModel{<:PM.AbstractDCPModel},
+    ::NetworkModel{<:AbstractDCPModel},
 ) where {T <: PSY.TwoTerminalHVDC}
     time_steps = get_time_steps(container)
     names = PSY.get_name.(devices)
@@ -851,7 +851,7 @@ function add_constraints!(
     ::Type{HVDCRectifierDCLineVoltageConstraint},
     devices::IS.FlattenIteratorWrapper{T},
     ::DeviceModel{T, <:HVDCTwoTerminalLCC},
-    ::NetworkModel{PM.ACPPowerModel},
+    ::NetworkModel{ACPPowerModel},
 ) where {T <: PSY.TwoTerminalLCCLine}
     time_steps = get_time_steps(container)
     names = PSY.get_name.(devices)
@@ -900,7 +900,7 @@ function add_constraints!(
     ::Type{HVDCInverterDCLineVoltageConstraint},
     devices::IS.FlattenIteratorWrapper{T},
     ::DeviceModel{T, <:HVDCTwoTerminalLCC},
-    ::NetworkModel{PM.ACPPowerModel},
+    ::NetworkModel{ACPPowerModel},
 ) where {T <: PSY.TwoTerminalLCCLine}
     time_steps = get_time_steps(container)
     names = PSY.get_name.(devices)
@@ -950,7 +950,7 @@ function add_constraints!(
     ::Type{HVDCRectifierOverlapAngleConstraint},
     devices::IS.FlattenIteratorWrapper{T},
     ::DeviceModel{T, <:HVDCTwoTerminalLCC},
-    ::NetworkModel{PM.ACPPowerModel},
+    ::NetworkModel{ACPPowerModel},
 ) where {T <: PSY.TwoTerminalLCCLine}
     time_steps = get_time_steps(container)
     names = PSY.get_name.(devices)
@@ -1009,7 +1009,7 @@ function add_constraints!(
     ::Type{HVDCInverterOverlapAngleConstraint},
     devices::IS.FlattenIteratorWrapper{T},
     ::DeviceModel{T, <:HVDCTwoTerminalLCC},
-    ::NetworkModel{PM.ACPPowerModel},
+    ::NetworkModel{ACPPowerModel},
 ) where {T <: PSY.TwoTerminalLCCLine}
     time_steps = get_time_steps(container)
     names = PSY.get_name.(devices)
@@ -1069,7 +1069,7 @@ function add_constraints!(
     ::Type{HVDCRectifierPowerFactorAngleConstraint},
     devices::IS.FlattenIteratorWrapper{T},
     ::DeviceModel{T, <:HVDCTwoTerminalLCC},
-    ::NetworkModel{PM.ACPPowerModel},
+    ::NetworkModel{ACPPowerModel},
 ) where {T <: PSY.TwoTerminalLCCLine}
     time_steps = get_time_steps(container)
     names = PSY.get_name.(devices)
@@ -1131,7 +1131,7 @@ function add_constraints!(
     ::Type{HVDCInverterPowerFactorAngleConstraint},
     devices::IS.FlattenIteratorWrapper{T},
     ::DeviceModel{T, <:HVDCTwoTerminalLCC},
-    ::NetworkModel{PM.ACPPowerModel},
+    ::NetworkModel{ACPPowerModel},
 ) where {T <: PSY.TwoTerminalLCCLine}
     time_steps = get_time_steps(container)
     names = PSY.get_name.(devices)
@@ -1194,7 +1194,7 @@ function add_constraints!(
     ::Type{HVDCRectifierACCurrentFlowConstraint},
     devices::IS.FlattenIteratorWrapper{T},
     ::DeviceModel{T, <:HVDCTwoTerminalLCC},
-    ::NetworkModel{PM.ACPPowerModel},
+    ::NetworkModel{ACPPowerModel},
 ) where {T <: PSY.TwoTerminalLCCLine}
     time_steps = get_time_steps(container)
     names = PSY.get_name.(devices)
@@ -1229,7 +1229,7 @@ function add_constraints!(
     ::Type{HVDCInverterACCurrentFlowConstraint},
     devices::IS.FlattenIteratorWrapper{T},
     ::DeviceModel{T, <:HVDCTwoTerminalLCC},
-    ::NetworkModel{PM.ACPPowerModel},
+    ::NetworkModel{ACPPowerModel},
 ) where {T <: PSY.TwoTerminalLCCLine}
     time_steps = get_time_steps(container)
     names = PSY.get_name.(devices)
@@ -1264,7 +1264,7 @@ function add_constraints!(
     ::Type{HVDCRectifierPowerCalculationConstraint},
     devices::IS.FlattenIteratorWrapper{T},
     ::DeviceModel{T, <:HVDCTwoTerminalLCC},
-    ::NetworkModel{PM.ACPPowerModel},
+    ::NetworkModel{ACPPowerModel},
 ) where {T <: PSY.TwoTerminalLCCLine}
     time_steps = get_time_steps(container)
     names = PSY.get_name.(devices)
@@ -1328,7 +1328,7 @@ function add_constraints!(
     ::Type{HVDCInverterPowerCalculationConstraint},
     devices::IS.FlattenIteratorWrapper{T},
     ::DeviceModel{T, <:HVDCTwoTerminalLCC},
-    ::NetworkModel{PM.ACPPowerModel},
+    ::NetworkModel{ACPPowerModel},
 ) where {T <: PSY.TwoTerminalLCCLine}
     time_steps = get_time_steps(container)
     names = PSY.get_name.(devices)
@@ -1392,7 +1392,7 @@ function add_constraints!(
     ::Type{HVDCTransmissionDCLineConstraint},
     devices::IS.FlattenIteratorWrapper{T},
     ::DeviceModel{T, <:HVDCTwoTerminalLCC},
-    ::NetworkModel{PM.ACPPowerModel},
+    ::NetworkModel{ACPPowerModel},
 ) where {T <: PSY.TwoTerminalLCCLine}
     time_steps = get_time_steps(container)
     names = PSY.get_name.(devices)

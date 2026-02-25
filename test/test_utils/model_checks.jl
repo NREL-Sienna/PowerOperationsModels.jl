@@ -484,7 +484,7 @@ function check_initialization_constraint_count(
     ::S,
     ::Type{T};
     filter_func = PSY.get_available,
-    meta = IOM.ISOPT.CONTAINER_KEY_EMPTY_META,
+    meta = IOM.CONTAINER_KEY_EMPTY_META,
 ) where {S <: IOM.ConstraintType, T <: PSY.Component}
     container =
         IOM.ISOPT.get_initial_conditions_model_container(IOM.get_internal(model))
@@ -499,7 +499,7 @@ function check_constraint_count(
     ::S,
     ::Type{T};
     filter_func = PSY.get_available,
-    meta = IOM.ISOPT.CONTAINER_KEY_EMPTY_META,
+    meta = IOM.CONTAINER_KEY_EMPTY_META,
 ) where {S <: IOM.ConstraintType, T <: PSY.Component}
     no_component = length(PSY.get_components(filter_func, T, model.sys))
     time_steps = IOM.get_time_steps(IOM.get_optimization_container(model))[end]

@@ -408,6 +408,9 @@ end
             @test isapprox(no_loss_objective, ref_objective; atol = 0.1)
 
             for col in names(ref_values)
+                if typeof(ref_values[1, col]) == DateTime
+                    continue
+                end
                 test_result =
                     all(isapprox.(ref_values[!, col], no_loss_values[!, col]; atol = 0.1))
                 @test test_result

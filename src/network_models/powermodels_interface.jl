@@ -216,12 +216,12 @@ end
 """
 active power only models ignore reactive power variables
 """
-function variable_reactive_net_injection(pm::PM.AbstractActivePowerModel; kwargs...)
+function variable_reactive_net_injection(pm::AbstractActivePowerModel; kwargs...)
     return
 end
 
 function constraint_power_balance_ni_expr(
-    pm::PM.AbstractActivePowerModel,
+    pm::AbstractActivePowerModel,
     n::Int,
     i::Int,
     bus_arcs,
@@ -286,7 +286,7 @@ function powermodels_network!(
     sys::PSY.System,
     template::ProblemTemplate,
     instantiate_model,
-) where {S <: PM.AbstractActivePowerModel}
+) where {S <: AbstractActivePowerModel}
     time_steps = get_time_steps(container)
     pm_data, PM_map = pass_to_pm(sys, template, time_steps[end])
 
@@ -322,7 +322,7 @@ end
 
 #### PM accessor functions ########
 
-function PMvarmap(::Type{S}) where {S <: PM.AbstractDCPModel}
+function PMvarmap(::Type{S}) where {S <: AbstractDCPModel}
     pm_variable_map = Dict{Type, Dict{Symbol, Union{VariableType, NamedTuple}}}()
 
     pm_variable_map[PSY.ACBus] = Dict(:va => VoltageAngle())
@@ -334,7 +334,7 @@ function PMvarmap(::Type{S}) where {S <: PM.AbstractDCPModel}
     return pm_variable_map
 end
 
-function PMvarmap(::Type{S}) where {S <: PM.AbstractActivePowerModel}
+function PMvarmap(::Type{S}) where {S <: AbstractActivePowerModel}
     pm_variable_map = Dict{Type, Dict{Symbol, Union{VariableType, NamedTuple}}}()
 
     pm_variable_map[PSY.ACBus] = Dict(:va => VoltageAngle())
@@ -374,7 +374,7 @@ function PMvarmap(::Type{S}) where {S <: AbstractPowerModel}
     return pm_variable_map
 end
 
-function PMconmap(::Type{S}) where {S <: PM.AbstractActivePowerModel}
+function PMconmap(::Type{S}) where {S <: AbstractActivePowerModel}
     pm_constraint_map = Dict{Type, Dict{Symbol, <:ConstraintType}}()
 
     pm_constraint_map[PSY.ACBus] = Dict(:power_balance_p => NodalBalanceActiveConstraint())

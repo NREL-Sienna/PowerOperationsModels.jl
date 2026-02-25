@@ -124,7 +124,7 @@ function construct_device!(
     sys::PSY.System,
     ::ArgumentConstructStage,
     model::DeviceModel{R, D},
-    network_model::NetworkModel{<:PM.AbstractActivePowerModel},
+    network_model::NetworkModel{<:AbstractActivePowerModel},
 ) where {
     R <: PSY.RenewableGen,
     D <: AbstractRenewableDispatchFormulation,
@@ -176,7 +176,7 @@ function construct_device!(
     sys::PSY.System,
     ::ModelConstructStage,
     model::DeviceModel{R, <:AbstractRenewableDispatchFormulation},
-    network_model::NetworkModel{<:PM.AbstractActivePowerModel},
+    network_model::NetworkModel{<:AbstractActivePowerModel},
 ) where {R <: PSY.RenewableGen}
     devices = get_available_components(model, sys)
 
@@ -260,7 +260,7 @@ function construct_device!(
     sys::PSY.System,
     ::ArgumentConstructStage,
     model::DeviceModel{R, FixedOutput},
-    network_model::NetworkModel{<:PM.AbstractActivePowerModel},
+    network_model::NetworkModel{<:AbstractActivePowerModel},
 ) where {R <: PSY.RenewableGen}
     devices = get_available_components(model, sys)
 

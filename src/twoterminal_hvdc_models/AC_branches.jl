@@ -187,7 +187,7 @@ end
 
 function _get_flow_variable_vector(
     container::OptimizationContainer,
-    ::NetworkModel{<:PM.AbstractDCPModel},
+    ::NetworkModel{<:AbstractDCPModel},
     ::Type{B},
 ) where {B <: PSY.ACTransmission}
     return [get_variable(container, FlowActivePowerVariable(), B)]
@@ -383,7 +383,7 @@ function add_constraints!(
 ) where {
     T <: PSY.ACTransmission,
     U <: AbstractBranchFormulation,
-    V <: PM.AbstractActivePowerModel,
+    V <: AbstractActivePowerModel,
 }
     time_steps = get_time_steps(container)
     net_reduction_data = network_model.network_reduction
@@ -916,7 +916,7 @@ function add_constraints!(
 ) where {
     T <: Union{PSY.PhaseShiftingTransformer, PSY.MonitoredLine},
     U <: AbstractBranchFormulation,
-    V <: PM.AbstractDCPModel,
+    V <: AbstractDCPModel,
 }
     add_range_constraints!(
         container,
@@ -941,7 +941,7 @@ function add_constraints!(
 ) where {
     T <: PSY.MonitoredLine,
     U <: StaticBranchUnbounded,
-    V <: PM.AbstractActivePowerModel,
+    V <: AbstractActivePowerModel,
 }
     return
 end
@@ -996,7 +996,7 @@ function add_constraints!(
 ) where {
     T <: PSY.MonitoredLine,
     U <: StaticBranchUnbounded,
-    V <: PM.AbstractActivePowerModel,
+    V <: AbstractActivePowerModel,
 }
     return
 end
@@ -1010,7 +1010,7 @@ function add_constraints!(
     devices::IS.FlattenIteratorWrapper{T},
     model::DeviceModel{T, PhaseAngleControl},
     ::NetworkModel{U},
-) where {T <: PSY.PhaseShiftingTransformer, U <: PM.AbstractActivePowerModel}
+) where {T <: PSY.PhaseShiftingTransformer, U <: AbstractActivePowerModel}
     add_range_constraints!(
         container,
         PhaseAngleControlLimit,
@@ -1023,14 +1023,14 @@ function add_constraints!(
 end
 
 """
-Add network flow constraints for PhaseShiftingTransformer and NetworkModel with PM.DCPPowerModel
+Add network flow constraints for PhaseShiftingTransformer and NetworkModel with DCPPowerModel
 """
 function add_constraints!(
     container::OptimizationContainer,
     ::Type{NetworkFlowConstraint},
     devices::IS.FlattenIteratorWrapper{T},
     model::DeviceModel{T, PhaseAngleControl},
-    ::NetworkModel{PM.DCPPowerModel},
+    ::NetworkModel{DCPPowerModel},
 ) where {T <: PSY.PhaseShiftingTransformer}
     time_steps = get_time_steps(container)
     flow_variables = get_variable(container, FlowActivePowerVariable(), T)
@@ -1091,7 +1091,7 @@ function add_to_objective_function!(
     container::OptimizationContainer,
     ::IS.FlattenIteratorWrapper{T},
     device_model::DeviceModel{T, <:AbstractBranchFormulation},
-    ::Type{<:PM.AbstractActivePowerModel},
+    ::Type{<:AbstractActivePowerModel},
 ) where {T <: PSY.ACTransmission}
     if get_use_slacks(device_model)
         variable_up = get_variable(container, FlowActivePowerSlackUpperBound(), T)

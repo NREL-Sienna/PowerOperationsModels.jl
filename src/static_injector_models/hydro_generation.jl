@@ -1,4 +1,20 @@
 #! format: off
+
+# Helper for proportional cost terms in objective function
+function _add_proportional_term!(
+    container::OptimizationContainer,
+    ::T,
+    component::U,
+    linear_term::Float64,
+    time_period::Int,
+) where {T <: VariableType, U <: PSY.Component}
+    component_name = PSY.get_name(component)
+    variable = get_variable(container, T(), U)[component_name, time_period]
+    lin_cost = variable * linear_term
+    add_to_objective_invariant_expression!(container, lin_cost)
+    return lin_cost
+end
+
 # These methods are defined in PowerSimulations
 requires_initialization(::AbstractHydroReservoirFormulation) = false
 requires_initialization(::AbstractHydroUnitCommitment) = true
@@ -274,13 +290,13 @@ objective_function_multiplier(::WaterSpillageVariable, ::AbstractHydroReservoirF
 sos_status(::PSY.HydroGen, ::AbstractHydroReservoirFormulation)=SOSStatusVariable.NO_VARIABLE
 sos_status(::PSY.HydroGen, ::AbstractHydroUnitCommitment)=SOSStatusVariable.VARIABLE
 
-variable_cost(::Nothing, ::ActivePowerVariable, ::PSY.HydroGen, ::AbstractHydroReservoirFormulation)=0.0
-variable_cost(cost::PSY.OperationalCost, ::ActivePowerVariable, ::PSY.HydroGen, ::AbstractHydroFormulation)=PSY.get_variable(cost)
-variable_cost(cost::PSY.OperationalCost, ::ActivePowerPumpVariable, ::PSY.HydroGen, ::AbstractHydroFormulation)=PSY.get_variable(cost)
+variable_cost(::Nothing, ::ActivePowerVariable, ::Type{<:PSY.HydroGen}, ::AbstractHydroReservoirFormulation)=0.0
+variable_cost(cost::PSY.OperationalCost, ::ActivePowerVariable, ::Type{<:PSY.HydroGen}, ::AbstractHydroFormulation)=PSY.get_variable(cost)
+variable_cost(cost::PSY.OperationalCost, ::ActivePowerPumpVariable, ::Type{<:PSY.HydroGen}, ::AbstractHydroFormulation)=PSY.get_variable(cost)
 
 # variable_cost(cost::PSY.OperationalCost, ::ActivePowerOutVariable, ::PSY.HydroTurbine, ::AbstractHydroFormulation)=PSY.get_variable(cost)
 
-variable_cost(cost::PSY.StorageCost, ::ActivePowerVariable, ::PSY.HydroGen, ::AbstractHydroFormulation)=PSY.get_discharge_variable_cost(cost)
+variable_cost(cost::PSY.StorageCost, ::ActivePowerVariable, ::Type{<:PSY.HydroGen}, ::AbstractHydroFormulation)=PSY.get_discharge_variable_cost(cost)
 
 #! format: on
 
@@ -558,7 +574,7 @@ function add_constraints!(
 ) where {
     V <: PSY.HydroGen,
     W <: Union{HydroDispatchRunOfRiver, HydroDispatchRunOfRiverBudget},
-    X <: PM.AbstractPowerModel,
+    X <: AbstractPowerModel,
 }
     if !has_semicontinuous_feedforward(model, U)
         add_range_constraints!(container, T, U, devices, model, X)
@@ -585,7 +601,7 @@ function add_constraints!(
 ) where {
     V <: PSY.HydroGen,
     W <: Union{HydroDispatchRunOfRiver, HydroDispatchRunOfRiverBudget},
-    X <: PM.AbstractPowerModel,
+    X <: AbstractPowerModel,
 }
     if !has_semicontinuous_feedforward(model, U)
         add_range_constraints!(container, T, U, devices, model, X)
@@ -603,7 +619,7 @@ function add_constraints!(
     devices::IS.FlattenIteratorWrapper{V},
     model::DeviceModel{V, W},
     ::NetworkModel{X},
-) where {V <: PSY.HydroGen, W <: HydroCommitmentRunOfRiver, X <: PM.AbstractPowerModel}
+) where {V <: PSY.HydroGen, W <: HydroCommitmentRunOfRiver, X <: AbstractPowerModel}
     add_semicontinuous_range_constraints!(container, T, U, devices, model, X)
     return
 end
@@ -615,7 +631,7 @@ function add_constraints!(
     devices::IS.FlattenIteratorWrapper{V},
     model::DeviceModel{V, W},
     ::NetworkModel{X},
-) where {V <: PSY.HydroGen, W <: HydroCommitmentRunOfRiver, X <: PM.AbstractPowerModel}
+) where {V <: PSY.HydroGen, W <: HydroCommitmentRunOfRiver, X <: AbstractPowerModel}
     add_semicontinuous_range_constraints!(container, T, U, devices, model, X)
     add_parameterized_upper_bound_range_constraints(
         container,
@@ -639,7 +655,7 @@ function add_constraints!(
 ) where {
     V <: PSY.HydroTurbine,
     W <: HydroTurbineEnergyCommitment,
-    X <: PM.AbstractPowerModel,
+    X <: AbstractPowerModel,
 }
     add_semicontinuous_range_constraints!(container, T, U, devices, model, X)
     return
@@ -742,7 +758,7 @@ function add_constraints!(
     devices::IS.FlattenIteratorWrapper{V},
     model::DeviceModel{V, W},
     ::NetworkModel{X},
-) where {V <: PSY.HydroGen, W <: AbstractHydroUnitCommitment, X <: PM.AbstractPowerModel}
+) where {V <: PSY.HydroGen, W <: AbstractHydroUnitCommitment, X <: AbstractPowerModel}
     add_semicontinuous_range_constraints!(container, T, U, devices, model, X)
     return
 end
@@ -760,7 +776,7 @@ function add_constraints!(
 ) where {
     V <: PSY.HydroGen,
     W <: AbstractHydroDispatchFormulation,
-    X <: PM.AbstractPowerModel,
+    X <: AbstractPowerModel,
 }
     if !has_semicontinuous_feedforward(model, U)
         add_range_constraints!(container, T, U, devices, model, X)
@@ -784,7 +800,7 @@ function add_constraints!(
 ) where {
     V <: PSY.HydroReservoir,
     W <: HydroEnergyModelReservoir,
-    X <: PM.AbstractPowerModel,
+    X <: AbstractPowerModel,
 }
     time_steps = get_time_steps(container)
     resolution = get_resolution(container)
@@ -891,7 +907,7 @@ function add_constraints!(
 ) where {
     V <: PSY.HydroGen,
     W <: AbstractHydroReservoirFormulation,
-    X <: PM.AbstractPowerModel,
+    X <: AbstractPowerModel,
 }
     time_steps = get_time_steps(container)
     set_name = [PSY.get_name(d) for d in devices]
@@ -951,7 +967,7 @@ function add_constraints!(
 ) where {
     V <: PSY.HydroReservoir,
     W <: HydroEnergyModelReservoir,
-    X <: PM.AbstractPowerModel,
+    X <: AbstractPowerModel,
 }
     time_steps = get_time_steps(container)
     set_name = [PSY.get_name(d) for d in devices]
@@ -1006,7 +1022,7 @@ function add_constraints!(
 ) where {
     V <: PSY.HydroReservoir,
     W <: HydroWaterModelReservoir,
-    X <: PM.AbstractPowerModel,
+    X <: AbstractPowerModel,
 }
     time_steps = get_time_steps(container)
     set_name = [PSY.get_name(d) for d in devices]
@@ -1067,7 +1083,7 @@ function add_constraints!(
     ::NetworkModel{X},
 ) where {
     W <: AbstractHydroReservoirFormulation,
-    X <: PM.AbstractPowerModel,
+    X <: AbstractPowerModel,
 }
     time_steps = get_time_steps(container)
     resolution = get_resolution(container)
@@ -1089,7 +1105,7 @@ function add_constraints!(
         time_steps,
     )
 
-    base_power = get_base_power(container)
+    base_power = get_model_base_power(container)
     t_first = first(time_steps)
     t_final = last(time_steps)
 
@@ -1154,7 +1170,7 @@ function add_constraints!(
 ) where {
     V <: PSY.HydroReservoir,
     W <: HydroWaterFactorModel,
-    X <: PM.AbstractPowerModel,
+    X <: AbstractPowerModel,
 }
     time_steps = get_time_steps(container)
     resolution = get_resolution(container)
@@ -1247,7 +1263,7 @@ function add_constraints!(
 ) where {
     V <: PSY.HydroGen,
     W <: AbstractHydroDispatchFormulation,
-    X <: PM.AbstractPowerModel,
+    X <: AbstractPowerModel,
 }
     time_steps = get_time_steps(container)
     set_name = [PSY.get_name(d) for d in devices]
@@ -1279,7 +1295,7 @@ function add_constraints!(
 ) where {
     V <: PSY.HydroGen,
     W <: HydroDispatchRunOfRiverBudget,
-    X <: PM.AbstractPowerModel,
+    X <: AbstractPowerModel,
 }
     time_steps = get_time_steps(container)
     set_name = [PSY.get_name(d) for d in devices]
@@ -1344,7 +1360,7 @@ function add_constraints!(
 ) where {
     V <: PSY.HydroReservoir,
     W <: HydroEnergyModelReservoir,
-    X <: PM.AbstractPowerModel,
+    X <: AbstractPowerModel,
 }
     time_steps = get_time_steps(container)
     set_name = [PSY.get_name(d) for d in devices]
@@ -1388,7 +1404,7 @@ function add_constraints!(
 ) where {
     V <: PSY.HydroReservoir,
     W <: HydroWaterModelReservoir,
-    X <: PM.AbstractPowerModel,
+    X <: AbstractPowerModel,
 }
     time_steps = get_time_steps(container)
     set_name = [PSY.get_name(d) for d in devices]
@@ -1424,7 +1440,7 @@ function add_constraints!(
     ::Type{EnergyBalanceConstraint},
     ::NetworkModel{X},
 ) where {
-    X <: PM.AbstractPowerModel,
+    X <: AbstractPowerModel,
 }
     bal_expr = get_expression(container, EnergyBalanceExpression(), PSY.System)
     buses_ax, times_ax = axes(bal_expr)
@@ -1458,7 +1474,7 @@ function add_constraints!(
 ) where {
     V <: PSY.HydroReservoir,
     W <: AbstractHydroFormulation,
-    X <: PM.AbstractPowerModel,
+    X <: AbstractPowerModel,
 }
     time_steps = get_time_steps(container)
     names = [PSY.get_name(d) for d in devices]
@@ -1520,7 +1536,7 @@ function add_constraints!(
 ) where {
     V <: PSY.HydroReservoir,
     W <: AbstractHydroFormulation,
-    X <: PM.AbstractPowerModel,
+    X <: AbstractPowerModel,
 }
     resolution = get_resolution(container)
     hourly_resolution = Float64(Dates.Hour(resolution).value)
@@ -1594,7 +1610,7 @@ function add_constraints!(
 ) where {
     V <: PSY.HydroReservoir,
     W <: AbstractHydroFormulation,
-    X <: PM.AbstractPowerModel,
+    X <: AbstractPowerModel,
 }
     time_steps = get_time_steps(container)
     names = PSY.get_name.(devices)
@@ -1636,7 +1652,7 @@ function add_constraints!(
 ) where {
     V <: PSY.HydroReservoir,
     W <: HydroWaterFactorModel,
-    X <: PM.AbstractPowerModel,
+    X <: AbstractPowerModel,
 }
     time_steps = get_time_steps(container)
     names = PSY.get_name.(devices)
@@ -1686,7 +1702,7 @@ function add_constraints!(
 ) where {
     V <: PSY.HydroReservoir,
     W <: AbstractHydroFormulation,
-    X <: PM.AbstractPowerModel,
+    X <: AbstractPowerModel,
 }
     time_steps = get_time_steps(container)
     names = PSY.get_name.(devices)
@@ -1727,10 +1743,10 @@ function add_constraints!(
 ) where {
     V <: PSY.HydroTurbine,
     W <: AbstractHydroFormulation,
-    X <: PM.AbstractPowerModel,
+    X <: AbstractPowerModel,
 }
     time_steps = get_time_steps(container)
-    base_power = get_base_power(container)
+    base_power = get_model_base_power(container)
     names = PSY.get_name.(devices)
     constraint =
         add_constraints_container!(
@@ -1777,10 +1793,10 @@ function add_constraints!(
 ) where {
     V <: PSY.HydroTurbine,
     W <: HydroTurbineWaterLinearDispatch,
-    X <: PM.AbstractPowerModel,
+    X <: AbstractPowerModel,
 }
     time_steps = get_time_steps(container)
-    base_power = get_base_power(container)
+    base_power = get_model_base_power(container)
     names = PSY.get_name.(devices)
     constraint =
         add_constraints_container!(
@@ -2076,7 +2092,7 @@ function add_to_balance_expression!(
     V <: ActivePowerVariable,
     W <: PSY.Generator,
     X <: AbstractDeviceFormulation,
-    Y <: PM.AbstractPowerModel,
+    Y <: AbstractPowerModel,
 }
     time_steps = get_time_steps(container)
     expression = get_expression(container, U(), PSY.System)
@@ -2107,7 +2123,7 @@ function add_to_balance_expression!(
     V <: ActivePowerTimeSeriesParameter,
     W <: PSY.ElectricLoad,
     X <: AbstractDeviceFormulation,
-    Y <: PM.AbstractPowerModel,
+    Y <: AbstractPowerModel,
 }
     time_steps = get_time_steps(container)
     expression = get_expression(container, U(), PSY.System)
@@ -2233,7 +2249,7 @@ function objective_function!(
     container::OptimizationContainer,
     devices::IS.FlattenIteratorWrapper{T},
     ::DeviceModel{T, U},
-    ::Type{<:PM.AbstractPowerModel},
+    ::Type{<:AbstractPowerModel},
 ) where {T <: PSY.HydroGen, U <: AbstractHydroUnitCommitment}
     add_variable_cost!(container, ActivePowerVariable(), devices, U())
     add_proportional_cost!(container, OnVariable(), devices, U())
@@ -2351,7 +2367,7 @@ function objective_function!(
     container::OptimizationContainer,
     devices::IS.FlattenIteratorWrapper{T},
     ::DeviceModel{T, U},
-    ::Type{<:PM.AbstractPowerModel},
+    ::Type{<:AbstractPowerModel},
 ) where {T <: PSY.HydroGen, U <: AbstractHydroDispatchFormulation}
     add_variable_cost!(container, ActivePowerVariable(), devices, U())
     return
@@ -2361,7 +2377,7 @@ function objective_function!(
     container::OptimizationContainer,
     devices::IS.FlattenIteratorWrapper{T},
     model::DeviceModel{T, U},
-    ::Type{<:PM.AbstractPowerModel},
+    ::Type{<:AbstractPowerModel},
 ) where {T <: PSY.HydroGen, U <: HydroDispatchRunOfRiverBudget}
     add_variable_cost!(container, ActivePowerVariable(), devices, U())
     if get_use_slacks(model)
@@ -2374,7 +2390,7 @@ function objective_function!(
     container::OptimizationContainer,
     devices::IS.FlattenIteratorWrapper{T},
     model::DeviceModel{T, U},
-    ::Type{<:PM.AbstractPowerModel},
+    ::Type{<:AbstractPowerModel},
 ) where {T <: PSY.HydroReservoir, U <: HydroEnergyModelReservoir}
     add_proportional_cost!(container, HydroEnergySurplusVariable(), devices, U())
     add_proportional_cost!(container, HydroEnergyShortageVariable(), devices, U())
@@ -2390,7 +2406,7 @@ function objective_function!(
     container::OptimizationContainer,
     devices::IS.FlattenIteratorWrapper{T},
     ::DeviceModel{T, U},
-    ::Type{<:PM.AbstractPowerModel},
+    ::Type{<:AbstractPowerModel},
 ) where {T <: PSY.HydroReservoir, U <: HydroWaterModelReservoir}
     add_proportional_cost!(container, HydroWaterSurplusVariable(), devices, U())
     add_proportional_cost!(container, HydroWaterShortageVariable(), devices, U())
@@ -2402,7 +2418,7 @@ function objective_function!(
     container::OptimizationContainer,
     devices::IS.FlattenIteratorWrapper{T},
     ::DeviceModel{T, U},
-    ::Type{<:PM.AbstractPowerModel},
+    ::Type{<:AbstractPowerModel},
 ) where {T <: PSY.HydroPumpTurbine, U <: AbstractHydroPumpFormulation}
     add_variable_cost!(container, ActivePowerVariable(), devices, U())
     add_variable_cost!(container, ActivePowerPumpVariable(), devices, U())
@@ -2420,7 +2436,7 @@ function add_proportional_cost!(
     Union{HydroEnergySurplusVariable, HydroEnergyShortageVariable, WaterSpillageVariable},
     V <: AbstractDeviceFormulation,
 }
-    base_p = get_base_power(container)
+    base_p = get_model_base_power(container)
     multiplier = objective_function_multiplier(U(), V())
     for d in devices
         op_cost_data = PSY.get_operation_cost(d)
@@ -2450,7 +2466,7 @@ function add_proportional_cost!(
     Union{HydroEnergySurplusVariable, HydroEnergyShortageVariable, WaterSpillageVariable},
     V <: HydroEnergyModelReservoir,
 }
-    base_p = get_base_power(container)
+    base_p = get_model_base_power(container)
     multiplier = objective_function_multiplier(U(), V())
     for d in devices
         op_cost_data = PSY.get_operation_cost(d)
@@ -2479,7 +2495,7 @@ function add_proportional_cost!(
     U <: Union{HydroBalanceShortageVariable, HydroBalanceSurplusVariable},
     V <: HydroEnergyModelReservoir,
 }
-    base_p = get_base_power(container)
+    base_p = get_model_base_power(container)
     multiplier = objective_function_multiplier(U(), V())
     for d in devices
         op_cost_data = PSY.get_operation_cost(d)
@@ -2509,7 +2525,7 @@ function add_proportional_cost!(
     U <: Union{HydroWaterSurplusVariable, HydroWaterShortageVariable},
     V <: HydroWaterModelReservoir,
 }
-    base_p = get_base_power(container)
+    base_p = get_model_base_power(container)
     multiplier = objective_function_multiplier(U(), V())
     for d in devices
         op_cost_data = PSY.get_operation_cost(d)
@@ -2572,7 +2588,7 @@ function add_constraints!(
 ) where {
     V <: PSY.HydroPumpTurbine,
     W <: HydroPumpEnergyDispatch,
-    X <: PM.AbstractPowerModel,
+    X <: AbstractPowerModel,
 }
     if !get_attribute(model, "reservation")
         add_range_constraints!(container, T, U, devices, model, X)
@@ -2615,7 +2631,7 @@ function add_constraints!(
 ) where {
     V <: PSY.HydroPumpTurbine,
     W <: HydroPumpEnergyDispatch,
-    X <: PM.AbstractPowerModel,
+    X <: AbstractPowerModel,
 }
     if !get_attribute(model, "reservation")
         add_range_constraints!(container, T, U, devices, model, X)
@@ -2658,7 +2674,7 @@ function add_constraints!(
 ) where {
     V <: PSY.HydroPumpTurbine,
     W <: HydroPumpEnergyCommitment,
-    X <: PM.AbstractPowerModel,
+    X <: AbstractPowerModel,
 }
     if !get_attribute(model, "reservation")
         add_semicontinuous_range_constraints!(container, T, U, devices, model, X)
@@ -2715,7 +2731,7 @@ function add_constraints!(
 ) where {
     V <: PSY.HydroPumpTurbine,
     W <: HydroPumpEnergyCommitment,
-    X <: PM.AbstractPowerModel,
+    X <: AbstractPowerModel,
 }
     if !get_attribute(model, "reservation")
         add_semicontinuous_range_constraints!(container, T, U, devices, model, X)
@@ -2769,7 +2785,7 @@ function add_constraints!(
 ) where {
     V <: PSY.HydroPumpTurbine,
     W <: HydroPumpEnergyCommitment,
-    X <: PM.AbstractPowerModel,
+    X <: AbstractPowerModel,
 }
     add_semicontinuous_range_constraints!(container, T, U, devices, model, X)
     return
@@ -2788,7 +2804,7 @@ function add_constraints!(
 ) where {
     V <: PSY.HydroPumpTurbine,
     W <: AbstractHydroPumpFormulation,
-    X <: PM.AbstractPowerModel,
+    X <: AbstractPowerModel,
 }
     time_steps = get_time_steps(container)
     names = PSY.get_name.(devices)
@@ -2828,7 +2844,7 @@ function add_constraints!(
     U <: ActivePowerRangeExpressionUB,
     V <: PSY.HydroPumpTurbine,
     W <: HydroPumpEnergyDispatch,
-    X <: PM.AbstractPowerModel,
+    X <: AbstractPowerModel,
 }
     add_parameterized_upper_bound_range_constraints(
         container,
@@ -2853,7 +2869,7 @@ function add_to_expression!(
     U <: ActivePowerReserveVariable,
     V <: PSY.HydroGen,
     W <: AbstractDeviceFormulation,
-    X <: PM.AbstractPowerModel,
+    X <: AbstractPowerModel,
 }
     expression = get_expression(container, T(), V)
     for d in devices
@@ -2877,7 +2893,7 @@ function add_to_expression!(
                     service_name,
                 )
                 for t in get_time_steps(container)
-                    _add_to_jump_expression!(
+                    add_proportional_to_jump_expression!(
                         expression[name, t],
                         variable[name, t],
                         deployed_fraction,
@@ -2900,7 +2916,7 @@ function add_to_expression!(
     U <: ActivePowerReserveVariable,
     V <: PSY.HydroGen,
     W <: AbstractDeviceFormulation,
-    X <: PM.AbstractPowerModel,
+    X <: AbstractPowerModel,
 }
     expression = get_expression(container, T(), V)
     for d in devices
@@ -2925,7 +2941,7 @@ function add_to_expression!(
                     service_name,
                 )
                 for t in get_time_steps(container)
-                    _add_to_jump_expression!(
+                    add_proportional_to_jump_expression!(
                         expression[name, t],
                         variable[name, t],
                         deployed_fraction,
@@ -2997,7 +3013,7 @@ function add_to_expression!(
     expression = get_expression(container, T(), V)
     for d in devices, t in get_time_steps(container)
         name = PSY.get_name(d)
-        _add_to_jump_expression!(expression[name, t], variable[name, t], 1.0)
+        add_proportional_to_jump_expression!(expression[name, t], variable[name, t], 1.0)
     end
     return
 end
@@ -3023,7 +3039,7 @@ function add_to_expression!(
     expression = get_expression(container, T(), V)
     for d in devices, t in get_time_steps(container)
         name = PSY.get_name(d)
-        _add_to_jump_expression!(expression[name, t], variable[name, t], -1.0)
+        add_proportional_to_jump_expression!(expression[name, t], variable[name, t], -1.0)
     end
     return
 end

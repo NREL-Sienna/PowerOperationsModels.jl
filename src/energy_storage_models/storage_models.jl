@@ -77,8 +77,8 @@ proportional_cost(::PSY.StorageCost, ::StorageChargeCyclingSlackVariable, ::PSY.
 proportional_cost(::PSY.StorageCost, ::StorageDischargeCyclingSlackVariable, ::PSY.EnergyReservoirStorage, ::AbstractStorageFormulation)=CYCLE_VIOLATION_COST
 
 
-variable_cost(cost::PSY.StorageCost, ::ActivePowerOutVariable, ::PSY.Storage, ::AbstractStorageFormulation)=PSY.get_discharge_variable_cost(cost)
-variable_cost(cost::PSY.StorageCost, ::ActivePowerInVariable, ::PSY.Storage, ::AbstractStorageFormulation)=PSY.get_charge_variable_cost(cost)
+IOM.variable_cost(cost::PSY.StorageCost, ::ActivePowerOutVariable, ::Type{<:PSY.Storage}, ::AbstractStorageFormulation)=PSY.get_discharge_variable_cost(cost)
+IOM.variable_cost(cost::PSY.StorageCost, ::ActivePowerInVariable, ::Type{<:PSY.Storage}, ::AbstractStorageFormulation)=PSY.get_charge_variable_cost(cost)
 
 ######################## Parameters ##################################################
 
@@ -105,10 +105,10 @@ _include_min_gen_power_in_constraint(
     ::AbstractStorageFormulation,
 ) = false
 
-function variable_cost(
-    cost::PSY.StorageCost,
+function IOM.variable_cost(
+    ::PSY.StorageCost,
     ::StorageRegularizationVariable,
-    ::PSY.Storage,
+    ::Type{<:PSY.Storage},
     ::AbstractStorageFormulation,
 )
     return PSY.CostCurve(PSY.LinearCurve(STORAGE_REG_COST), PSY.UnitSystem.SYSTEM_BASE)
@@ -192,7 +192,7 @@ function add_constraints!(
     U <: ActivePowerOutVariable,
     V <: PSY.Storage,
     W <: AbstractStorageFormulation,
-    X <: PM.AbstractPowerModel,
+    X <: AbstractPowerModel,
 }
     if get_attribute(model, "reservation")
         add_reserve_range_constraints!(container, T, U, devices, model, X)
@@ -213,7 +213,7 @@ function add_constraints!(
     U <: ActivePowerInVariable,
     V <: PSY.Storage,
     W <: AbstractStorageFormulation,
-    X <: PM.AbstractPowerModel,
+    X <: AbstractPowerModel,
 }
     if get_attribute(model, "reservation")
         add_reserve_range_constraints!(container, T, U, devices, model, X)
@@ -234,7 +234,7 @@ function add_reserve_range_constraint_with_deployment!(
     U <: ActivePowerOutVariable,
     V <: PSY.Storage,
     W <: AbstractStorageFormulation,
-    X <: PM.AbstractPowerModel,
+    X <: AbstractPowerModel,
 }
     time_steps = get_time_steps(container)
     names = [PSY.get_name(x) for x in devices]
@@ -267,7 +267,7 @@ function add_reserve_range_constraint_with_deployment!(
     U <: ActivePowerInVariable,
     V <: PSY.Storage,
     W <: AbstractStorageFormulation,
-    X <: PM.AbstractPowerModel,
+    X <: AbstractPowerModel,
 }
     time_steps = get_time_steps(container)
     names = [PSY.get_name(x) for x in devices]
@@ -301,7 +301,7 @@ function add_reserve_range_constraint_with_deployment_no_reservation!(
     U <: ActivePowerOutVariable,
     V <: PSY.Storage,
     W <: AbstractStorageFormulation,
-    X <: PM.AbstractPowerModel,
+    X <: AbstractPowerModel,
 }
     time_steps = get_time_steps(container)
     names = [PSY.get_name(x) for x in devices]
@@ -333,7 +333,7 @@ function add_reserve_range_constraint_with_deployment_no_reservation!(
     U <: ActivePowerInVariable,
     V <: PSY.Storage,
     W <: AbstractStorageFormulation,
-    X <: PM.AbstractPowerModel,
+    X <: AbstractPowerModel,
 }
     time_steps = get_time_steps(container)
     names = [PSY.get_name(x) for x in devices]
@@ -361,7 +361,7 @@ function add_constraints!(
     devices::IS.FlattenIteratorWrapper{V},
     model::DeviceModel{V, W},
     ::NetworkModel{X},
-) where {V <: PSY.Storage, W <: AbstractStorageFormulation, X <: PM.AbstractPowerModel}
+) where {V <: PSY.Storage, W <: AbstractStorageFormulation, X <: AbstractPowerModel}
     add_range_constraints!(container, T, U, devices, model, X)
     return
 end
@@ -393,7 +393,7 @@ function add_constraints!(
     devices::IS.FlattenIteratorWrapper{V},
     model::DeviceModel{V, W},
     ::NetworkModel{X},
-) where {V <: PSY.Storage, W <: AbstractStorageFormulation, X <: PM.AbstractPowerModel}
+) where {V <: PSY.Storage, W <: AbstractStorageFormulation, X <: AbstractPowerModel}
     add_range_constraints!(
         container,
         StateofChargeLimitsConstraint,
@@ -673,12 +673,12 @@ function add_to_expression!(
         area_name = PSY.get_name(PSY.get_area(device_bus))
         bus_no = PNM.get_mapped_bus_number(network_reduction, device_bus)
         for t in get_time_steps(container)
-            _add_to_jump_expression!(
+            add_proportional_to_jump_expression!(
                 area_expr[area_name, t],
                 variable[name, t],
                 get_variable_multiplier(U(), V, W()),
             )
-            _add_to_jump_expression!(
+            add_proportional_to_jump_expression!(
                 nodal_expr[bus_no, t],
                 variable[name, t],
                 get_variable_multiplier(U(), V, W()),
@@ -709,7 +709,7 @@ function add_to_expression!(
             variable = get_variable(container, U(), V, "$(typeof(s))_$s_name")
             mult = get_variable_multiplier(U, T, d, W(), s) * get_fraction(T, s)
             for t in get_time_steps(container)
-                _add_to_jump_expression!(expression[name, t], variable[name, t], mult)
+                add_proportional_to_jump_expression!(expression[name, t], variable[name, t], mult)
             end
         end
     end
@@ -737,7 +737,7 @@ function add_to_expression!(
             variable = get_variable(container, U(), V, "$(typeof(s))_$s_name")
             mult = get_variable_multiplier(U, T, d, W(), s) * get_fraction(T, s)
             for t in get_time_steps(container)
-                _add_to_jump_expression!(expression[name, t], variable[name, t], mult)
+                add_proportional_to_jump_expression!(expression[name, t], variable[name, t], mult)
             end
         end
     end
@@ -764,7 +764,7 @@ function add_to_expression!(
             expression = get_expression(container, T(), V, "$(typeof(s))_$(s_name)")
             variable = get_variable(container, U(), V, "$(typeof(s))_$s_name")
             for t in get_time_steps(container)
-                _add_to_jump_expression!(expression[name, t], variable[name, t], 1.0)
+                add_proportional_to_jump_expression!(expression[name, t], variable[name, t], 1.0)
             end
         end
     end
@@ -790,7 +790,7 @@ function add_to_expression!(
         expression = get_expression(container, T(), UV, "$(V)_$(s_name)")
         variable = get_variable(container, U(), V, s_name)
         for t in get_time_steps(container)
-            _add_to_jump_expression!(expression[name, t], variable[name, t], -1.0)
+            add_proportional_to_jump_expression!(expression[name, t], variable[name, t], -1.0)
         end
     end
     return
@@ -805,7 +805,7 @@ function add_constraints!(
     devices::IS.FlattenIteratorWrapper{V},
     model::DeviceModel{V, StorageDispatchWithReserves},
     network_model::NetworkModel{X},
-) where {V <: PSY.Storage, X <: PM.AbstractPowerModel}
+) where {V <: PSY.Storage, X <: AbstractPowerModel}
     if has_service_model(model)
         add_energybalance_with_reserves!(container, devices, model, network_model)
     else
@@ -818,7 +818,7 @@ function add_energybalance_with_reserves!(
     devices::IS.FlattenIteratorWrapper{V},
     model::DeviceModel{V, StorageDispatchWithReserves},
     network_model::NetworkModel{X},
-) where {V <: PSY.Storage, X <: PM.AbstractPowerModel}
+) where {V <: PSY.Storage, X <: AbstractPowerModel}
     time_steps = get_time_steps(container)
     resolution = get_resolution(container)
     fraction_of_hour = Dates.value(Dates.Minute(resolution)) / MINUTES_IN_HOUR
@@ -886,7 +886,7 @@ function add_energybalance_without_reserves!(
     devices::IS.FlattenIteratorWrapper{V},
     model::DeviceModel{V, StorageDispatchWithReserves},
     network_model::NetworkModel{X},
-) where {V <: PSY.Storage, X <: PM.AbstractPowerModel}
+) where {V <: PSY.Storage, X <: AbstractPowerModel}
     time_steps = get_time_steps(container)
     resolution = get_resolution(container)
     fraction_of_hour = Dates.value(Dates.Minute(resolution)) / MINUTES_IN_HOUR
@@ -943,7 +943,7 @@ function add_constraints!(
     devices::IS.FlattenIteratorWrapper{V},
     model::DeviceModel{V, StorageDispatchWithReserves},
     network_model::NetworkModel{X},
-) where {V <: PSY.Storage, X <: PM.AbstractPowerModel}
+) where {V <: PSY.Storage, X <: AbstractPowerModel}
     names = String[PSY.get_name(x) for x in devices]
     time_steps = get_time_steps(container)
     powerout_var = get_variable(container, ActivePowerOutVariable(), V)
@@ -990,7 +990,7 @@ function add_constraints!(
     devices::IS.FlattenIteratorWrapper{V},
     model::DeviceModel{V, StorageDispatchWithReserves},
     network_model::NetworkModel{X},
-) where {V <: PSY.Storage, X <: PM.AbstractPowerModel}
+) where {V <: PSY.Storage, X <: AbstractPowerModel}
     names = String[PSY.get_name(x) for x in devices]
     time_steps = get_time_steps(container)
     powerin_var = get_variable(container, ActivePowerInVariable(), V)
@@ -1045,7 +1045,7 @@ function add_constraints!(
 ) where {
     T <: Union{ReserveCoverageConstraint, ReserveCoverageConstraintEndOfPeriod},
     V <: PSY.Storage,
-    X <: PM.AbstractPowerModel,
+    X <: AbstractPowerModel,
 }
     time_steps = get_time_steps(container)
     resolution = get_resolution(container)
@@ -1193,7 +1193,7 @@ function add_constraints!(
     T <:
     Union{ReserveCompleteCoverageConstraint, ReserveCompleteCoverageConstraintEndOfPeriod},
     V <: PSY.Storage,
-    X <: PM.AbstractPowerModel,
+    X <: AbstractPowerModel,
 }
     time_steps = get_time_steps(container)
     resolution = get_resolution(container)
@@ -1356,7 +1356,7 @@ function add_constraints!(
     devices::IS.FlattenIteratorWrapper{V},
     model::DeviceModel{V, StorageDispatchWithReserves},
     network_model::NetworkModel{X},
-) where {V <: PSY.Storage, X <: PM.AbstractPowerModel}
+) where {V <: PSY.Storage, X <: AbstractPowerModel}
     services = Set()
     for d in devices
         union!(services, PSY.get_services(d))
@@ -1393,7 +1393,7 @@ function add_constraints!(
     devices::IS.FlattenIteratorWrapper{V},
     model::DeviceModel{V, StorageDispatchWithReserves},
     network_model::NetworkModel{X},
-) where {V <: PSY.EnergyReservoirStorage, X <: PM.AbstractPowerModel}
+) where {V <: PSY.EnergyReservoirStorage, X <: AbstractPowerModel}
     energy_var = get_variable(container, EnergyVariable(), V)
     surplus_var = get_variable(container, StorageEnergySurplusVariable(), V)
     shortfall_var = get_variable(container, StorageEnergyShortageVariable(), V)
@@ -1425,7 +1425,7 @@ function add_cycling_charge_without_reserves!(
     devices::IS.FlattenIteratorWrapper{V},
     ::DeviceModel{V, StorageDispatchWithReserves},
     ::NetworkModel{X},
-) where {V <: PSY.EnergyReservoirStorage, X <: PM.AbstractPowerModel}
+) where {V <: PSY.EnergyReservoirStorage, X <: AbstractPowerModel}
     time_steps = get_time_steps(container)
     resolution = get_resolution(container)
     fraction_of_hour = Dates.value(Dates.Minute(resolution)) / MINUTES_IN_HOUR
@@ -1460,7 +1460,7 @@ function add_cycling_charge_with_reserves!(
     devices::IS.FlattenIteratorWrapper{V},
     ::DeviceModel{V, StorageDispatchWithReserves},
     ::NetworkModel{X},
-) where {V <: PSY.EnergyReservoirStorage, X <: PM.AbstractPowerModel}
+) where {V <: PSY.EnergyReservoirStorage, X <: AbstractPowerModel}
     time_steps = get_time_steps(container)
     resolution = get_resolution(container)
     fraction_of_hour = Dates.value(Dates.Minute(resolution)) / MINUTES_IN_HOUR
@@ -1499,7 +1499,7 @@ function add_constraints!(
     devices::IS.FlattenIteratorWrapper{V},
     model::DeviceModel{V, StorageDispatchWithReserves},
     network_model::NetworkModel{X},
-) where {V <: PSY.EnergyReservoirStorage, X <: PM.AbstractPowerModel}
+) where {V <: PSY.EnergyReservoirStorage, X <: AbstractPowerModel}
     if has_service_model(model)
         add_cycling_charge_with_reserves!(container, devices, model, network_model)
     else
@@ -1514,7 +1514,7 @@ function add_cycling_discharge_without_reserves!(
     devices::IS.FlattenIteratorWrapper{V},
     ::DeviceModel{V, StorageDispatchWithReserves},
     ::NetworkModel{X},
-) where {V <: PSY.EnergyReservoirStorage, X <: PM.AbstractPowerModel}
+) where {V <: PSY.EnergyReservoirStorage, X <: AbstractPowerModel}
     time_steps = get_time_steps(container)
     resolution = get_resolution(container)
     fraction_of_hour = Dates.value(Dates.Minute(resolution)) / MINUTES_IN_HOUR
@@ -1550,7 +1550,7 @@ function add_cycling_discharge_with_reserves!(
     devices::IS.FlattenIteratorWrapper{V},
     ::DeviceModel{V, StorageDispatchWithReserves},
     ::NetworkModel{X},
-) where {V <: PSY.EnergyReservoirStorage, X <: PM.AbstractPowerModel}
+) where {V <: PSY.EnergyReservoirStorage, X <: AbstractPowerModel}
     time_steps = get_time_steps(container)
     resolution = get_resolution(container)
     fraction_of_hour = Dates.value(Dates.Minute(resolution)) / MINUTES_IN_HOUR
@@ -1588,7 +1588,7 @@ function add_constraints!(
     devices::IS.FlattenIteratorWrapper{V},
     model::DeviceModel{V, StorageDispatchWithReserves},
     network_model::NetworkModel{X},
-) where {V <: PSY.EnergyReservoirStorage, X <: PM.AbstractPowerModel}
+) where {V <: PSY.EnergyReservoirStorage, X <: AbstractPowerModel}
     if has_service_model(model)
         add_cycling_discharge_with_reserves!(container, devices, model, network_model)
     else
@@ -1603,7 +1603,7 @@ function add_constraints!(
     devices::IS.FlattenIteratorWrapper{V},
     model::DeviceModel{V, StorageDispatchWithReserves},
     network_model::NetworkModel{X},
-) where {V <: PSY.Storage, X <: PM.AbstractPowerModel}
+) where {V <: PSY.Storage, X <: AbstractPowerModel}
     names = [PSY.get_name(x) for x in devices]
     time_steps = get_time_steps(container)
     reg_var = get_variable(container, StorageRegularizationVariableCharge(), V)
@@ -1680,7 +1680,7 @@ function add_constraints!(
     devices::IS.FlattenIteratorWrapper{V},
     model::DeviceModel{V, StorageDispatchWithReserves},
     network_model::NetworkModel{X},
-) where {V <: PSY.Storage, X <: PM.AbstractPowerModel}
+) where {V <: PSY.Storage, X <: AbstractPowerModel}
     names = [PSY.get_name(x) for x in devices]
     time_steps = get_time_steps(container)
     reg_var = get_variable(container, StorageRegularizationVariableDischarge(), V)
@@ -1755,7 +1755,7 @@ function objective_function!(
     devices::IS.FlattenIteratorWrapper{T},
     model::DeviceModel{T, U},
     ::Type{V},
-) where {T <: PSY.Storage, U <: AbstractStorageFormulation, V <: PM.AbstractPowerModel}
+) where {T <: PSY.Storage, U <: AbstractStorageFormulation, V <: AbstractPowerModel}
     add_variable_cost!(container, ActivePowerOutVariable(), devices, U())
     add_variable_cost!(container, ActivePowerInVariable(), devices, U())
     if get_attribute(model, "regularization")
@@ -1781,7 +1781,7 @@ function objective_function!(
     devices::IS.FlattenIteratorWrapper{PSY.EnergyReservoirStorage},
     model::DeviceModel{PSY.EnergyReservoirStorage, T},
     ::Type{V},
-) where {T <: AbstractStorageFormulation, V <: PM.AbstractPowerModel}
+) where {T <: AbstractStorageFormulation, V <: AbstractPowerModel}
     # TODO problem with time varying MBC.
     add_variable_cost!(container, ActivePowerOutVariable(), devices, T())
     add_variable_cost!(container, ActivePowerInVariable(), devices, T())

@@ -594,7 +594,7 @@ end
         template_ed,
         sys;
         name = "ED",
-        optimizer = Ipopt_optimizer,
+        optimizer = ipopt_optimizer,
         optimizer_solve_log_print = true,
         store_variable_names = true,
         system_to_file = true,
@@ -604,7 +604,7 @@ end
     @test build!(model; output_dir = output_dir) ==
           ModelBuildStatus.BUILT
 
-    @test solve!(model; optimizer = Ipopt_optimizer, output_dir = output_dir) ==
+    @test solve!(model; optimizer = ipopt_optimizer, output_dir = output_dir) ==
           IS.Simulation.RunStatus.SUCCESSFULLY_FINALIZED
 
     results = OptimizationProblemResults(model)
@@ -649,7 +649,7 @@ end
     model = DecisionModel(
         template,
         c_sys5_hy;
-        optimizer = Ipopt_optimizer,
+        optimizer = ipopt_optimizer,
         store_variable_names = true,
     )
 
@@ -804,7 +804,7 @@ end
     model = DecisionModel(
         template,
         c_sys5_hy;
-        optimizer = Ipopt_optimizer,
+        optimizer = ipopt_optimizer,
         store_variable_names = true,
     )
 

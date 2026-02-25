@@ -60,7 +60,7 @@ import InfrastructureSystems.Optimization:
 
 # Import formulation abstract types from InfrastructureSystems.Optimization
 # Note: AbstractPTDFModel and AbstractSecurityConstrainedPTDFModel are defined
-# in this package (network_formulations.jl) as subtypes of PM.AbstractDCPModel.
+# in this package (network_formulations.jl) as subtypes of AbstractDCPModel.
 import InfrastructureSystems.Optimization:
     AbstractDeviceFormulation,
     AbstractThermalFormulation,
@@ -140,7 +140,9 @@ import InfrastructureOptimizationModels:
     get_min_max_limits,
     start_up_cost,
     _get_initial_condition_type,
-    initialize_hvdc_system!
+    initialize_hvdc_system!,
+    build_initial_conditions_model!,
+    set_ic_quantity!
 
 # Market bid cost: import IOM functions that POM extends with device-specific methods
 import InfrastructureOptimizationModels:
@@ -168,7 +170,8 @@ import InfrastructureOptimizationModels:
     add_constraint_dual!,
     assign_dual_variable!,
     _calculate_dual_variable_value!,
-    add_dual_container!
+    add_dual_container!,
+    variable_cost
 
 using InfrastructureOptimizationModels
 
@@ -204,10 +207,11 @@ include("common_models/add_parameters.jl")
 include("common_models/make_system_expressions.jl")
 include("common_models/reserve_range_constraints.jl")
 
-# Initial Conditions - Device-specific implementations
-# These extend the generic infrastructure from IOM
+# Initial Conditions
+include("initial_conditions/add_initial_condition.jl")
 include("initial_conditions/device_initial_conditions.jl")
 include("initial_conditions/update_initial_conditions.jl")
+include("initial_conditions/initialization.jl")
 
 # Device Models - Static Injectors
 include("static_injector_models/thermal_generation.jl")
@@ -220,6 +224,7 @@ include("static_injector_models/source.jl")
 include("static_injector_models/source_constructor.jl")
 include("static_injector_models/reactivepower_device.jl")
 include("static_injector_models/reactivepowerdevice_constructor.jl")
+include("utils/psy_utils.jl")
 include("static_injector_models/hydro_generation.jl")
 include("static_injector_models/hydrogeneration_constructor.jl")
 
@@ -242,6 +247,8 @@ include("network_models/area_balance_model.jl")
 include("network_models/powermodels_interface.jl")
 include("network_models/pm_translator.jl")
 include("network_models/network_constructor.jl")
+
+import InfrastructureOptimizationModels: get_incompatible_devices
 
 # Services Models
 include("services_models/service_slacks.jl")

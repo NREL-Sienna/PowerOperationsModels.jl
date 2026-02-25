@@ -20,7 +20,7 @@ function get_branch_to_pm(
     ::Tuple{Int, Int},
     branch::PSY.PhaseShiftingTransformer,
     ::Type{PhaseAngleControl},
-    ::Type{<:PM.AbstractDCPModel},
+    ::Type{<:AbstractDCPModel},
 )
     # we allocate the transformer shunt values to primary side only
     yt = PSY.get_primary_shunt(branch)
@@ -603,7 +603,7 @@ function get_branch_to_pm(
     ix::Int,
     branch::PSY.TwoTerminalGenericHVDCLine,
     ::Type{HVDCTwoTerminalDispatch},
-    ::Type{<:PM.AbstractDCPModel},
+    ::Type{<:AbstractDCPModel},
 )
     PM_branch = Dict{String, Any}(
         "loss1" => PSY.get_proportional_term(PSY.get_loss(branch)),

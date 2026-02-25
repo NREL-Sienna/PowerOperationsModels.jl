@@ -3,7 +3,7 @@ function construct_device!(
     sys::PSY.System,
     ::ArgumentConstructStage,
     model::DeviceModel{PSY.InterconnectingConverter, LosslessConverter},
-    network_model::NetworkModel{<:PM.AbstractActivePowerModel},
+    network_model::NetworkModel{<:AbstractActivePowerModel},
 )
     devices = get_available_components(
         model,
@@ -27,7 +27,7 @@ function construct_device!(
     sys::PSY.System,
     ::ModelConstructStage,
     model::DeviceModel{PSY.InterconnectingConverter, LosslessConverter},
-    network_model::NetworkModel{<:PM.AbstractActivePowerModel},
+    network_model::NetworkModel{<:AbstractActivePowerModel},
 )
     devices = get_available_components(
         model,
@@ -49,7 +49,7 @@ function construct_device!(
     sys::PSY.System,
     ::ArgumentConstructStage,
     model::DeviceModel{PSY.InterconnectingConverter, QuadraticLossConverter},
-    network_model::NetworkModel{<:PM.AbstractActivePowerModel},
+    network_model::NetworkModel{<:AbstractActivePowerModel},
 )
     devices = get_available_components(
         model,
@@ -159,7 +159,7 @@ function construct_device!(
     sys::PSY.System,
     ::ModelConstructStage,
     model::DeviceModel{PSY.InterconnectingConverter, QuadraticLossConverter},
-    network_model::NetworkModel{<:PM.AbstractActivePowerModel},
+    network_model::NetworkModel{<:AbstractActivePowerModel},
 )
     devices = get_available_components(
         model,
@@ -235,7 +235,7 @@ function construct_device!(
     sys::PSY.System,
     ::ArgumentConstructStage,
     model::DeviceModel{PSY.TModelHVDCLine, LosslessLine},
-    network_model::NetworkModel{<:PM.AbstractActivePowerModel},
+    network_model::NetworkModel{<:AbstractActivePowerModel},
 )
     devices = get_available_components(
         model,
@@ -259,7 +259,7 @@ function construct_device!(
     sys::PSY.System,
     ::ModelConstructStage,
     model::DeviceModel{PSY.TModelHVDCLine, LosslessLine},
-    ::NetworkModel{<:PM.AbstractActivePowerModel},
+    ::NetworkModel{<:AbstractActivePowerModel},
 )
 end
 
@@ -268,7 +268,7 @@ function construct_device!(
     sys::PSY.System,
     ::ArgumentConstructStage,
     model::DeviceModel{PSY.TModelHVDCLine, DCLossyLine},
-    network_model::NetworkModel{<:PM.AbstractActivePowerModel},
+    network_model::NetworkModel{<:AbstractActivePowerModel},
 )
     devices = get_available_components(
         model,
@@ -293,7 +293,7 @@ function construct_device!(
     sys::PSY.System,
     ::ModelConstructStage,
     model::DeviceModel{PSY.TModelHVDCLine, DCLossyLine},
-    network_model::NetworkModel{<:PM.AbstractActivePowerModel},
+    network_model::NetworkModel{<:AbstractActivePowerModel},
 )
     devices = get_available_components(
         model,

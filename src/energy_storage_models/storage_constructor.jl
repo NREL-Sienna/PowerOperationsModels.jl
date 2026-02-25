@@ -4,7 +4,7 @@ function _add_ancillary_services!(
     ::ArgumentConstructStage,
     model::DeviceModel{T, U},
     network_model::NetworkModel{V},
-) where {T <: PSY.Storage, U <: StorageDispatchWithReserves, V <: PM.AbstractPowerModel}
+) where {T <: PSY.Storage, U <: StorageDispatchWithReserves, V <: AbstractPowerModel}
     add_variables!(container, AncillaryServiceVariableDischarge, devices, U())
     add_variables!(container, AncillaryServiceVariableCharge, devices, U())
     time_steps = get_time_steps(container)
@@ -76,7 +76,7 @@ function _add_ancillary_services!(
     ::ModelConstructStage,
     model::DeviceModel{T, U},
     network_model::NetworkModel{V},
-) where {T <: PSY.Storage, U <: StorageDispatchWithReserves, V <: PM.AbstractPowerModel}
+) where {T <: PSY.Storage, U <: StorageDispatchWithReserves, V <: AbstractPowerModel}
     add_constraints!(
         container,
         ReserveCoverageConstraint,
@@ -237,7 +237,7 @@ function construct_device!(
     stage::ArgumentConstructStage,
     model::DeviceModel{St, D},
     network_model::NetworkModel{S},
-) where {St <: PSY.Storage, D <: StorageDispatchWithReserves, S <: PM.AbstractPowerModel}
+) where {St <: PSY.Storage, D <: StorageDispatchWithReserves, S <: AbstractPowerModel}
     devices = get_available_components(model, sys)
     _active_power_variables_and_expressions(container, devices, model, network_model)
     add_variables!(container, ReactivePowerVariable, devices, D())
@@ -272,7 +272,7 @@ function construct_device!(
     ::ModelConstructStage,
     model::DeviceModel{St, D},
     network_model::NetworkModel{S},
-) where {St <: PSY.Storage, D <: StorageDispatchWithReserves, S <: PM.AbstractPowerModel}
+) where {St <: PSY.Storage, D <: StorageDispatchWithReserves, S <: AbstractPowerModel}
     devices = get_available_components(model, sys)
     _active_power_and_energy_bounds(container, devices, model, network_model)
 
@@ -338,7 +338,7 @@ function construct_device!(
 ) where {
     St <: PSY.Storage,
     D <: StorageDispatchWithReserves,
-    S <: PM.AbstractActivePowerModel,
+    S <: AbstractActivePowerModel,
 }
     devices = get_available_components(model, sys)
     _active_power_variables_and_expressions(container, devices, model, network_model)
@@ -368,7 +368,7 @@ function construct_device!(
 ) where {
     St <: PSY.Storage,
     D <: StorageDispatchWithReserves,
-    S <: PM.AbstractActivePowerModel,
+    S <: AbstractActivePowerModel,
 }
     devices = get_available_components(model, sys)
     _active_power_and_energy_bounds(container, devices, model, network_model)
