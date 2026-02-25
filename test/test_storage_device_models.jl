@@ -235,7 +235,6 @@ end
     moi_tests(model, 170, 0, 120, 73, 24, true)
 end =#
 
-# FIXME looks like an actual error, "KeyError: key 14 not found"
 @testset "Test Reserves from Storage" begin
     template = get_thermal_dispatch_template_network(CopperPlatePowerModel)
     device_model = DeviceModel(
