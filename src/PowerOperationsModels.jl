@@ -194,7 +194,7 @@ include("core/auxiliary_variables.jl")
 include("core/parameters.jl")
 include("core/formulations.jl")
 include("core/network_formulations.jl")
-# include("core/feedforward_interface.jl")
+include("core/feedforward_interface.jl")
 include("core/initial_conditions.jl")
 
 # Common models - expression infrastructure
@@ -271,11 +271,6 @@ include("mt_hvdc_models/hvdcsystems_constructor.jl")
 include("network_models/hvdc_networks.jl")
 include("network_models/hvdc_network_constructor.jl")
 
-# Feedforward
-include("feedforward/feedforwards.jl")
-include("feedforward/feedforward_arguments.jl")
-include("feedforward/feedforward_constraints.jl")
-
 # Operation problem templates removed per design review.
 
 # Import private/internal helpers (use import to avoid undeclared warning)
@@ -295,12 +290,6 @@ export OperationModel
 
 # Network
 export NetworkModel
-
-# Feedforward
-export UpperBoundFeedforward
-export LowerBoundFeedforward
-export SemiContinuousFeedforward
-export FixValueFeedforward
 
 # Model Container Types
 export DeviceModel
