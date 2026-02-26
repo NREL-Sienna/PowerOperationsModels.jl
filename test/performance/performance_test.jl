@@ -118,8 +118,9 @@ try
             ed_status = build!(ed; output_dir = joinpath(output_dir, "ED"))
         end
 
-        build_ok = uc_status == IOM.ModelBuildStatus.BUILT &&
-                   ed_status == IOM.ModelBuildStatus.BUILT
+        build_ok =
+            uc_status == IOM.ModelBuildStatus.BUILT &&
+            ed_status == IOM.ModelBuildStatus.BUILT
 
         name = i > 1 ? "Postcompile" : "Precompile"
         open("build_time.txt", "a") do io
@@ -137,8 +138,9 @@ try
             ed_solve = solve!(ed)
         end
 
-        solve_ok = uc_solve == IOM.RunStatus.SUCCESSFULLY_FINALIZED &&
-                   ed_solve == IOM.RunStatus.SUCCESSFULLY_FINALIZED
+        solve_ok =
+            uc_solve == IOM.RunStatus.SUCCESSFULLY_FINALIZED &&
+            ed_solve == IOM.RunStatus.SUCCESSFULLY_FINALIZED
 
         open("solve_time.txt", "a") do io
             if solve_ok
