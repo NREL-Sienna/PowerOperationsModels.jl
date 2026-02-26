@@ -1,18 +1,19 @@
-precompile_time = @timed using InfrastructureOptimizationModels
+precompile_time = @timed using PowerOperationsModels
 
+using PowerOperationsModels
+const POM = PowerOperationsModels
 using InfrastructureOptimizationModels
-const POM = InfrastructureOptimizationModels
+const IOM = InfrastructureOptimizationModels
 using PowerSystems
 const PSY = PowerSystems
 using Logging
 using PowerSystemCaseBuilder
 using PowerNetworkMatrices
-using HydroPowerSimulations
 using HiGHS
 using Dates
 using PowerFlows
 
-@info pkgdir(InfrastructureOptimizationModels)
+@info pkgdir(PowerOperationsModels)
 
 function is_running_on_ci()
     return get(ENV, "CI", "false") == "true" || haskey(ENV, "GITHUB_ACTIONS")
@@ -27,12 +28,10 @@ end
 
 function set_device_models!(template::ProblemTemplate, uc::Bool = true)
     if uc
-        # unique to UC
         set_device_model!(template, ThermalMultiStart, ThermalStandardUnitCommitment)
         set_device_model!(template, ThermalStandard, ThermalStandardUnitCommitment)
         set_device_model!(template, HydroDispatch, FixedOutput)
     else
-        # unique to ED
         set_device_model!(template, ThermalMultiStart, ThermalBasicDispatch)
         set_device_model!(template, ThermalStandard, ThermalBasicDispatch)
         set_device_model!(template, HydroDispatch, HydroDispatchRunOfRiver)
@@ -57,21 +56,21 @@ end
 try
     sys_rts_da = build_system(PSISystems, "modified_RTS_GMLC_DA_sys")
     sys_rts_rt = build_system(PSISystems, "modified_RTS_GMLC_RT_sys")
-    sys_rts_realization = build_system(PSISystems, "modified_RTS_GMLC_realization_sys")
 
-    for sys in [sys_rts_da, sys_rts_rt, sys_rts_realization]
+    for sys in [sys_rts_da, sys_rts_rt]
         g = get_component(ThermalStandard, sys, "121_NUCLEAR_1")
         set_must_run!(g, true)
     end
 
     for i in 1:2
+        ptdf_da = PTDF(sys_rts_da)
+
         template_uc = ProblemTemplate(
             NetworkModel(
                 PTDFPowerModel;
                 use_slacks = true,
-                PTDF_matrix = PTDF(sys_rts_da),
+                PTDF_matrix = ptdf_da,
                 duals = [CopperPlateBalanceConstraint],
-                power_flow_evaluation = DCPowerFlow(),
             ),
         )
         set_device_models!(template_uc)
@@ -80,119 +79,79 @@ try
             NetworkModel(
                 PTDFPowerModel;
                 use_slacks = true,
-                PTDF_matrix = PTDF(sys_rts_da),
+                PTDF_matrix = PTDF(sys_rts_rt),
                 duals = [CopperPlateBalanceConstraint],
-                power_flow_evaluation = DCPowerFlow(),
             ),
         )
         set_device_models!(template_ed, false)
 
-        template_em = ProblemTemplate(
-            NetworkModel(
-                PTDFPowerModel;
-                use_slacks = true,
-                PTDF_matrix = PTDF(sys_rts_da),
-                duals = [CopperPlateBalanceConstraint],
-            ),
-        )
-        set_device_models!(template_em, false)
-        empty!(template_em.services)
-
-        models = SimulationModels(;
-            decision_models = [
-                DecisionModel(
-                    template_uc,
-                    sys_rts_da;
-                    name = "UC",
-                    optimizer = optimizer_with_attributes(HiGHS.Optimizer,
-                        "mip_rel_gap" => 0.01),
-                    system_to_file = false,
-                    initialize_model = true,
-                    optimizer_solve_log_print = false,
-                    direct_mode_optimizer = true,
-                    check_numerical_bounds = false,
-                ),
-                DecisionModel(
-                    template_ed,
-                    sys_rts_rt;
-                    name = "ED",
-                    optimizer = optimizer_with_attributes(HiGHS.Optimizer,
-                        "mip_rel_gap" => 0.01),
-                    system_to_file = false,
-                    initialize_model = true,
-                    check_numerical_bounds = false,
-                    #export_pwl_vars = true,
-                ),
-            ],
-            emulation_model = EmulationModel(
-                template_em,
-                sys_rts_realization;
-                name = "PF",
-                optimizer = optimizer_with_attributes(HiGHS.Optimizer),
-            ),
+        uc = DecisionModel(
+            template_uc,
+            sys_rts_da;
+            name = "UC",
+            optimizer = optimizer_with_attributes(HiGHS.Optimizer,
+                "mip_rel_gap" => 0.01,
+                "log_to_console" => false),
+            system_to_file = false,
+            initialize_model = true,
+            optimizer_solve_log_print = false,
+            direct_mode_optimizer = true,
+            check_numerical_bounds = false,
         )
 
-        sequence = SimulationSequence(;
-            models = models,
-            feedforwards = Dict(
-                "ED" => [
-                    SemiContinuousFeedforward(;
-                        component_type = ThermalStandard,
-                        source = OnVariable,
-                        affected_values = [ActivePowerVariable],
-                    ),
-                ],
-                "PF" => [
-                    SemiContinuousFeedforward(;
-                        component_type = ThermalStandard,
-                        source = OnVariable,
-                        affected_values = [ActivePowerVariable],
-                    ),
-                ],
-            ),
-            ini_cond_chronology = InterProblemChronology(),
+        ed = DecisionModel(
+            template_ed,
+            sys_rts_rt;
+            name = "ED",
+            optimizer = optimizer_with_attributes(HiGHS.Optimizer,
+                "mip_rel_gap" => 0.01,
+                "log_to_console" => false),
+            system_to_file = false,
+            initialize_model = true,
+            check_numerical_bounds = false,
         )
 
-        sim = Simulation(;
-            name = "compact_sim",
-            steps = 3,
-            models = models,
-            sequence = sequence,
-            initial_time = DateTime("2020-01-01T00:00:00"),
-            simulation_folder = mktempdir(; cleanup = true),
-        )
+        # Build
+        _, time_build, _, _ = @timed begin
+            output_dir = mktempdir(; cleanup = true)
+            uc_status = build!(uc; output_dir = joinpath(output_dir, "UC"))
+            ed_status = build!(ed; output_dir = joinpath(output_dir, "ED"))
+        end
 
-        build_out, time_build, _, _ =
-            @timed build!(sim; console_level = Logging.Error, serialize = false)
+        build_ok = uc_status == IOM.ModelBuildStatus.BUILT &&
+                   ed_status == IOM.ModelBuildStatus.BUILT
 
-        if build_out == IOM.SimulationBuildStatus.BUILT
-            name = i > 1 ? "Postcompile" : "Precompile"
-            open("build_time.txt", "a") do io
+        name = i > 1 ? "Postcompile" : "Precompile"
+        open("build_time.txt", "a") do io
+            if build_ok
                 write(io, "| $(ARGS[1])-Build Time $name | $(time_build) |\n")
-            end
-        else
-            open("build_time.txt", "a") do io
-                write(io, "| $(ARGS[1])- Build Time $name | FAILED TO TEST |\n")
+            else
+                write(io, "| $(ARGS[1])-Build Time $name | FAILED TO TEST |\n")
             end
         end
 
-        solve_out, time_solve, _, _ = @timed execute!(sim; enable_progress_bar = false)
+        # Solve UC, transfer ICs, solve ED
+        _, time_solve, _, _ = @timed begin
+            uc_solve = solve!(uc)
+            POM.transfer_initial_conditions!(ed, uc)
+            ed_solve = solve!(ed)
+        end
 
-        if solve_out == IOM.RunStatus.SUCCESSFULLY_FINALIZED
-            name = i > 1 ? "Postcompile" : "Precompile"
-            open("solve_time.txt", "a") do io
+        solve_ok = uc_solve == IOM.RunStatus.SUCCESSFULLY_FINALIZED &&
+                   ed_solve == IOM.RunStatus.SUCCESSFULLY_FINALIZED
+
+        open("solve_time.txt", "a") do io
+            if solve_ok
                 write(io, "| $(ARGS[1])-Solve Time $name | $(time_solve) |\n")
-            end
-        else
-            open("solve_time.txt", "a") do io
-                write(io, "| $(ARGS[1])- Solve Time $name | FAILED TO TEST |\n")
+            else
+                write(io, "| $(ARGS[1])-Solve Time $name | FAILED TO TEST |\n")
             end
         end
     end
 catch e
     rethrow(e)
     open("build_time.txt", "a") do io
-        write(io, "| $(ARGS[1])- Build Time | FAILED TO TEST |\n")
+        write(io, "| $(ARGS[1])-Build Time | FAILED TO TEST |\n")
     end
 end
 
