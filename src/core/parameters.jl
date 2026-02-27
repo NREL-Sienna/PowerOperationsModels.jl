@@ -73,6 +73,86 @@ Parameter to define Min Flow limit for interface time series
 struct MinInterfaceFlowLimitParameter <: TimeSeriesParameter end
 
 #################################################################################
+# Hydro Parameters
+#################################################################################
+
+"""
+Parameter to define energy storage target level time series for hydro generators
+"""
+struct EnergyTargetTimeSeriesParameter <: TimeSeriesParameter end
+
+"""
+Parameter to define energy budget time series for hydro generators
+"""
+struct EnergyBudgetTimeSeriesParameter <: TimeSeriesParameter end
+
+"""
+Parameter to define water storage target level time series for hydro reservoirs.
+It will depend on the ReservoirDataType specified for the reservoir, and can be head in meters or volume in cubic meters.
+"""
+struct WaterTargetTimeSeriesParameter <: TimeSeriesParameter end
+
+"""
+Parameter to define water budget time series for hydro reservoirs.
+The timeseries must be specified in average water flow in cubic meters per second.
+"""
+struct WaterBudgetTimeSeriesParameter <: TimeSeriesParameter end
+
+"""
+Parameter to define energy inflow to storage or reservoir time series
+"""
+struct InflowTimeSeriesParameter <: TimeSeriesParameter end
+
+"""
+Parameter to define energy outflow from storage or reservoir time series
+"""
+struct OutflowTimeSeriesParameter <: TimeSeriesParameter end
+
+"""
+Parameter to define energy capacity limits for hydro pump-turbine time series
+"""
+struct EnergyCapacityTimeSeriesParameter <: TimeSeriesParameter end
+
+"""
+Parameter to define energy target for feedforward
+"""
+struct ReservoirTargetParameter <: VariableValueParameter end
+"""
+Parameter to define energy limit for feedforward
+"""
+struct ReservoirLimitParameter <: VariableValueParameter end
+
+"""
+Parameter to define energy usage limit for feedforward
+"""
+struct HydroUsageLimitParameter <: VariableValueParameter end
+
+"""
+Parameter to define water usage budget for feedforward
+"""
+struct WaterLevelBudgetParameter <: VariableValueParameter end
+
+"""
+Parameter to define the level target for feedforward
+"""
+struct LevelTargetParameter <: VariableValueParameter end
+
+#################################################################################
+# Energy Storage Parameters
+#################################################################################
+
+"""
+Parameter to define energy limit
+"""
+struct EnergyLimitParameter <: VariableValueParameter end
+# TODO: Check if EnergyTargetParameter and EnergyLimitParameter should be removed
+# This affects feedforwards that can break if not defined
+struct EnergyTargetParameter <: VariableValueParameter end
+
+convert_result_to_natural_units(::Type{EnergyLimitParameter}) = true
+convert_result_to_natural_units(::Type{EnergyTargetParameter}) = true
+
+#################################################################################
 # Variable Value Parameters
 #################################################################################
 
@@ -87,10 +167,6 @@ struct UpperBoundValueParameter <: VariableValueParameter end
 Parameter to define variable lower bound
 """
 struct LowerBoundValueParameter <: VariableValueParameter end
-
-# OnStatusParameter: moved into IOM.
-
-# FixValueParameter: moved into IOM.
 
 #################################################################################
 # Objective Function Parameters
@@ -162,3 +238,9 @@ convert_result_to_natural_units(::Type{ReactivePowerTimeSeriesParameter}) = true
 convert_result_to_natural_units(::Type{RequirementTimeSeriesParameter}) = true
 convert_result_to_natural_units(::Type{UpperBoundValueParameter}) = true
 convert_result_to_natural_units(::Type{LowerBoundValueParameter}) = true
+convert_result_to_natural_units(::Type{ReservoirLimitParameter}) = true
+convert_result_to_natural_units(::Type{ReservoirTargetParameter}) = true
+convert_result_to_natural_units(::Type{EnergyTargetTimeSeriesParameter}) = true
+convert_result_to_natural_units(::Type{EnergyBudgetTimeSeriesParameter}) = true
+convert_result_to_natural_units(::Type{InflowTimeSeriesParameter}) = false
+convert_result_to_natural_units(::Type{OutflowTimeSeriesParameter}) = false

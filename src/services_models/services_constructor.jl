@@ -589,7 +589,7 @@ function construct_service!(
     model::ServiceModel{PSY.TransmissionInterface, ConstantMaxInterfaceFlow},
     devices_template::Dict{Symbol, DeviceModel},
     incompatible_device_types::Set{<:DataType},
-    network_model::NetworkModel{<:PM.AbstractActivePowerModel},
+    network_model::NetworkModel{<:AbstractActivePowerModel},
 )
     name = get_service_name(model)
     service = PSY.get_component(PSY.TransmissionInterface, sys, name)
@@ -850,7 +850,7 @@ function construct_service!(
     model::ServiceModel{PSY.TransmissionInterface, U},
     devices_template::Dict{Symbol, DeviceModel},
     incompatible_device_types::Set{<:DataType},
-    network_model::NetworkModel{<:PM.AbstractActivePowerModel},
+    network_model::NetworkModel{<:AbstractActivePowerModel},
 ) where {U <: Union{ConstantMaxInterfaceFlow, VariableMaxInterfaceFlow}}
     name = get_service_name(model)
     service = PSY.get_component(PSY.TransmissionInterface, sys, name)

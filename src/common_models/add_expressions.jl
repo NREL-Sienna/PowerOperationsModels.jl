@@ -7,6 +7,10 @@ function _ref_index(network_model::NetworkModel{<:AbstractPowerModel}, bus::PSY.
     return get_reference_bus(network_model, bus)
 end
 
+function _ref_index(::NetworkModel{AreaPTDFPowerModel}, device_bus::PSY.ACBus)
+    return PSY.get_name(PSY.get_area(device_bus))
+end
+
 _get_variable_if_exists(::PSY.MarketBidCost) = nothing
 _get_variable_if_exists(cost::PSY.OperationalCost) = PSY.get_variable(cost)
 

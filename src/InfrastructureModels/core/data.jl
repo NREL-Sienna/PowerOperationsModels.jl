@@ -1,15 +1,39 @@
+"checks if a given network data is a multinetwork"
+function ismultinetwork(data::Dict{String, <:Any})
+    return haskey(data, "multinetwork") && data["multinetwork"] == true
+end
+
+"checks if a given network data is a multiinfrastructure"
+function ismultiinfrastructure(data::Dict{String, <:Any})
+    return haskey(data, "multiinfrastructure") && data["multiinfrastructure"] == true
+end
+
+"recursive call of _update_data"
+function _update_data!(data::Dict{String, <:Any}, new_data::Dict{String, <:Any})
+    for (key, new_v) in new_data
+        if haskey(data, key)
+            v = data[key]
+            if isa(v, Dict) && isa(new_v, Dict)
+                _update_data!(v, new_v)
+            else
+                data[key] = new_v
+            end
+        else
+            data[key] = new_v
+        end
+    end
+end
+
 "recursively applies new_data to data, overwriting information"
 function update_data!(data::Dict{String, <:Any}, new_data::Dict{String, <:Any})
     if haskey(data, "per_unit") && haskey(new_data, "per_unit")
         if data["per_unit"] != new_data["per_unit"]
-            Memento.error(
-                _LOGGER,
+            error(
                 "update_data requires datasets in the same units, try make_per_unit and make_mixed_units",
             )
         end
     else
-        Memento.warn(
-            _LOGGER,
+        @warn(
             "running update_data with data that does not include per_unit field, units may be incorrect",
         )
     end
@@ -38,10 +62,7 @@ function apply!(
 end
 
 "Apply the getter function `func`, which operates on `data` for a specific
-infrastructure, `it`. Here, `apply_to_subnetworks` specifies whether or
-not `func` should be applied to all subnetworks in a multinetwork dataset. If
-so, a dictionary of retrieved data using `func` is returned, indexed by the
-indices of the multinetwork. Otherwise, a single value is returned."
+infrastructure, `it`."
 function get_data(
     func::Function,
     data::Dict{String, <:Any},
@@ -63,56 +84,11 @@ function get_data(
     end
 end
 
-"Attempts to determine if the given data is a component dictionary"
-function _iscomponentdict(data::Dict)
-    return all(typeof(comp) <: Dict for (i, comp) in data)
-end
-
-"recursive call of _update_data"
-function _update_data!(data::Dict{String, <:Any}, new_data::Dict{String, <:Any})
-    for (key, new_v) in new_data
-        if haskey(data, key)
-            v = data[key]
-            if isa(v, Dict) && isa(new_v, Dict)
-                _update_data!(v, new_v)
-            else
-                data[key] = new_v
-            end
-        else
-            data[key] = new_v
-        end
-    end
-end
-
-"checks if a given network data is a multinetwork"
-function ismultinetwork(data::Dict{String, <:Any})
-    return haskey(data, "multinetwork") && data["multinetwork"] == true
-end
-
-"checks if a given network data is a multinetwork"
-function ismultiinfrastructure(data::Dict{String, <:Any})
-    return haskey(data, "multiinfrastructure") && data["multiinfrastructure"] == true
-end
-
-"checks if a given dataset has a time series component"
-has_time_series(data::Dict{String, <:Any}) = haskey(data, "time_series")
-
-"gets the number of networks that could exist provided the base data"
-function get_num_networks(data::Dict{String, <:Any})
-    if ismultinetwork(data)
-        return length(data["nw"])
-    elseif has_time_series(data)
-        return data["time_series"]["num_steps"]
-    else
-        return 1
-    end
-end
-
 "Transforms a single network into a multinetwork with several deepcopies of the original network"
 function replicate(sn_data::Dict{String, <:Any}, count::Int, global_keys::Set{String})
     @assert count > 0
     if ismultinetwork(sn_data)
-        Memento.error(_LOGGER, "replicate can only be used on single networks")
+        error("replicate can only be used on single networks")
     end
 
     name = get(sn_data, "name", "anonymous")
@@ -128,8 +104,6 @@ function replicate(sn_data::Dict{String, <:Any}, count::Int, global_keys::Set{St
         if haskey(sn_data_tmp, k)
             mn_data[k] = sn_data_tmp[k]
         end
-
-        # note this is robust to cases where k is not present in sn_data_tmp
         delete!(sn_data_tmp, k)
     end
 
@@ -142,88 +116,7 @@ function replicate(sn_data::Dict{String, <:Any}, count::Int, global_keys::Set{St
     return mn_data
 end
 
-"turns a single network and a time_series data block into a multi-network"
-function make_multinetwork(data::Dict{String, <:Any}, it::String, global_keys::Set{String})
-    data_it = ismultiinfrastructure(data) ? data["it"][it] : data
-
-    if InfrastructureModels.ismultinetwork(data_it)
-        Memento.error(_LOGGER, "make_multinetwork does not support multinetwork data")
-    end
-
-    if !haskey(data_it, "time_series")
-        Memento.error(_LOGGER, "make_multinetwork requires time_series data")
-    end
-
-    steps = data_it["time_series"]["num_steps"]
-
-    if !isa(steps, Int)
-        Memento.error(
-            _LOGGER,
-            "the value of num_steps should be an integer, given $(steps)",
-        )
-    end
-
-    mn_data = replicate(data_it, steps, union(global_keys, Set(["time_series"])))
-    time_series = pop!(mn_data, "time_series")
-
-    for i in 1:steps
-        nw_data = mn_data["nw"]["$(i)"]
-
-        for (k, v) in time_series
-            (k == "num_steps") && (continue)
-            if isa(v, Dict) && haskey(nw_data, k)
-                #println(k); println(v)
-                _update_data_timepoint!(nw_data[k], v, i)
-            elseif isa(v, Array)
-                if length(v) != steps
-                    Memento.error(
-                        _LOGGER,
-                        "the size of the array $k in the time series block must be equal to $steps, currently it is $(length(v))",
-                    )
-                else
-                    #println(k); println(v[i])
-                    nw_data[k] = v[i]
-                end
-            else
-                mn_data[k] = v
-            end
-        end
-    end
-
-    mn_data["multinetwork"] = true
-
-    return ismultiinfrastructure(data) ? Dict("it" => Dict(it => mn_data)) : mn_data
-end
-
-"loads a single time point from a time_series data block into the current network"
-function load_timepoint!(data::Dict{String, <:Any}, step_index::Int)
-    if InfrastructureModels.ismultinetwork(data)
-        Memento.error(_LOGGER, "load_timepoint! does not support multinetwork data")
-    end
-
-    if !haskey(data, "time_series")
-        Memento.error(_LOGGER, "load_timepoint! requires time_series data")
-    end
-
-    if step_index < 1 || step_index > data["time_series"]["num_steps"]
-        Memento.error(
-            _LOGGER,
-            "a step index of $(step_index) is outside the valid range of 1:$(data["time_series"]["num_steps"])",
-        )
-    end
-
-    for (k, v) in data["time_series"]
-        if isa(v, Dict) && haskey(data, k)
-            _update_data_timepoint!(data[k], v, step_index)
-        end
-    end
-
-    data["step_index"] = step_index
-
-    return
-end
-
-"recursive call of _update_data"
+"recursive call for time point updates"
 function _update_data_timepoint!(
     data::Dict{String, <:Any},
     new_data::Dict{String, <:Any},
@@ -237,18 +130,68 @@ function _update_data_timepoint!(
             elseif (!isa(v, Dict) || !isa(v, Array)) && isa(new_v, Array)
                 data[key] = new_v[step]
             else
-                Memento.warn(
-                    _LOGGER,
+                @warn(
                     "skipping key $(key) because object types do not match, target $(typeof(v)) source $(typeof(new_v))",
                 )
             end
         else
-            Memento.warn(
-                _LOGGER,
+            @warn(
                 "skipping time_series key $(key) because it does not occur in the target data",
             )
         end
     end
+end
+
+"turns a single network and a time_series data block into a multi-network"
+function make_multinetwork(data::Dict{String, <:Any}, it::String, global_keys::Set{String})
+    data_it = ismultiinfrastructure(data) ? data["it"][it] : data
+
+    if ismultinetwork(data_it)
+        error("make_multinetwork does not support multinetwork data")
+    end
+
+    if !haskey(data_it, "time_series")
+        error("make_multinetwork requires time_series data")
+    end
+
+    steps = data_it["time_series"]["num_steps"]
+
+    if !isa(steps, Int)
+        error("the value of num_steps should be an integer, given $(steps)")
+    end
+
+    mn_data = replicate(data_it, steps, union(global_keys, Set(["time_series"])))
+    time_series = pop!(mn_data, "time_series")
+
+    for i in 1:steps
+        nw_data = mn_data["nw"]["$(i)"]
+
+        for (k, v) in time_series
+            (k == "num_steps") && (continue)
+            if isa(v, Dict) && haskey(nw_data, k)
+                _update_data_timepoint!(nw_data[k], v, i)
+            elseif isa(v, Array)
+                if length(v) != steps
+                    error(
+                        "the size of the array $k in the time series block must be equal to $steps, currently it is $(length(v))",
+                    )
+                else
+                    nw_data[k] = v[i]
+                end
+            else
+                mn_data[k] = v
+            end
+        end
+    end
+
+    mn_data["multinetwork"] = true
+
+    return ismultiinfrastructure(data) ? Dict("it" => Dict(it => mn_data)) : mn_data
+end
+
+"Attempts to determine if the given data is a component dictionary"
+function _iscomponentdict(data::Dict)
+    return all(typeof(comp) <: Dict for (i, comp) in data)
 end
 
 "builds a table of component data"
@@ -276,7 +219,7 @@ function _component_table(
 )
     comps = data[component]
     if !_iscomponentdict(comps)
-        Memento.error(_LOGGER, "$(component) does not appear to refer to a component list")
+        error("$(component) does not appear to refer to a component list")
     end
 
     items = []
@@ -297,9 +240,28 @@ function _component_table(
     return reshape(items, length(comps), length(fields) + 1)
 end
 
-"prints the text summary for a data dictionary to stdout"
-function print_summary(obj::Dict{String, <:Any}; kwargs...)
-    summary(stdout, obj; kwargs...)
+"Makes a string bold in the terminal"
+function _bold(s::String)
+    return "\033[1m$(s)\033[0m"
+end
+
+"""
+Makes a string grey in the terminal, does not seem to work well on Windows terminals
+"""
+function _grey(s::String)
+    return "\033[38;5;239m$(s)\033[0m"
+end
+
+"converts any value to a string"
+value2string(v::Any, float_precision::Int) = "$(v)"
+value2string(v::AbstractFloat, float_precision::Int) = float2string(v, float_precision)
+value2string(v::Array, float_precision::Int) = "[($(length(v)))]"
+value2string(v::Dict, float_precision::Int) = "{($(length(v)))}"
+
+function float2string(v::AbstractFloat, float_precision::Int)
+    str = "$(round(v; digits=float_precision))"
+    lhs = length(split(str, '.')[1])
+    return rpad(str, lhs + 1 + float_precision, "0")
 end
 
 "prints the text summary for a data dictionary to IO"
@@ -311,11 +273,10 @@ function summary(io::IO, data::Dict{String, <:Any};
     component_status_parameters = Set(["status"]),
 )
     if ismultinetwork(data)
-        Memento.error(_LOGGER, "summary does not yet support multinetwork data")
+        error("summary does not yet support multinetwork data")
     end
 
     component_types = []
-    other_types = []
 
     println(io, _bold("Metadata"))
     for (k, v) in sort(collect(data); by = x -> x[1])
@@ -323,7 +284,6 @@ function summary(io::IO, data::Dict{String, <:Any};
             push!(component_types, k)
             continue
         end
-
         println(io, "  $(k): $(value2string(v, float_precision))")
     end
 
@@ -361,7 +321,6 @@ function summary(io::IO, data::Dict{String, <:Any};
                         push!(active_components, i)
                     end
                 end
-
                 disp_comp[k] = value2string(v, float_precision)
             end
             if !status_found
@@ -371,16 +330,13 @@ function summary(io::IO, data::Dict{String, <:Any};
             display_components[i] = disp_comp
         end
 
-        # compute the number of spaces required per column
         comp_key_sizes = Dict{String, Int}()
         for (i, component) in display_components
-            # a special case for "index", for example when reading solution data
             if haskey(comp_key_sizes, "index")
                 comp_key_sizes["index"] = max(comp_key_sizes["index"], length(i))
             else
                 comp_key_sizes["index"] = length(i)
             end
-
             for (k, v) in component
                 if haskey(comp_key_sizes, k)
                     comp_key_sizes[k] = max(comp_key_sizes[k], length(v))
@@ -390,7 +346,6 @@ function summary(io::IO, data::Dict{String, <:Any};
             end
         end
 
-        # compute the default values per column, nothing imples no default exists
         default_values = Dict{String, Any}()
         for k in keys(comp_key_sizes)
             for (i, component) in display_components
@@ -410,7 +365,6 @@ function summary(io::IO, data::Dict{String, <:Any};
             end
         end
 
-        # when there is only one component nothing is default
         if length(display_components) == 1
             default_values = Dict{String, Any}()
         else
@@ -418,14 +372,11 @@ function summary(io::IO, data::Dict{String, <:Any};
                 Dict{String, Any}([x for x in default_values if !isa(x.second, Nothing)])
         end
 
-        #display(default_values)
-
-        # account for header width
         for (k, v) in comp_key_sizes
             comp_key_sizes[k] = max(length(k), v)
         end
 
-        comp_id_pad = comp_key_sizes["index"] # not clear why this is offset so much
+        comp_id_pad = comp_key_sizes["index"]
         delete!(comp_key_sizes, "index")
         comp_keys_ordered = sort(
             [k for k in keys(comp_key_sizes) if !(haskey(default_values, k))];
@@ -465,112 +416,4 @@ function summary(io::IO, data::Dict{String, <:Any};
             end
         end
     end
-end
-
-"Makes a string bold in the terminal"
-function _bold(s::String)
-    return "\033[1m$(s)\033[0m"
-end
-
-"""
-Makes a string grey in the terminal, does not seem to work well on Windows terminals
-more info can be found at https://en.wikipedia.org/wiki/ANSI_escape_code
-"""
-function _grey(s::String)
-    return "\033[38;5;239m$(s)\033[0m"
-end
-
-"converts any value to a string"
-function value2string(v::Any, float_precision::Int)
-    return "$(v)"
-end
-
-"converts a float to a string, using float_precision cutoff"
-function value2string(v::AbstractFloat, float_precision::Int)
-    return float2string(v, float_precision)
-end
-
-"converts any value to a string, summarizes arrays"
-function value2string(v::Array, float_precision::Int)
-    return "[($(length(v)))]"
-end
-
-"converts any value to a string, summarizes dicts"
-function value2string(v::Dict, float_precision::Int)
-    return "{($(length(v)))}"
-end
-
-"""
-converts a float value into a string of fixed precision
-
-sprintf would do the job but this work around is needed because
-sprintf cannot take format strings during runtime
-"""
-function float2string(v::AbstractFloat, float_precision::Int)
-    #str = "$(round(v; digits=float_precision))"
-    str = "$(round(v; digits=float_precision))"
-    lhs = length(split(str, '.')[1])
-    return rpad(str, lhs + 1 + float_precision, "0")
-end
-
-"tests if two dicts are equal, up to floating point precision"
-function compare_dict(d1, d2)
-    for (k1, v1) in d1
-        if !haskey(d2, k1)
-            return false
-        end
-        v2 = d2[k1]
-
-        if isa(v1, Number)
-            if !_compare_numbers(v1, v2)
-                return false
-            end
-        elseif isa(v1, Array)
-            if length(v1) != length(v2)
-                return false
-            end
-            for i in 1:length(v1)
-                if isa(v1[i], Number)
-                    if !_compare_numbers(v1[i], v2[i])
-                        return false
-                    end
-                else
-                    if v1[i] != v2[i]
-                        return false
-                    end
-                end
-            end
-        elseif isa(v1, Dict)
-            if !compare_dict(v1, v2)
-                return false
-            end
-        else
-            if !isapprox(v1, v2)
-                return false
-            end
-        end
-    end
-    return true
-end
-
-function Base.isapprox(a::Any, b::Any; kwargs...)
-    return a == b
-end
-
-"tests if two numbers are equal, up to floating point precision"
-function _compare_numbers(v1, v2)
-    if isnan(v1)
-        #println("1.1")
-        if !isnan(v2)
-            #println(v1, " ", v2)
-            return false
-        end
-    else
-        #println("1.2")
-        if !isapprox(v1, v2)
-            #println(v1, " ", v2)
-            return false
-        end
-    end
-    return true
 end

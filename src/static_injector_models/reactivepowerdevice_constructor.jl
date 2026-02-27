@@ -3,7 +3,7 @@ function construct_device!(
     sys::PSY.System,
     ::ArgumentConstructStage,
     model::DeviceModel{R, D},
-    network_model::NetworkModel{<:PM.AbstractPowerModel},
+    network_model::NetworkModel{<:AbstractPowerModel},
 ) where {
     R <: PSY.SynchronousCondenser,
     D <: AbstractReactivePowerDeviceFormulation,
@@ -26,7 +26,7 @@ function construct_device!(
     sys::PSY.System,
     ::ModelConstructStage,
     model::DeviceModel{R, D},
-    network_model::NetworkModel{<:PM.AbstractPowerModel},
+    network_model::NetworkModel{<:AbstractPowerModel},
 ) where {
     R <: PSY.SynchronousCondenser,
     D <: AbstractReactivePowerDeviceFormulation,
@@ -44,7 +44,7 @@ function construct_device!(
     sys::PSY.System,
     ::ArgumentConstructStage,
     model::DeviceModel{R, D},
-    network_model::NetworkModel{<:PM.AbstractActivePowerModel},
+    network_model::NetworkModel{<:AbstractActivePowerModel},
 ) where {
     R <: PSY.SynchronousCondenser,
     D <: AbstractReactivePowerDeviceFormulation,

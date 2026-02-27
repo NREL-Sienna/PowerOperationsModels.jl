@@ -5,9 +5,8 @@ module PowerOperationsModels
 #################################################################################
 import Dates
 import InfrastructureSystems
-import InfrastructureSystems: @assert_op
+import InfrastructureSystems: @assert_op, TableFormat
 import JuMP
-import Memento
 import JuMP.Containers: DenseAxisArray, SparseAxisArray
 import PowerNetworkMatrices
 import PowerSystems
@@ -61,7 +60,7 @@ import InfrastructureSystems.Optimization:
 
 # Import formulation abstract types from InfrastructureSystems.Optimization
 # Note: AbstractPTDFModel and AbstractSecurityConstrainedPTDFModel are defined
-# in this package (network_formulations.jl) as subtypes of PM.AbstractDCPModel.
+# in this package (network_formulations.jl) as subtypes of AbstractDCPModel.
 import InfrastructureSystems.Optimization:
     AbstractDeviceFormulation,
     AbstractThermalFormulation,
@@ -97,12 +96,6 @@ import InfrastructureOptimizationModels:
     add_constraints!,
     add_to_expression!,
     add_to_objective_function!,
-    initial_condition_variable,
-    initial_condition_default,
-    get_initial_conditions_value,
-    update_initial_conditions!,
-    add_initial_condition!,
-    get_initial_conditions_device_model,
     # Variable/expression multiplier functions (have stubs in IOM)
     get_variable_multiplier,
     get_expression_multiplier,
@@ -147,7 +140,9 @@ import InfrastructureOptimizationModels:
     get_min_max_limits,
     start_up_cost,
     _get_initial_condition_type,
-    initialize_hvdc_system!
+    initialize_hvdc_system!,
+    build_initial_conditions_model!,
+    set_ic_quantity!
 
 # Market bid cost: import IOM functions that POM extends with device-specific methods
 import InfrastructureOptimizationModels:
@@ -175,7 +170,8 @@ import InfrastructureOptimizationModels:
     add_constraint_dual!,
     assign_dual_variable!,
     _calculate_dual_variable_value!,
-    add_dual_container!
+    add_dual_container!,
+    variable_cost
 
 using InfrastructureOptimizationModels
 
@@ -190,6 +186,7 @@ using InfrastructureOptimizationModels
 # and extend should_write_resulting_value/convert_result_to_natural_units
 #################################################################################
 include("core/definitions.jl")
+include("core/physical_constant_definitions.jl")
 include("core/variables.jl")
 include("core/expressions.jl")
 include("core/constraints.jl")
@@ -198,6 +195,7 @@ include("core/parameters.jl")
 include("core/formulations.jl")
 include("core/network_formulations.jl")
 include("core/feedforward_interface.jl")
+include("core/initial_conditions.jl")
 
 # Common models - expression infrastructure
 # Expression container creation (add_expressions!) and helpers
@@ -209,10 +207,11 @@ include("common_models/add_parameters.jl")
 include("common_models/make_system_expressions.jl")
 include("common_models/reserve_range_constraints.jl")
 
-# Initial Conditions - Device-specific implementations
-# These extend the generic infrastructure from IOM
+# Initial Conditions
+include("initial_conditions/add_initial_condition.jl")
 include("initial_conditions/device_initial_conditions.jl")
 include("initial_conditions/update_initial_conditions.jl")
+include("initial_conditions/initialization.jl")
 
 # Device Models - Static Injectors
 include("static_injector_models/thermal_generation.jl")
@@ -225,6 +224,13 @@ include("static_injector_models/source.jl")
 include("static_injector_models/source_constructor.jl")
 include("static_injector_models/reactivepower_device.jl")
 include("static_injector_models/reactivepowerdevice_constructor.jl")
+include("utils/psy_utils.jl")
+include("static_injector_models/hydro_generation.jl")
+include("static_injector_models/hydrogeneration_constructor.jl")
+
+# Energy Storage Models
+include("energy_storage_models/storage_models.jl")
+include("energy_storage_models/storage_constructor.jl")
 
 # Market bid cost: device-specific overloads for IOM's generic market_bid.jl
 include("common_models/market_bid_overrides.jl")
@@ -241,6 +247,8 @@ include("network_models/area_balance_model.jl")
 include("network_models/powermodels_interface.jl")
 include("network_models/pm_translator.jl")
 include("network_models/network_constructor.jl")
+
+import InfrastructureOptimizationModels: get_incompatible_devices
 
 # Services Models
 include("services_models/service_slacks.jl")
@@ -264,10 +272,6 @@ include("network_models/hvdc_networks.jl")
 include("network_models/hvdc_network_constructor.jl")
 
 # Operation problem templates removed per design review.
-
-# TODO: Add more model includes as they are ready
-# include("static_injector_models/static_injection_security_constrained_models.jl")
-# include("network_models/security_constrained_models.jl")
 
 # Import private/internal helpers (use import to avoid undeclared warning)
 import InfrastructureOptimizationModels: _get_ramp_constraint_devices
@@ -481,6 +485,125 @@ export HVDCLosses
 export ConverterDCPower
 export ConverterCurrentDirection
 
+######## Hydro Formulations ########
+export HydroDispatchRunOfRiver
+export HydroDispatchRunOfRiverBudget
+export HydroCommitmentRunOfRiver
+export HydroWaterFactorModel
+export HydroWaterModelReservoir
+export HydroTurbineBilinearDispatch
+export HydroTurbineWaterLinearDispatch
+export HydroEnergyModelReservoir
+export HydroTurbineEnergyDispatch
+export HydroTurbineEnergyCommitment
+export HydroPumpEnergyDispatch
+export HydroPumpEnergyCommitment
+
+######## Hydro Variables ########
+export WaterSpillageVariable
+export HydroEnergyShortageVariable
+export HydroEnergySurplusVariable
+export HydroWaterShortageVariable
+export HydroWaterSurplusVariable
+export HydroReservoirHeadVariable
+export HydroReservoirVolumeVariable
+export HydroTurbineFlowRateVariable
+export HydroBalanceShortageVariable
+export HydroBalanceSurplusVariable
+export ActivePowerPumpVariable
+
+######## Hydro Aux Variables ########
+export HydroEnergyOutput
+
+######## Hydro parameters #######
+export EnergyTargetTimeSeriesParameter
+export EnergyBudgetTimeSeriesParameter
+export WaterTargetTimeSeriesParameter
+export WaterBudgetTimeSeriesParameter
+export InflowTimeSeriesParameter
+export OutflowTimeSeriesParameter
+export EnergyCapacityTimeSeriesParameter
+export ReservoirTargetParameter
+export ReservoirLimitParameter
+export HydroUsageLimitParameter
+export WaterLevelBudgetParameter
+
+######## Hydro Initial Conditions #######
+export InitialReservoirVolume
+
+######## Hydro Constraints #######
+export EnergyTargetConstraint
+export WaterTargetConstraint
+export ActivePowerPumpReservationConstraint
+export ActivePowerPumpVariableLimitsConstraint
+export EnergyCapacityTimeSeriesLimitsConstraint
+export EnergyBudgetConstraint
+export WaterBudgetConstraint
+export ReservoirLevelLimitConstraint
+export ReservoirLevelTargetConstraint
+export TurbinePowerOutputConstraint
+export ReservoirHeadToVolumeConstraint
+export ReservoirInventoryConstraint
+export FeedForwardWaterLevelBudgetConstraint
+
+####### Hydro Expressions ########
+export HydroServedReserveUpExpression
+export HydroServedReserveDownExpression
+export TotalHydroPowerReservoirIncoming
+export TotalHydroPowerReservoirOutgoing
+export TotalSpillagePowerReservoirIncoming
+export TotalHydroFlowRateReservoirIncoming
+export TotalHydroFlowRateReservoirOutgoing
+export TotalSpillageFlowRateReservoirIncoming
+export TotalHydroFlowRateTurbineOutgoing
+
+######## Storage Formulations ########
+export StorageDispatchWithReserves
+
+# variables
+export AncillaryServiceVariableDischarge
+export AncillaryServiceVariableCharge
+export StorageEnergyShortageVariable
+export StorageEnergySurplusVariable
+export StorageChargeCyclingSlackVariable
+export StorageDischargeCyclingSlackVariable
+export StorageRegularizationVariableCharge
+export StorageRegularizationVariableDischarge
+
+# aux variables
+export StorageEnergyOutput
+
+# constraints
+export EnergyBalanceConstraint
+export StateofChargeLimitsConstraint
+export StateofChargeTargetConstraint
+export StorageCyclingCharge
+export StorageCyclingDischarge
+export StorageRegularizationConstraintCharge
+export StorageRegularizationConstraintDischarge
+export ReserveCoverageConstraint
+export ReserveCoverageConstraintEndOfPeriod
+export ReserveCompleteCoverageConstraint
+export ReserveCompleteCoverageConstraintEndOfPeriod
+export StorageTotalReserveConstraint
+export ReserveDischargeConstraint
+export ReserveChargeConstraint
+
+# expressions
+export TotalReserveOffering
+export ReserveAssignmentBalanceUpDischarge
+export ReserveAssignmentBalanceUpCharge
+export ReserveAssignmentBalanceDownDischarge
+export ReserveAssignmentBalanceDownCharge
+export ReserveDeploymentBalanceUpDischarge
+export ReserveDeploymentBalanceUpCharge
+export ReserveDeploymentBalanceDownDischarge
+export ReserveDeploymentBalanceDownCharge
+
+# parameters
+export EnergyLimitParameter
+export EnergyTargetParameter
+
 #################################################################################
 # Exports - Constraint Types (defined in core/constraints.jl)
 #################################################################################
@@ -498,9 +621,6 @@ export ActivePowerOutVariableTimeSeriesLimitsConstraint
 export ActivePowerInVariableTimeSeriesLimitsConstraint
 export PiecewiseLinearBlockIncrementalOfferConstraint
 export PiecewiseLinearBlockDecrementalOfferConstraint
-export RateLimitConstraint
-export RateLimitConstraintFromTo
-export RateLimitConstraintToFrom
 export RampConstraint
 export RampLimitConstraint
 export CopperPlateBalanceConstraint

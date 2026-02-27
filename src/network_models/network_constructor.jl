@@ -78,7 +78,7 @@ function construct_network!(
     sys::PSY.System,
     model::NetworkModel{T},
     template::ProblemTemplate;
-) where {T <: PM.AbstractActivePowerModel}
+) where {T <: AbstractActivePowerModel}
     if T in UNSUPPORTED_POWERMODELS
         throw(
             ArgumentError(

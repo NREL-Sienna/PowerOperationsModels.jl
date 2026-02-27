@@ -1,8 +1,8 @@
 ############################## Network Model Formulations ##################################
-# AbstractPTDFModel must subtype PM.AbstractDCPModel so that dispatch on
-# PM.AbstractDCPModel (e.g. _get_flow_variable_vector) catches PTDF models.
+# AbstractPTDFModel must subtype AbstractDCPModel so that dispatch on
+# AbstractDCPModel (e.g. _get_flow_variable_vector) catches PTDF models.
 # This can't live in IS because IS doesn't know about PM.
-abstract type AbstractPTDFModel <: PM.AbstractDCPModel end
+abstract type AbstractPTDFModel <: AbstractDCPModel end
 abstract type AbstractSecurityConstrainedPTDFModel <: AbstractPTDFModel end
 
 """

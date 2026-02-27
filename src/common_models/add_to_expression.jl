@@ -2764,3 +2764,41 @@ function add_to_expression!(
     return
 end
 =#
+
+# Cost expression methods - add cost terms to ProductionCostExpression containers
+function add_to_expression!(
+    container::OptimizationContainer,
+    ::Type{S},
+    cost_expression::JuMPOrFloat,
+    component::T,
+    time_period::Int,
+) where {S <: Union{CostExpressions, FuelConsumptionExpression}, T <: PSY.Component}
+    if has_container_key(container, S, T)
+        device_cost_expression = get_expression(container, S(), T)
+        component_name = PSY.get_name(component)
+        JuMP.add_to_expression!(
+            device_cost_expression[component_name, time_period],
+            cost_expression,
+        )
+    end
+    return
+end
+
+function add_to_expression!(
+    container::OptimizationContainer,
+    ::Type{S},
+    cost_expression::JuMP.AbstractJuMPScalar,
+    component::T,
+    time_period::Int,
+) where {S <: CostExpressions, T <: PSY.ReserveDemandCurve}
+    if has_container_key(container, S, T, PSY.get_name(component))
+        device_cost_expression =
+            get_expression(container, S(), T, PSY.get_name(component))
+        component_name = PSY.get_name(component)
+        JuMP.add_to_expression!(
+            device_cost_expression[component_name, time_period],
+            cost_expression,
+        )
+    end
+    return
+end

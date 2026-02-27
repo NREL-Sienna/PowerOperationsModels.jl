@@ -445,8 +445,6 @@ Docs abbreviation: ``z``
 """
 struct HVDCPiecewiseBinaryLossVariable <: SparseVariableType end
 
-# PiecewiseLinearBlockIncrementalOffer, PiecewiseLinearBlockDecrementalOffer: moved into IOM
-
 """
 Struct to dispatch the creation of Interface Flow Slack Up variables
 
@@ -473,6 +471,156 @@ Docs abbreviation: ``p^\\text{ff,lbsl}``
 """
 struct LowerBoundFeedForwardSlack <: VariableType end
 
+#################################################################################
+# Hydro Variables
+#################################################################################
+
+"""
+Struct to dispatch the creation of energy (water) spillage variable representing energy released from a storage/reservoir not injected into the network
+
+Docs abbreviation: ``s``
+"""
+struct WaterSpillageVariable <: VariableType end
+
+"""
+Struct to dispatch the creation of a slack variable for energy storage levels < target storage levels
+
+Docs abbreviation: ``e^\\text{shortage}``
+"""
+struct HydroEnergyShortageVariable <: VariableType end
+
+"""
+Struct to dispatch the creation of a slack variable for energy storage levels > target storage levels
+
+Docs abbreviation: ``e^\\text{surplus}``
+"""
+struct HydroEnergySurplusVariable <: VariableType end
+
+"""
+Struct to dispatch the creation of a slack variable for shortage on balance constraints
+
+Docs abbreviation: ``e^\\text{b,shortage}``
+"""
+struct HydroBalanceShortageVariable <: VariableType end
+
+"""
+Struct to dispatch the creation of a slack variable for surplus on balance constraints
+
+Docs abbreviation: ``e^\\text{b,surplus}``
+"""
+struct HydroBalanceSurplusVariable <: VariableType end
+
+"""
+Struct to dispatch the creation of a slack variable for water storage levels < target storage levels
+
+Docs abbreviation: ``l^\\text{shortage}``
+"""
+struct HydroWaterShortageVariable <: VariableType end
+
+"""
+Struct to dispatch the creation of a slack variable for water storage levels > target storage levels
+
+Docs abbreviation: ``l^\\text{surplus}``
+"""
+struct HydroWaterSurplusVariable <: VariableType end
+
+"""
+Struct to dispatch the creation of a variable for turbined flow rate (in m3/s).
+"""
+struct HydroTurbineFlowRateVariable <: VariableType end
+
+"""
+Struct to dispatch the creation of a variable for volume stored in a hydro reservoir (in m3).
+"""
+struct HydroReservoirVolumeVariable <: VariableType end
+
+"""
+Aux variable which keeps track of water level (head) of hydro reservoirs (in m)
+"""
+struct HydroReservoirHeadVariable <: VariableType end
+
+"""
+Struct to dispatch the creation of a variable for pumped power in a hydro pump turbine (in MWh).
+"""
+struct ActivePowerPumpVariable <: VariableType end
+
+"""
+Auxiliary Variable for Hydro Models that solve for total energy output
+
+Docs abbreviation: ``E^\\text{hy,out}``
+"""
+struct HydroEnergyOutput <: AuxVariableType end
+
+#################################################################################
+# Energy Storage Variables
+#################################################################################
+
+"""
+Ancillary service fraction assigned to Storage Discharging to product p
+
+Docs abbreviation: ``sb^{std}_{p,t}``
+"""
+struct AncillaryServiceVariableDischarge <: VariableType end
+
+"""
+Ancillary service fraction assigned to Storage Charging to product p
+
+Docs abbreviation: ``sb^{stc}_{p,t}``
+"""
+struct AncillaryServiceVariableCharge <: VariableType end
+
+"""
+Slack variable for energy storage levels < target storage levels
+
+Docs abbreviation: ``e^{st-}``
+"""
+struct StorageEnergyShortageVariable <: VariableType end
+
+"""
+Slack variable for energy storage levels > target storage levels
+
+Docs abbreviation: ``e^{st+}``
+"""
+struct StorageEnergySurplusVariable <: VariableType end
+
+"""
+Slack variable for the cycling limits to allow for more charging usage than the allowed limited
+
+Docs nomenclature: ``c^{ch-}``
+"""
+struct StorageChargeCyclingSlackVariable <: VariableType end
+
+"""
+Slack variable for the cycling limits to allow for more discharging usage than the allowed limited
+
+Docs nomenclature: ``c^{ds-}``
+"""
+struct StorageDischargeCyclingSlackVariable <: VariableType end
+
+"""
+Abstract used for StorageRegularization variables
+"""
+abstract type StorageRegularizationVariable <: VariableType end
+
+"""
+Slack variable for energy storage levels > target storage levels
+
+Docs nomenclature: ``z^{st, ch}``
+"""
+struct StorageRegularizationVariableCharge <: StorageRegularizationVariable end
+
+"""
+Slack variable for energy storage levels > target storage levels
+
+Docs abbreviation: ``z^{st, ds}``
+"""
+struct StorageRegularizationVariableDischarge <: StorageRegularizationVariable end
+
+"""
+Auxiliary Variable for Storage Models that solve for total energy output
+"""
+struct StorageEnergyOutput <: AuxVariableType end
+
 const MULTI_START_VARIABLES = Tuple(IS.get_all_concrete_subtypes(MultiStartVariable))
 
 should_write_resulting_value(::Type{PiecewiseLinearCostVariable}) = false
@@ -480,11 +628,10 @@ should_write_resulting_value(::Type{PiecewiseLinearBlockIncrementalOffer}) = fal
 should_write_resulting_value(::Type{PiecewiseLinearBlockDecrementalOffer}) = false
 should_write_resulting_value(::Type{HVDCPiecewiseLossVariable}) = false
 should_write_resulting_value(::Type{HVDCPiecewiseBinaryLossVariable}) = false
-function should_write_resulting_value(
-    ::Type{T},
-) where {T <: Union{InterpolationVariableType, BinaryInterpolationVariableType}}
-    return false
-end
+should_write_resulting_value(::Type{<:InterpolationVariableType}) = false
+should_write_resulting_value(::Type{<:BinaryInterpolationVariableType}) = false
+should_write_resulting_value(::Type{HydroTurbineFlowRateVariable}) = false
+
 convert_result_to_natural_units(::Type{ActivePowerVariable}) = true
 convert_result_to_natural_units(::Type{PostContingencyActivePowerChangeVariable}) = true
 convert_result_to_natural_units(::Type{PowerAboveMinimumVariable}) = true
@@ -516,3 +663,4 @@ convert_result_to_natural_units(::Type{FlowReactivePowerToFromVariable}) = true
 convert_result_to_natural_units(::Type{HVDCLosses}) = true
 convert_result_to_natural_units(::Type{InterfaceFlowSlackUp}) = true
 convert_result_to_natural_units(::Type{InterfaceFlowSlackDown}) = true
+convert_result_to_natural_units(::Type{ActivePowerPumpVariable}) = true
