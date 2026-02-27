@@ -128,7 +128,7 @@ end
     @test build!(model; output_dir = mktempdir()) == ModelBuildStatus.BUILT
     @test solve!(model) == RunStatus.SUCCESSFULLY_FINALIZED
 
-    res = OptimizationProblemResults(model)
+    res = OptimizationProblemOutputs(model)
     p_out = read_variable(
         res,
         "ActivePowerOutVariable__Source";

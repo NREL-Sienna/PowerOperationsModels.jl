@@ -144,7 +144,7 @@ end
     sys = PSB.build_system(PSITestSystems, "c_sys5_hy")
     networks = [ACPPowerModel, DCPPowerModel]
 
-    test_results =
+    test_outputs =
         Dict{Any, Float64}(ACPPowerModel => 136581.41, DCPPowerModel => 135382.37)
 
     for net in networks
@@ -162,7 +162,7 @@ end
             psi_checksolve_test(
                 ED,
                 [MOI.OPTIMAL, MOI.LOCALLY_SOLVED],
-                test_results[net],
+                test_outputs[net],
                 1000,
             )
         end
@@ -241,7 +241,7 @@ end
             ),
         ),
     ]
-    test_results = Dict{Any, Float64}(
+    test_outputs = Dict{Any, Float64}(
         (ACPPowerModel, HydroEnergyModelReservoir, true) => 136296.0,
         (DCPPowerModel, HydroEnergyModelReservoir, true) => 135404.0,
         (ACPPowerModel, HydroEnergyModelReservoir, false) => 131305.0,
@@ -251,7 +251,7 @@ end
     for net in networks
         for reservoir_model in models
             formulation = get_formulation(reservoir_model)
-            attrs = get_attributes(reservoir_model)
+            attrs = IOM.get_attributes(reservoir_model)
             energy_target = get(attrs, "energy_target", false)
             hydro_budget = get(attrs, "hydro_budget", false)
             @testset "$(formulation) with energy_target: $energy_target, and hydro_budget: $hydro_budget, ED model on $(net)" begin
@@ -270,7 +270,7 @@ end
                 psi_checksolve_test(
                     ED,
                     [MOI.OPTIMAL, MOI.LOCALLY_SOLVED],
-                    test_results[(net, formulation, energy_target)],
+                    test_outputs[(net, formulation, energy_target)],
                     1000,
                 )
             end
@@ -300,14 +300,14 @@ end
             ),
         ),
     ]
-    test_results = Dict{Any, Float64}(
+    test_outputs = Dict{Any, Float64}(
         (DCPPowerModel, HydroEnergyModelReservoir, true) => 141061.0,
         (DCPPowerModel, HydroEnergyModelReservoir, false) => 144109.0,
     )
 
     for reservoir_model in models
         formulation = get_formulation(reservoir_model)
-        attrs = get_attributes(reservoir_model)
+        attrs = IOM.get_attributes(reservoir_model)
         energy_target = get(attrs, "energy_target", false)
         hydro_budget = get(attrs, "hydro_budget", false)
         @testset "$(formulation) with energy_target: $energy_target, and hydro_budget: $hydro_budget, ED model on $(net)" begin
@@ -326,7 +326,7 @@ end
             psi_checksolve_test(
                 ED,
                 [MOI.OPTIMAL, MOI.LOCALLY_SOLVED],
-                test_results[(net, formulation, energy_target)],
+                test_outputs[(net, formulation, energy_target)],
                 10000, #update to 10k to handle the difference in Mac and Ubuntu. Likely a HiGHS issue.
             )
         end
@@ -397,8 +397,8 @@ end
     @test solve!(model; output_dir = output_dir) ==
           IS.Simulation.RunStatus.SUCCESSFULLY_FINALIZED
 
-    res = OptimizationProblemResults(model)
-    df = read_variable(res, "ActivePowerVariable__HydroDispatch")
+    outputs = OptimizationProblemOutputs(model)
+    df = read_variable(outputs, "ActivePowerVariable__HydroDispatch")
     hydro_power_sum =
         sum(df[!, :value])
 
@@ -607,20 +607,20 @@ end
     @test solve!(model; optimizer = ipopt_optimizer, output_dir = output_dir) ==
           IS.Simulation.RunStatus.SUCCESSFULLY_FINALIZED
 
-    results = OptimizationProblemResults(model)
-    power_load = read_parameter(results, "ActivePowerTimeSeriesParameter__PowerLoad")
-    reservoir_inflow = read_parameter(results, "InflowTimeSeriesParameter__HydroReservoir")
+    outputs = OptimizationProblemOutputs(model)
+    power_load = read_parameter(outputs, "ActivePowerTimeSeriesParameter__PowerLoad")
+    reservoir_inflow = read_parameter(outputs, "InflowTimeSeriesParameter__HydroReservoir")
 
-    water_spillage = read_variable(results, "WaterSpillageVariable__HydroReservoir")
-    thermal_power = read_variable(results, "ActivePowerVariable__ThermalStandard")
-    hydro_power = read_variable(results, "ActivePowerVariable__HydroTurbine")
+    water_spillage = read_variable(outputs, "WaterSpillageVariable__HydroReservoir")
+    thermal_power = read_variable(outputs, "ActivePowerVariable__ThermalStandard")
+    hydro_power = read_variable(outputs, "ActivePowerVariable__HydroTurbine")
 
-    turbine_output = read_aux_variable(results, "HydroEnergyOutput__HydroTurbine")
+    turbine_output = read_aux_variable(outputs, "HydroEnergyOutput__HydroTurbine")
     reservoir_volume =
-        read_variable(results, "HydroReservoirVolumeVariable__HydroReservoir")
+        read_variable(outputs, "HydroReservoirVolumeVariable__HydroReservoir")
 
     var = read_variable(
-        results,
+        outputs,
         "HydroReservoirVolumeVariable__HydroReservoir";
         table_format = TableFormat.WIDE,
     )
@@ -659,20 +659,20 @@ end
     @test solve!(model; output_dir = output_dir) ==
           IS.Simulation.RunStatus.SUCCESSFULLY_FINALIZED
 
-    res = OptimizationProblemResults(model)
+    outputs = OptimizationProblemOutputs(model)
 
     moi_tests(model, 288, 0, 168, 168, 72, false)
     psi_checkobjfun_test(model, AffExpr)
 
-    df_outflow = read_expression(res, "TotalHydroFlowRateTurbineOutgoing__HydroTurbine")
+    df_outflow = read_expression(outputs, "TotalHydroFlowRateTurbineOutgoing__HydroTurbine")
     hydro_vol_df =
-        read_variables(res, [(HydroReservoirVolumeVariable, HydroReservoir)])["HydroReservoirVolumeVariable__HydroReservoir"]
+        read_variables(outputs, [(HydroReservoirVolumeVariable, HydroReservoir)])["HydroReservoirVolumeVariable__HydroReservoir"]
     hydro_head_df =
-        read_variables(res, [(HydroReservoirHeadVariable, HydroReservoir)])["HydroReservoirHeadVariable__HydroReservoir"]
+        read_variables(outputs, [(HydroReservoirHeadVariable, HydroReservoir)])["HydroReservoirHeadVariable__HydroReservoir"]
     hydro_spillage_df =
-        read_variables(res, [(WaterSpillageVariable, HydroReservoir)])["WaterSpillageVariable__HydroReservoir"]
+        read_variables(outputs, [(WaterSpillageVariable, HydroReservoir)])["WaterSpillageVariable__HydroReservoir"]
     hydro_inflow_df =
-        read_parameters(res, [(InflowTimeSeriesParameter, HydroReservoir)])["InflowTimeSeriesParameter__HydroReservoir"]
+        read_parameters(outputs, [(InflowTimeSeriesParameter, HydroReservoir)])["InflowTimeSeriesParameter__HydroReservoir"]
 
     total_inflow = sum(values(hydro_inflow_ts))
     total_outflow = sum(df_outflow[!, :value])
@@ -731,7 +731,7 @@ end
     @test build!(model; output_dir = mktempdir()) == ModelBuildStatus.BUILT
     @test solve!(model) == IS.Simulation.RunStatus.SUCCESSFULLY_FINALIZED
 
-    sol = OptimizationProblemResults(model)
+    sol = OptimizationProblemOutputs(model)
     flow = read_expression(sol, "TotalHydroFlowRateReservoirOutgoing__HydroReservoir")[
         !,
         "value",
@@ -780,7 +780,7 @@ end
     @test build!(model; output_dir = mktempdir()) == ModelBuildStatus.BUILT
     @test solve!(model) == IS.Simulation.RunStatus.SUCCESSFULLY_FINALIZED
 
-    sol = OptimizationProblemResults(model)
+    sol = OptimizationProblemOutputs(model)
     head = read_variable(sol, "HydroReservoirHeadVariable__HydroReservoir")[!, "value"]
     @test head[24] >= 490
 end
@@ -814,7 +814,7 @@ end
     @test solve!(model; output_dir = output_dir) ==
           IS.Simulation.RunStatus.SUCCESSFULLY_FINALIZED
 
-    res = OptimizationProblemResults(model)
+    outputs = OptimizationProblemOutputs(model)
 
     moi_tests(model, 504, 0, 216, 216, 120, false)
     psi_checkobjfun_test(model, AffExpr)
@@ -845,7 +845,7 @@ end
     @test solve!(model; output_dir = output_dir) ==
           IS.Simulation.RunStatus.SUCCESSFULLY_FINALIZED
 
-    res = OptimizationProblemResults(model)
+    outputs = OptimizationProblemOutputs(model)
 
     moi_tests(model, 360, 0, 168, 168, 72, false)
     psi_checkobjfun_test(model, AffExpr)

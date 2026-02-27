@@ -100,11 +100,11 @@ const KNOWN_SIMULATION_PATHS = [
     "models_json",
     "problems",
     "recorder",
-    "results",
+    "outputs",
     "simulation_files",
     "simulation_partitions",
 ]
-"If the name of an extraneous file that appears in simulation results matches one of these regexes, it is safe to ignore"
+"If the name of an extraneous file that appears in simulation outputs matches one of these regexes, it is safe to ignore"
 const IGNORABLE_FILES = [
     r"^\.DS_Store$",
     r"^\.Trashes$",
@@ -112,6 +112,6 @@ const IGNORABLE_FILES = [
     r"^\.nfs.*$",
     r"^[Dd]esktop.ini$",
 ]
-const RESULTS_DIR = "results"
+const OUTPUTS_DIR = "outputs"
 
 IS.@scoped_enum(COMPACT_PWL_STATUS, VALID = 1, INVALID = 2, UNDETERMINED = 3)

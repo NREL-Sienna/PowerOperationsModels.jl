@@ -29,9 +29,9 @@ const TIME1 = DateTime("2024-01-01T00:00:00")
             )
             @test build!(model; output_dir = test_path) == IOM.ModelBuildStatus.BUILT
             @test solve!(model) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
-            results = OptimizationProblemResults(model)
+            outputs = OptimizationProblemOutputs(model)
             expr = read_expression(
-                results,
+                outputs,
                 "ProductionCostExpression__ThermalStandard";
                 table_format = TableFormat.WIDE,
             )
@@ -65,9 +65,9 @@ const TIME1 = DateTime("2024-01-01T00:00:00")
         @test build!(model_no_startup; output_dir = test_path) == IOM.ModelBuildStatus.BUILT
         @test solve!(model_no_startup) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
 
-        results_no_startup = OptimizationProblemResults(model_no_startup)
+        outputs_no_startup = OptimizationProblemOutputs(model_no_startup)
         expr_no_startup = read_expression(
-            results_no_startup,
+            outputs_no_startup,
             "ProductionCostExpression__ThermalStandard";
             table_format = TableFormat.WIDE,
         )
@@ -95,9 +95,9 @@ const TIME1 = DateTime("2024-01-01T00:00:00")
               IOM.ModelBuildStatus.BUILT
         @test solve!(model_with_startup) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
 
-        results_with_startup = OptimizationProblemResults(model_with_startup)
+        outputs_with_startup = OptimizationProblemOutputs(model_with_startup)
         expr_with_startup = read_expression(
-            results_with_startup,
+            outputs_with_startup,
             "ProductionCostExpression__ThermalStandard";
             table_format = TableFormat.WIDE,
         )
@@ -105,7 +105,7 @@ const TIME1 = DateTime("2024-01-01T00:00:00")
 
         # Verify startup actually occurred
         start_vars = read_variable(
-            results_with_startup,
+            outputs_with_startup,
             "StartVariable__ThermalStandard";
             table_format = TableFormat.WIDE,
         )
@@ -1171,7 +1171,7 @@ end =#
 
         solve!(model; output_dir = mktempdir())
         ptdf_vars = read_variables(
-            OptimizationProblemResults(model);
+            OptimizationProblemOutputs(model);
             table_format = TableFormat.WIDE,
         )
         power = ptdf_vars["ActivePowerVariable__ThermalStandard"]
@@ -1485,16 +1485,16 @@ end
 
     solve!(problem)
 
-    res = OptimizationProblemResults(problem)
+    outputs = OptimizationProblemOutputs(problem)
 
     # Test that plant 101_STEAM_3 (using max power) have proper cost expression
     cost = read_expression(
-        res,
+        outputs,
         "ProductionCostExpression__ThermalStandard";
         table_format = TableFormat.WIDE,
     )
     p_th = read_variable(
-        res,
+        outputs,
         "ActivePowerVariable__ThermalStandard";
         table_format = TableFormat.WIDE,
     )

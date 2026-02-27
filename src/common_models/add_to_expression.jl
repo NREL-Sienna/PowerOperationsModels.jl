@@ -2382,7 +2382,7 @@ function add_to_expression!(
         add_proportional_to_jump_expression!(
             expression[n, t],
             variable[n, t],
-            get_variable_multiplier(U(), PSY.System, W()),
+            get_variable_multiplier(U(), PSY.System, W),
         )
     end
     return
@@ -2409,7 +2409,7 @@ function add_to_expression!(
         add_proportional_to_jump_expression!(
             expression[n, t],
             variable[n, t],
-            get_variable_multiplier(U(), PSY.Area, AreaPTDFPowerModel()),
+            get_variable_multiplier(U(), PSY.Area, AreaPTDFPowerModel),
         )
     end
     return

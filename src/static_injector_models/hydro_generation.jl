@@ -518,7 +518,7 @@ function add_variables!(
     end
 end
 
-##### Method commented due to issues with write results with time steps with different lengths
+##### Method commented due to issues with write outputs with time steps with different lengths
 #=
 function add_variables!(
     container::OptimizationContainer,
@@ -2207,7 +2207,7 @@ function calculate_aux_variable_value!(
     time_steps = get_time_steps(container)
     resolution = get_resolution(container)
     fraction_of_hour = Dates.value(Dates.Minute(resolution)) / MINUTES_IN_HOUR
-    p_variable_results = get_variable(container, ActivePowerVariable(), T)
+    p_variable_output = get_variable(container, ActivePowerVariable(), T)
     aux_variable_container = get_aux_variable(container, HydroEnergyOutput(), T)
     devices_names = axes(aux_variable_container, 1)
     for name in devices_names
@@ -2235,7 +2235,7 @@ function calculate_aux_variable_value!(
             end
             aux_variable_container[name, t] =
                 (
-                    jump_value(p_variable_results[name, t]) +
+                    jump_value(p_variable_output[name, t]) +
                     served_regup - served_regdn
                 ) * fraction_of_hour
         end

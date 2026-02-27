@@ -20,6 +20,8 @@ using DataFramesMeta
 using Dates
 using JuMP
 import JuMP.Containers: DenseAxisArray, SparseAxisArray
+import JuMP.MOI as MOI
+import MathOptInterface.Utilities as MOIU
 using TimeSeries
 using CSV
 import JSON3
@@ -53,5 +55,5 @@ include("test_utils/mbc_system_utils.jl")
 include("test_utils/iec_test_systems.jl")
 include("test_utils/hydro_testing_utils.jl")
 
-ENV["RUNNING_PSI_TESTS"] = "true"
+ENV["RUNNING_SIENNA_TESTS"] = "true"
 ENV["SIENNA_RANDOM_SEED"] = 1234  # Set a fixed seed for reproducibility in tests

@@ -104,11 +104,55 @@ function build_initial_conditions_model!(model::T) where {T <: OperationModel}
     )
     TimerOutputs.disable_timer!(BUILD_PROBLEMS_TIMER)
 
-    build_impl!(
+    build_problem!(
         model.internal.initial_conditions_model_container,
         template,
         get_system(model),
     )
     TimerOutputs.enable_timer!(BUILD_PROBLEMS_TIMER)
+    return
+end
+
+function build_initial_conditions!(model::OperationModel)
+    @assert get_initial_conditions_model_container(get_internal(model)) ===
+            nothing
+    requires_init = false
+    for (device_type, device_model) in get_device_models(get_template(model))
+        requires_init = requires_initialization(get_formulation(device_model)())
+        if requires_init
+            @debug "initial_conditions required for $device_type" _group =
+                LOG_GROUP_BUILD_INITIAL_CONDITIONS
+            build_initial_conditions_model!(model)
+            break
+        end
+    end
+    if !requires_init
+        @info "No initial conditions in the model"
+    end
+    return
+end
+
+# Called `initialize!` in PSI (lived in operation_model_interface.jl).
+function solve_and_write_initial_conditions!(model::OperationModel)
+    container = get_optimization_container(model)
+    if get_initial_conditions_model_container(get_internal(model)) === nothing
+        return
+    end
+    @info "Solving Initialization Model for $(get_name(model))"
+    status = IOM.execute_optimizer!(
+        get_initial_conditions_model_container(get_internal(model)),
+        get_system(model),
+    )
+    if status == RunStatus.FAILED
+        error("Model failed to initialize")
+    end
+
+    IOM.write_initial_conditions_data!(
+        container,
+        get_initial_conditions_model_container(get_internal(model)),
+    )
+    init_file = IOM.get_initial_conditions_file(model)
+    Serialization.serialize(init_file, IOM.get_initial_conditions_data(container))
+    @info "Serialized initial conditions to $init_file"
     return
 end

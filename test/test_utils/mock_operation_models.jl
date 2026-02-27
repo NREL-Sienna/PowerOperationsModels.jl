@@ -137,7 +137,7 @@ function mock_construct_device!(
         PNM.find_subnetworks(IOM.get_system(problem))
     IOM.get_optimization_container(problem).built_for_recurrent_solves =
         built_for_recurrent_solves
-    IOM.initialize_system_expressions!(
+    POM.initialize_system_expressions!(
         IOM.get_optimization_container(problem),
         IOM.get_network_model(template),
         IOM.get_network_model(template).subnetworks,

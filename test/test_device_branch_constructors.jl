@@ -279,7 +279,7 @@ end
     solve!(model)
 
     ptdf_vars =
-        read_variables(OptimizationProblemResults(model); table_format = TableFormat.WIDE)
+        read_variables(OptimizationProblemOutputs(model); table_format = TableFormat.WIDE)
     ptdf_values = ptdf_vars["FlowActivePowerVariable__TwoTerminalGenericHVDCLine"]
     ptdf_objective = IOM.get_optimization_container(model).optimizer_stats.objective_value
 
@@ -293,7 +293,7 @@ end
     )
     solve!(model; output_dir = mktempdir())
     dcp_vars =
-        read_variables(OptimizationProblemResults(model); table_format = TableFormat.WIDE)
+        read_variables(OptimizationProblemOutputs(model); table_format = TableFormat.WIDE)
     dcp_values = dcp_vars["FlowActivePowerVariable__TwoTerminalGenericHVDCLine"]
     dcp_objective =
         IOM.get_optimization_container(model).optimizer_stats.objective_value
@@ -352,7 +352,7 @@ end
 
             solve!(model_ref; output_dir = mktempdir())
             ref_vars = read_variables(
-                OptimizationProblemResults(model_ref);
+                OptimizationProblemOutputs(model_ref);
                 table_format = TableFormat.WIDE,
             )
             ref_values = ref_vars["FlowActivePowerVariable__Line"]
@@ -384,7 +384,7 @@ end
 
             solve!(model; output_dir = mktempdir())
             no_loss_vars = read_variables(
-                OptimizationProblemResults(model);
+                OptimizationProblemOutputs(model);
                 table_format = TableFormat.WIDE,
             )
             no_loss_values = no_loss_vars["FlowActivePowerVariable__Line"]
@@ -439,7 +439,7 @@ end
 
             solve!(model_wl; output_dir = mktempdir())
             dispatch_vars = read_variables(
-                OptimizationProblemResults(model_wl);
+                OptimizationProblemOutputs(model_wl);
                 table_format = TableFormat.WIDE,
             )
             dispatch_values_ft =
@@ -686,9 +686,9 @@ end
         @test build!(model_m; output_dir = mktempdir(; cleanup = true)) ==
               IOM.ModelBuildStatus.BUILT
         @test solve!(model_m) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
-        res = OptimizationProblemResults(model_m)
+        outputs = OptimizationProblemOutputs(model_m)
         vars = read_variable(
-            res,
+            outputs,
             "FlowActivePowerSlackUpperBound__Line";
             table_format = TableFormat.WIDE,
         )
@@ -712,9 +712,9 @@ end
     ) == IOM.ModelBuildStatus.BUILT
 
     @test solve!(model_m) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
-    res = OptimizationProblemResults(model_m)
+    outputs = OptimizationProblemOutputs(model_m)
     vars = read_variable(
-        res,
+        outputs,
         "FlowActivePowerSlackUpperBound__Line";
         table_format = TableFormat.WIDE,
     )
@@ -733,9 +733,9 @@ end
     @test build!(model_m; output_dir = mktempdir(; cleanup = true)) ==
           IOM.ModelBuildStatus.BUILT
     @test solve!(model_m) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
-    res = OptimizationProblemResults(model_m)
+    outputs = OptimizationProblemOutputs(model_m)
     vars = read_variable(
-        res,
+        outputs,
         "FlowActivePowerSlackUpperBound__Line";
         table_format = TableFormat.WIDE,
     )

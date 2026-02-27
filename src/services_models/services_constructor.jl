@@ -1,17 +1,3 @@
-function get_incompatible_devices(devices_template::Dict)
-    incompatible_device_types = Set{DataType}()
-    for model in values(devices_template)
-        formulation = get_formulation(model)
-        if formulation == FixedOutput
-            if !isempty(get_services(model))
-                @info "$(formulation) for $(get_component_type(model)) is not compatible with the provision of reserve services"
-            end
-            push!(incompatible_device_types, get_component_type(model))
-        end
-    end
-    return incompatible_device_types
-end
-
 function construct_services!(
     container::OptimizationContainer,
     sys::PSY.System,

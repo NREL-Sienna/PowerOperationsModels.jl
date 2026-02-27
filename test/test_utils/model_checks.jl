@@ -94,23 +94,27 @@ function psi_checksolve_test(model::DecisionModel, status)
     @test termination_status(model) in status
 end
 
-function psi_checksolve_test(model::DecisionModel, status, expected_result, tol = 0.0)
+function psi_checksolve_test(model::DecisionModel, status, expected_output, tol = 0.0)
     res = solve!(model)
     model = IOM.get_jump_model(model)
     @test termination_status(model) in status
     obj_value = JuMP.objective_value(model)
-    @test isapprox(obj_value, expected_result, atol = tol)
+    @test isapprox(obj_value, expected_output, atol = tol)
 end
 
-function psi_ptdf_lmps(res::OptimizationProblemResults, ptdf)
+# currently unused. we've removed get_system on Outputs, so would need to pass 
+# the system separately if we want to use this.
+
+#=
+function psi_ptdf_lmps(outputs::OptimizationProblemOutputs, ptdf)
     cp_duals =
-        read_dual(res, IOM.ConstraintKey(CopperPlateBalanceConstraint, PSY.System))
+        read_dual(outputs, IOM.ConstraintKey(CopperPlateBalanceConstraint, PSY.System))
     λ = Matrix{Float64}(cp_duals[:, propertynames(cp_duals) .!= :DateTime])
 
-    flow_duals = read_dual(res, IOM.ConstraintKey(NetworkFlowConstraint, PSY.Line))
+    flow_duals = read_dual(outputs, IOM.ConstraintKey(NetworkFlowConstraint, PSY.Line))
     μ = Matrix{Float64}(flow_duals[:, PNM.get_branch_ax(ptdf)])
 
-    buses = get_components(Bus, get_system(res))
+    buses = get_components(Bus, get_system(outputs))
     lmps = OrderedDict()
     for bus in buses
         lmps[get_name(bus)] = μ * ptdf[:, get_number(bus)]
@@ -118,6 +122,7 @@ function psi_ptdf_lmps(res::OptimizationProblemResults, ptdf)
     lmp = λ .+ DataFrames.DataFrame(lmps)
     return lmp[!, sort(propertynames(lmp))]
 end
+=#
 
 function check_variable_unbounded(
     model::DecisionModel,
@@ -568,4 +573,11 @@ function check_constraint_count(
         meta = "dn",
         filter_func = x -> x.name in device_name_set,
     )
+end
+
+"""
+Return a DataFrame from a CSV file.
+"""
+function read_dataframe(filename::AbstractString)
+    return CSV.read(filename, DataFrames.DataFrame)
 end

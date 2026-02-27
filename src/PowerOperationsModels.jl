@@ -8,9 +8,12 @@ import InfrastructureSystems
 import InfrastructureSystems: @assert_op, TableFormat
 import JuMP
 import JuMP.Containers: DenseAxisArray, SparseAxisArray
+import Logging
 import PowerNetworkMatrices
+import ProgressMeter
 import PowerSystems
 import PowerSystems: get_component
+import Serialization
 import TimerOutputs
 
 using DocStringExtensions
@@ -81,7 +84,7 @@ const IOM = InfrastructureOptimizationModels
 # Import utility functions that core files will extend with new methods
 import InfrastructureOptimizationModels:
     should_write_resulting_value,
-    convert_result_to_natural_units,
+    convert_output_to_natural_units,
     # Network model compatibility checks (extended in core/network_formulations.jl)
     requires_all_branch_models,
     supports_branch_filtering,
@@ -114,9 +117,6 @@ import InfrastructureOptimizationModels:
     add_proportional_cost!,
     add_proportional_cost_maybe_time_variant!,
     skip_proportional_cost,
-    # System expression initialization (POM extends for concrete network models)
-    initialize_system_expressions!,
-    make_system_expressions!,
     # Network model instantiation (POM extends for concrete network formulations)
     instantiate_network_model!,
     # Parameter addition (POM provides concrete implementations)
@@ -124,10 +124,7 @@ import InfrastructureOptimizationModels:
     # Cost/status functions (IOM has default stubs, POM adds device-specific methods)
     get_operation_cost,
     get_must_run,
-    # Build-pipeline extension points (IOM calls these in build_impl!, POM provides implementations)
-    construct_services!,
-    construct_network!,
-    construct_hvdc_network!,
+    # Build-pipeline extension points (IOM declares stubs, POM extends)
     calculate_aux_variable_value!,
     is_from_power_flow,
     # Bulk-added via systematic search of POM→IOM references:
@@ -140,9 +137,9 @@ import InfrastructureOptimizationModels:
     get_min_max_limits,
     start_up_cost,
     _get_initial_condition_type,
-    initialize_hvdc_system!,
-    build_initial_conditions_model!,
-    set_ic_quantity!
+    set_ic_quantity!,
+    get_initial_conditions_device_model,
+    update_container_parameter_values!
 
 # Market bid cost: import IOM functions that POM extends with device-specific methods
 import InfrastructureOptimizationModels:
@@ -183,7 +180,7 @@ using InfrastructureOptimizationModels
 #################################################################################
 # Include core type definitions
 # These define concrete Variable, Expression, Constraint, and Parameter types
-# and extend should_write_resulting_value/convert_result_to_natural_units
+# and extend should_write_resulting_value/convert_output_to_natural_units
 #################################################################################
 include("core/definitions.jl")
 include("core/physical_constant_definitions.jl")
@@ -211,7 +208,6 @@ include("common_models/reserve_range_constraints.jl")
 include("initial_conditions/add_initial_condition.jl")
 include("initial_conditions/device_initial_conditions.jl")
 include("initial_conditions/update_initial_conditions.jl")
-include("initial_conditions/initialization.jl")
 
 # Device Models - Static Injectors
 include("static_injector_models/thermal_generation.jl")
@@ -248,8 +244,6 @@ include("network_models/powermodels_interface.jl")
 include("network_models/pm_translator.jl")
 include("network_models/network_constructor.jl")
 
-import InfrastructureOptimizationModels: get_incompatible_devices
-
 # Services Models
 include("services_models/service_slacks.jl")
 include("services_models/reserves.jl")
@@ -271,13 +265,27 @@ include("mt_hvdc_models/hvdcsystems_constructor.jl")
 include("network_models/hvdc_networks.jl")
 include("network_models/hvdc_network_constructor.jl")
 
-# Operation problem templates removed per design review.
+# Operation lifecycle: build/solve/run
+include("operation/build_problem.jl")
+include("initial_conditions/initialization.jl")
+include("operation/decision_model.jl")
+include("operation/emulation_model.jl")
 
 # Import private/internal helpers (use import to avoid undeclared warning)
 import InfrastructureOptimizationModels: _get_ramp_constraint_devices
 import InfrastructureOptimizationModels:
     get_param_eltype,
     CONTAINER_KEY_EMPTY_META
+
+# Import high-frequency IOM internals used throughout operation lifecycle code.
+# Note: BUILD_PROBLEMS_TIMER and RUN_OPERATION_MODEL_TIMER are defined in POM's
+# definitions.jl, so they are NOT imported from IOM.
+import InfrastructureOptimizationModels:
+    LOG_GROUP_OPTIMIZATION_CONTAINER,
+    get_store,
+    set_status!,
+    get_problem_size,
+    validate_available_devices
 
 #################################################################################
 # Exports - Base Models
@@ -307,7 +315,7 @@ export InitialEnergyLevel
 export build!
 export get_initial_conditions
 export serialize_problem
-export serialize_results
+export serialize_outputs
 export serialize_optimization_model
 export solve!
 export run!
@@ -334,7 +342,7 @@ export ISOPT
 # Re-export TableFormat from InfrastructureSystems (via IOM)
 export TableFormat
 
-# Results interfaces
+# Outputs interfaces
 export get_variable_values
 export get_dual_values
 export get_parameter_values
@@ -357,8 +365,8 @@ export get_objective_value
 export read_optimizer_stats
 
 # Utils
-export OptimizationProblemResults
-export OptimizationProblemResultsExport
+export OptimizationProblemOutputs
+export OptimizationProblemOutputsExport
 export OptimizerStats
 export get_all_constraint_index
 export get_all_variable_index

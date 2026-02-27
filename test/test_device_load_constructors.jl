@@ -103,14 +103,14 @@ end
         optimizer_solve_log_print = true)
     @test build!(model; output_dir = test_path) == IOM.ModelBuildStatus.BUILT
     @test solve!(model) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
-    results = OptimizationProblemResults(model)
+    outputs = OptimizationProblemOutputs(model)
     expr = read_expression(
-        results,
+        outputs,
         "ProductionCostExpression__InterruptiblePowerLoad";
         table_format = TableFormat.WIDE,
     )
     p_l = read_variable(
-        results,
+        outputs,
         "ActivePowerVariable__InterruptiblePowerLoad";
         table_format = TableFormat.WIDE,
     )
