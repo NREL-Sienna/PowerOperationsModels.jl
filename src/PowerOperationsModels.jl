@@ -15,8 +15,10 @@ import PowerSystems
 import PowerSystems: get_component
 import Serialization
 import TimerOutputs
+import InteractiveUtils: methodswith
 
 using DocStringExtensions
+using JSON3
 
 #################################################################################
 # Embedded submodules (adapted from InfrastructureModels.jl and PowerModels.jl)

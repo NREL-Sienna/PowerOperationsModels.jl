@@ -441,7 +441,7 @@ function check_active_power_abovemin_initial_condition_values(
 ) where {T <: PSY.Component}
     initial_conditions = IOM.get_initial_condition(
         IOM.get_optimization_container(model),
-        IOM.DeviceAboveMinPower(),
+        POM.DeviceAboveMinPower(),
         T,
     )
     initial_conditions_data =
@@ -450,7 +450,7 @@ function check_active_power_abovemin_initial_condition_values(
         name = PSY.get_name(ic.component)
         power = IOM.get_initial_condition_value(
             initial_conditions_data,
-            IOM.PowerAboveMinimumVariable(),
+            PowerAboveMinimumVariable(),
             T,
         )[
             name,
@@ -492,7 +492,7 @@ function check_initialization_constraint_count(
     meta = IOM.CONTAINER_KEY_EMPTY_META,
 ) where {S <: IOM.ConstraintType, T <: PSY.Component}
     container =
-        IOM.ISOPT.get_initial_conditions_model_container(IOM.get_internal(model))
+        get_initial_conditions_model_container(IOM.get_internal(model))
     no_component = length(PSY.get_components(filter_func, T, model.sys))
     time_steps = IOM.get_time_steps(container)[end]
     constraint = IOM.get_constraint(container, S(), T, meta)

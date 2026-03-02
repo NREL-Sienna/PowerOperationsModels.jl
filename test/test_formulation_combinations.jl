@@ -1,5 +1,5 @@
 @testset "Test generate_formulation_combinations" begin
-    res = IOM.generate_formulation_combinations()
+    res = POM.generate_formulation_combinations()
     found_valid_device = false
     found_valid_service = false
 
@@ -23,8 +23,8 @@ end
 
 @testset "Test generate_formulation_combinations with system" begin
     sys = PSB.build_system(PSITestSystems, "c_sys5_hy_uc")
-    res1 = IOM.generate_formulation_combinations()
-    res2 = IOM.generate_formulation_combinations(sys)
+    res1 = POM.generate_formulation_combinations()
+    res2 = POM.generate_formulation_combinations(sys)
     @test length(res1["device_formulations"]) > length(res2["device_formulations"])
     @test length(res1["service_formulations"]) > length(res2["service_formulations"])
 
@@ -38,11 +38,11 @@ end
 end
 
 @testset "Test write_formulation_combinations" begin
-    res = IOM.generate_formulation_combinations()
+    res = POM.generate_formulation_combinations()
 
     mktempdir() do tmpdir
         filename = joinpath(tmpdir, "data.json")
-        IOM.write_formulation_combinations(filename)
+        POM.write_formulation_combinations(filename)
         @test isfile(filename)
         data = open(filename) do io
             JSON3.read(io, Dict)
