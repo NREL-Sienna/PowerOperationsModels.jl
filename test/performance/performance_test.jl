@@ -11,7 +11,6 @@ using PowerSystemCaseBuilder
 using PowerNetworkMatrices
 using HiGHS
 using Dates
-using PowerFlows
 
 @info pkgdir(PowerOperationsModels)
 
@@ -63,13 +62,11 @@ try
     end
 
     for i in 1:2
-        ptdf_da = PTDF(sys_rts_da)
-
         template_uc = ProblemTemplate(
             NetworkModel(
                 PTDFPowerModel;
                 use_slacks = true,
-                PTDF_matrix = ptdf_da,
+                PTDF_matrix = PTDF(sys_rts_da),
                 duals = [CopperPlateBalanceConstraint],
             ),
         )
