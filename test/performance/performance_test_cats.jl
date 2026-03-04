@@ -21,7 +21,7 @@ end
 try
     cats_dir = ARGS[1]
     include(joinpath(cats_dir, "Sienna/build_CATS.jl"))
-    sys = build_CATS_system(first_order = true)
+    sys = build_CATS_system(; first_order = true)
     transform_single_time_series!(sys, Hour(1), Hour(1))
 
     for i in 1:2
