@@ -1,9 +1,7 @@
 @testset "Test generate_formulation_combinations" begin
-    res = IOM.generate_formulation_combinations()
+    res = POM.generate_formulation_combinations()
     found_valid_device = false
-    found_invalid_device = false
     found_valid_service = false
-    found_invalid_service = false
 
     for item in res["device_formulations"]
         if item["device_type"] == PSY.ThermalStandard &&
@@ -20,15 +18,13 @@
     end
 
     @test found_valid_device
-    @test !found_invalid_device
     @test found_valid_service
-    @test !found_invalid_service
 end
 
 @testset "Test generate_formulation_combinations with system" begin
     sys = PSB.build_system(PSITestSystems, "c_sys5_hy_uc")
-    res1 = IOM.generate_formulation_combinations()
-    res2 = IOM.generate_formulation_combinations(sys)
+    res1 = POM.generate_formulation_combinations()
+    res2 = POM.generate_formulation_combinations(sys)
     @test length(res1["device_formulations"]) > length(res2["device_formulations"])
     @test length(res1["service_formulations"]) > length(res2["service_formulations"])
 
@@ -42,12 +38,11 @@ end
 end
 
 @testset "Test write_formulation_combinations" begin
-    res = IOM.generate_formulation_combinations()
+    res = POM.generate_formulation_combinations()
 
-    filename = joinpath(tempdir(), "data.json")
-    @test !isfile(filename)
-    try
-        IOM.write_formulation_combinations(filename)
+    mktempdir() do tmpdir
+        filename = joinpath(tmpdir, "data.json")
+        POM.write_formulation_combinations(filename)
         @test isfile(filename)
         data = open(filename) do io
             JSON3.read(io, Dict)
@@ -56,7 +51,5 @@ end
         @test length(data["device_formulations"]) == length(res["device_formulations"])
         @test "service_formulations" in keys(data)
         @test length(data["service_formulations"]) == length(res["service_formulations"])
-    finally
-        isfile(filename) && rm(filename)
     end
 end

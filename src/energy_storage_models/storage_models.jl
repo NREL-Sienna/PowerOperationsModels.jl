@@ -1889,12 +1889,12 @@ function calculate_aux_variable_value!(
     time_steps = get_time_steps(container)
     resolution = get_resolution(container)
     fraction_of_hour = Dates.value(Dates.Minute(resolution)) / MINUTES_IN_HOUR
-    p_variable_results = get_variable(container, ActivePowerOutVariable(), T)
+    p_variable_output = get_variable(container, ActivePowerOutVariable(), T)
     aux_variable_container = get_aux_variable(container, StorageEnergyOutput(), T)
     device_names = axes(aux_variable_container, 1)
     for name in device_names, t in time_steps
         aux_variable_container[name, t] =
-            jump_value(p_variable_results[name, t]) * fraction_of_hour
+            jump_value(p_variable_output[name, t]) * fraction_of_hour
     end
 
     return

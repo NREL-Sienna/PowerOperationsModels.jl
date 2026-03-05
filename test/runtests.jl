@@ -115,7 +115,7 @@ function run_tests()
             IS.set_group_levels!(multi_logger, config.group_levels)
         end
 
-        @time @testset "Begin InfrastructureOptimizationModels tests" begin
+        @time @testset "Begin PowerOperationsModels tests" begin
             @includetests ARGS
         end
 

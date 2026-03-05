@@ -149,8 +149,8 @@ struct EnergyLimitParameter <: VariableValueParameter end
 # This affects feedforwards that can break if not defined
 struct EnergyTargetParameter <: VariableValueParameter end
 
-convert_result_to_natural_units(::Type{EnergyLimitParameter}) = true
-convert_result_to_natural_units(::Type{EnergyTargetParameter}) = true
+convert_output_to_natural_units(::Type{EnergyLimitParameter}) = true
+convert_output_to_natural_units(::Type{EnergyTargetParameter}) = true
 
 #################################################################################
 # Variable Value Parameters
@@ -226,21 +226,21 @@ should_write_resulting_value(::Type{<:AbstractPiecewiseLinearSlopeParameter}) = 
 should_write_resulting_value(::Type{<:AbstractPiecewiseLinearBreakpointParameter}) = true
 
 #################################################################################
-# Method extensions for convert_result_to_natural_units
+# Method extensions for convert_output_to_natural_units
 #################################################################################
 
-convert_result_to_natural_units(::Type{DynamicBranchRatingTimeSeriesParameter}) = true
-convert_result_to_natural_units(
+convert_output_to_natural_units(::Type{DynamicBranchRatingTimeSeriesParameter}) = true
+convert_output_to_natural_units(
     ::Type{PostContingencyDynamicBranchRatingTimeSeriesParameter},
 ) = true
-convert_result_to_natural_units(::Type{ActivePowerTimeSeriesParameter}) = true
-convert_result_to_natural_units(::Type{ReactivePowerTimeSeriesParameter}) = true
-convert_result_to_natural_units(::Type{RequirementTimeSeriesParameter}) = true
-convert_result_to_natural_units(::Type{UpperBoundValueParameter}) = true
-convert_result_to_natural_units(::Type{LowerBoundValueParameter}) = true
-convert_result_to_natural_units(::Type{ReservoirLimitParameter}) = true
-convert_result_to_natural_units(::Type{ReservoirTargetParameter}) = true
-convert_result_to_natural_units(::Type{EnergyTargetTimeSeriesParameter}) = true
-convert_result_to_natural_units(::Type{EnergyBudgetTimeSeriesParameter}) = true
-convert_result_to_natural_units(::Type{InflowTimeSeriesParameter}) = false
-convert_result_to_natural_units(::Type{OutflowTimeSeriesParameter}) = false
+convert_output_to_natural_units(::Type{ActivePowerTimeSeriesParameter}) = true
+convert_output_to_natural_units(::Type{ReactivePowerTimeSeriesParameter}) = true
+convert_output_to_natural_units(::Type{RequirementTimeSeriesParameter}) = true
+convert_output_to_natural_units(::Type{UpperBoundValueParameter}) = true
+convert_output_to_natural_units(::Type{LowerBoundValueParameter}) = true
+convert_output_to_natural_units(::Type{ReservoirLimitParameter}) = true
+convert_output_to_natural_units(::Type{ReservoirTargetParameter}) = true
+convert_output_to_natural_units(::Type{EnergyTargetTimeSeriesParameter}) = true
+convert_output_to_natural_units(::Type{EnergyBudgetTimeSeriesParameter}) = true
+convert_output_to_natural_units(::Type{InflowTimeSeriesParameter}) = false
+convert_output_to_natural_units(::Type{OutflowTimeSeriesParameter}) = false

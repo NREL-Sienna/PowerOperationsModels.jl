@@ -49,7 +49,7 @@ end
     output_dir = mktempdir(; cleanup = true)
     @test build!(UC; output_dir = output_dir) == IOM.ModelBuildStatus.BUILT
     @test solve!(UC; optimizer = HiGHS_optimizer) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
-    res = OptimizationProblemResults(UC)
+    res = OptimizationProblemOutputs(UC)
     @test isapprox(get_objective_value(res), 340000.0; atol = 100000.0)
     vars = res.variable_values
     @test IOM.VariableKey(ActivePowerVariable, PSY.ThermalStandard) in keys(vars)
@@ -163,10 +163,10 @@ end
         ),
     ) ==
           "TimeDurationOff__ThermalStandard"
-    export_results(res)
-    results_dir = joinpath(output_dir, "results")
-    @test isfile(joinpath(results_dir, "optimizer_stats.csv"))
-    variables_dir = joinpath(results_dir, "variables")
+    export_outputs(res)
+    outputs_dir = joinpath(output_dir, "outputs")
+    @test isfile(joinpath(outputs_dir, "optimizer_stats.csv"))
+    variables_dir = joinpath(outputs_dir, "variables")
     @test isfile(joinpath(variables_dir, "ActivePowerVariable__ThermalStandard.csv"))
 end
 
@@ -214,7 +214,7 @@ end
     end
 end
 
-@testset "Test OptimizationProblemResults interfaces" begin
+@testset "Test OptimizationProblemOutputs interfaces" begin
     sys = PSB.build_system(PSITestSystems, "c_sys5_re")
     template = get_template_dispatch_with_network(
         NetworkModel(CopperPlatePowerModel; duals = [CopperPlateBalanceConstraint]),
@@ -224,17 +224,17 @@ end
           IOM.ModelBuildStatus.BUILT
     @test solve!(model) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
 
-    res = OptimizationProblemResults(model)
+    res = OptimizationProblemOutputs(model)
     container = IOM.get_optimization_container(model)
     constraint_key = IOM.ConstraintKey(CopperPlateBalanceConstraint, PSY.System)
     constraints = IOM.get_constraints(container)[constraint_key]
-    dual_results = IOM.read_duals(container)[constraint_key]
-    dual_results_read = read_dual(res, constraint_key; table_format = TableFormat.WIDE)
-    realized_dual_results =
+    dual_outputs = IOM.read_duals(container)[constraint_key]
+    dual_outputs_read = read_dual(res, constraint_key; table_format = TableFormat.WIDE)
+    realized_dual_outputs =
         read_duals(res, [constraint_key]; table_format = TableFormat.WIDE)[IOM.encode_key_as_string(
             constraint_key,
         )]
-    realized_dual_results_string =
+    realized_dual_outputs_str =
         read_duals(
             res,
             [IOM.encode_key_as_string(constraint_key)];
@@ -242,16 +242,16 @@ end
         )[IOM.encode_key_as_string(
             constraint_key,
         )]
-    @test dual_results ==
-          dual_results_read[:, propertynames(dual_results_read) .!= :DateTime] ==
-          realized_dual_results[:, propertynames(realized_dual_results) .!= :DateTime] ==
-          realized_dual_results_string[
+    @test dual_outputs ==
+          dual_outputs_read[:, propertynames(dual_outputs_read) .!= :DateTime] ==
+          realized_dual_outputs[:, propertynames(realized_dual_outputs) .!= :DateTime] ==
+          realized_dual_outputs_str[
               :,
-              propertynames(realized_dual_results_string) .!= :DateTime,
+              propertynames(realized_dual_outputs_str) .!= :DateTime,
           ]
     for i in axes(constraints)[1], j in axes(constraints)[2]
         dual = JuMP.dual(constraints[i, j])
-        @test isapprox(dual, dual_results[j, 1])
+        @test isapprox(dual, dual_outputs[j, 1])
     end
 
     system = IOM.get_system(model)
@@ -264,7 +264,7 @@ end
         @test all(vals .== param_vals[name, :])
     end
 
-    res = OptimizationProblemResults(model)
+    res = OptimizationProblemOutputs(model)
     @test length(list_variable_names(res)) == 1
     @test length(list_dual_names(res)) == 1
     @test get_model_base_power(res) == 100.0
@@ -292,8 +292,8 @@ end
     @test isa(IOM.get_source_data(res), PSY.System)
     @test length(get_timestamps(res)) == 24
 
-    PSY.set_available!(first(get_components(ThermalStandard, get_system(res))), false)
-    # FIXME missing functions, get_groups and get_components on OptimizationProblemResults.
+    PSY.set_available!(first(get_components(ThermalStandard, sys)), false)
+    # FIXME missing functions, get_groups and get_components on OptimizationProblemOutputs.
     #@test collect(get_components(ThermalStandard, res)) ==
     #      collect(get_available_components(ThermalStandard, get_system(res)))
     #sel = PSY.make_selector(ThermalStandard; groupby = :each)
@@ -337,13 +337,13 @@ end
     @test solve!(model_no_sys) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
 
     file_list = sort!(collect(readdir(path2)))
-    @test .!all(occursin.(r".h5", file_list))
+    @test !any(occursin.(r"\.h5$", file_list))
     ED3 = DecisionModel(path2, HiGHS_optimizer; system = sys)
     build!(ED3; output_dir = path2)
     psi_checksolve_test(ED3, [MOI.OPTIMAL], 240000.0, 10000)
 end
 
-@testset "Test NonSpinning reseve model" begin
+@testset "Test NonSpinning reserve model" begin
     c_sys5 = PSB.build_system(PSITestSystems, "c_sys5_uc_non_spin"; add_reserves = true)
     template = get_thermal_standard_uc_template()
     set_device_model!(
@@ -359,7 +359,7 @@ end
     output_dir = mktempdir(; cleanup = true)
     @test build!(UC; output_dir = output_dir) == IOM.ModelBuildStatus.BUILT
     @test solve!(UC) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
-    res = OptimizationProblemResults(UC)
+    res = OptimizationProblemOutputs(UC)
     # This test needs to be reviewed
     # @test isapprox(get_objective_value(res), 256937.0; atol = 10000.0)
     vars = res.variable_values
@@ -371,7 +371,7 @@ end
     @test service_key in keys(vars)
 end
 
-@testset "Test serialization/deserialization of DecisionModel results" begin
+@testset "Test serialization/deserialization of DecisionModel outputs" begin
     path = mktempdir(; cleanup = true)
     sys = PSB.build_system(PSITestSystems, "c_sys5_re")
     template = get_template_dispatch_with_network(
@@ -379,36 +379,36 @@ end
     )
     model = DecisionModel(template, sys; optimizer = HiGHS_optimizer)
     @test build!(model; output_dir = path) == IOM.ModelBuildStatus.BUILT
-    @test solve!(model; export_problem_results = true) ==
+    @test solve!(model; export_problem_outputs = true) ==
           IOM.RunStatus.SUCCESSFULLY_FINALIZED
-    results1 = OptimizationProblemResults(model)
-    var1_a = read_variable(results1, ActivePowerVariable, ThermalStandard)
+    outputs1 = OptimizationProblemOutputs(model)
+    var1_a = read_variable(outputs1, ActivePowerVariable, ThermalStandard)
     # Ensure that we can deserialize strings into keys.
-    var1_b = read_variable(results1, "ActivePowerVariable__ThermalStandard")
+    var1_b = read_variable(outputs1, "ActivePowerVariable__ThermalStandard")
 
     # Results were automatically serialized here.
-    results2 = OptimizationProblemResults(IOM.get_output_dir(model))
-    var2 = read_variable(results2, ActivePowerVariable, ThermalStandard)
+    outputs2 = OptimizationProblemOutputs(IOM.get_output_dir(model))
+    var2 = read_variable(outputs2, ActivePowerVariable, ThermalStandard)
     @test var1_a == var2
 
     # Serialize to a new directory with the exported function.
-    results_path = joinpath(path, "results")
-    serialize_results(results1, results_path)
-    @test isfile(joinpath(results_path, IOM._PROBLEM_RESULTS_FILENAME))
-    results3 = OptimizationProblemResults(results_path)
-    var3 = read_variable(results3, ActivePowerVariable, ThermalStandard)
+    outputs_path = joinpath(path, "outputs")
+    serialize_outputs(outputs1, outputs_path)
+    @test isfile(joinpath(outputs_path, IOM._PROBLEM_OUTPUTS_FILENAME))
+    outputs3 = OptimizationProblemOutputs(outputs_path)
+    var3 = read_variable(outputs3, ActivePowerVariable, ThermalStandard)
     @test var1_a == var3
-    @test get_system(results3) === nothing
-    set_system!(results3, get_system(results1))
-    @test get_system(results3) isa PSY.System
+    @test get_source_data(outputs3) === nothing
+    set_source_data!(outputs3, get_source_data(outputs1))
+    @test get_source_data(outputs3) isa PSY.System
 
     exp_file =
-        joinpath(path, "results", "variables", "ActivePowerVariable__ThermalStandard.csv")
+        joinpath(path, "outputs", "variables", "ActivePowerVariable__ThermalStandard.csv")
     var4 = read_dataframe(exp_file)
     # Manually Multiply by the base power var1_a has natural units and export writes directly from the solver
     @test var1_a.value == var4.value .* 100.0
 
-    @test length(readdir(IOM.export_realized_results(results1))) === 7
+    @test length(readdir(IOM.export_realized_outputs(outputs1))) === 7
 end
 
 @testset "Test Numerical Stability of Constraints" begin
@@ -618,8 +618,8 @@ end
         initialize_model = false,
         initialization_file = "init_file.bin",
     )
-    build!(model; output_dir = output_dir, console_level = Logging.AboveMaxLevel) ==
-    IOM.ModelBuildStatus.FAILED
+    @test build!(model; output_dir = output_dir, console_level = Logging.AboveMaxLevel) ==
+          IOM.ModelBuildStatus.FAILED
 end
 
 @testset "Solve with detailed optimizer stats" begin
@@ -638,7 +638,7 @@ end
     @test !ismissing(get_optimizer_stats(UC).objective_bound)
 end
 
-@testset "Test filter function atttribute" begin
+@testset "Test filter function attribute" begin
     c_sys5 = PSB.build_system(PSITestSystems, "c_sys5")
     template = get_thermal_standard_uc_template()
     new_model = DeviceModel(
@@ -699,7 +699,7 @@ end
     @test solve!(UC) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
 end
 
-@testset "Test for single row result variables" begin
+@testset "Test for single row output variables" begin
     template = get_thermal_dispatch_template_network()
     c_sys5_bat = PSB.build_system(PSITestSystems, "c_sys5_bat_ems"; force_build = true)
     device_model = DeviceModel(
@@ -722,7 +722,22 @@ end
     )
     @test build!(model; output_dir = output_dir) == IOM.ModelBuildStatus.BUILT
     @test solve!(model) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
-    res = OptimizationProblemResults(model)
+    res = OptimizationProblemOutputs(model)
     shortage = read_variable(res, "StorageEnergyShortageVariable__EnergyReservoirStorage")
     @test nrow(shortage) == 1
+end
+
+@testset "solve! with auto-build does not forward unknown kwargs to build!" begin
+    # Regression test: solve! accepts kwargs... and forwards them to
+    # build_if_not_already_built! → build!. Extra kwargs (like optimizer) must be
+    # filtered before reaching build!, which has explicit keyword arguments.
+    template = get_thermal_dispatch_template_network()
+    c_sys5 = PSB.build_system(PSITestSystems, "c_sys5")
+    model = DecisionModel(template, c_sys5; optimizer = HiGHS_optimizer)
+    output_dir = mktempdir(; cleanup = true)
+    @test solve!(
+        model;
+        output_dir = output_dir,
+        optimizer = HiGHS_optimizer,
+    ) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
 end

@@ -73,7 +73,8 @@ function get_initial_conditions_value(
 } where {U <: InitialTimeDurationOn}
     ic_data = get_initial_conditions_data(container)
     var_type = initial_condition_variable(U(), component, V())
-    if !has_initial_condition_value(ic_data, var_type, W)
+    has_ic = has_initial_condition_value(ic_data, var_type, W)
+    if !has_ic
         val = initial_condition_default(U(), component, V())
     else
         var = get_initial_condition_value(ic_data, var_type, W)[PSY.get_name(component), 1]
@@ -100,7 +101,8 @@ function get_initial_conditions_value(
 } where {U <: InitialTimeDurationOn}
     ic_data = get_initial_conditions_data(container)
     var_type = initial_condition_variable(U(), component, V())
-    if !has_initial_condition_value(ic_data, var_type, W)
+    has_ic = has_initial_condition_value(ic_data, var_type, W)
+    if !has_ic
         val = initial_condition_default(U(), component, V())
     else
         var = get_initial_condition_value(ic_data, var_type, W)[PSY.get_name(component), 1]

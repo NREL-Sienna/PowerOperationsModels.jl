@@ -97,7 +97,7 @@ struct ReserveDeploymentBalanceUpCharge <: StorageReserveChargeExpression end
 struct ReserveDeploymentBalanceDownDischarge <: StorageReserveDischargeExpression end
 struct ReserveDeploymentBalanceDownCharge <: StorageReserveChargeExpression end
 
-# Method extensions for result writing
+# Method extensions for output writing
 should_write_resulting_value(::Type{InterfaceTotalFlow}) = true
 should_write_resulting_value(::Type{PTDFBranchFlow}) = true
 
@@ -110,7 +110,7 @@ should_write_resulting_value(::Type{StorageReserveDischargeExpression}) = true
 should_write_resulting_value(::Type{StorageReserveChargeExpression}) = true
 
 # Method extensions for unit conversion
-convert_result_to_natural_units(::Type{InterfaceTotalFlow}) = true
-convert_result_to_natural_units(::Type{PostContingencyBranchFlow}) = true
-convert_result_to_natural_units(::Type{PostContingencyActivePowerGeneration}) = true
-convert_result_to_natural_units(::Type{PTDFBranchFlow}) = true
+convert_output_to_natural_units(::Type{InterfaceTotalFlow}) = true
+convert_output_to_natural_units(::Type{PostContingencyBranchFlow}) = true
+convert_output_to_natural_units(::Type{PostContingencyActivePowerGeneration}) = true
+convert_output_to_natural_units(::Type{PTDFBranchFlow}) = true

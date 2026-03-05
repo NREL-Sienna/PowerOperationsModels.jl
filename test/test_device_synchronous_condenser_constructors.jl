@@ -31,7 +31,7 @@
           IOM.ModelBuildStatus.BUILT
     @test solve!(model) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
 
-    res = OptimizationProblemResults(model)
+    res = OptimizationProblemOutputs(model)
     q_syncon = read_variable(
         res,
         "ReactivePowerVariable__SynchronousCondenser";

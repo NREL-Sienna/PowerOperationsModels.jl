@@ -63,7 +63,7 @@ end
 """
 Steady State deviation of the frequency
 """
-function add_variables!(
+function add_agc_variables!(
     container::OptimizationContainer,
     ::Type{T},
 ) where {T <: SteadyStateFrequencyDeviation}

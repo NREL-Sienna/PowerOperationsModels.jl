@@ -1,5 +1,5 @@
 function build_pre_step!(model::DecisionModel{<:DecisionProblem})
-    TimerOutputs.@timeit IOM.BUILD_PROBLEMS_TIMER "Build pre-step" begin
+    TimerOutputs.@timeit BUILD_PROBLEMS_TIMER "Build pre-step" begin
         IOM.validate_template(model)
         if !isempty(model)
             @info "OptimizationProblem status not ModelBuildStatus.EMPTY. Resetting"
@@ -13,7 +13,7 @@ function build_pre_step!(model::DecisionModel{<:DecisionProblem})
         )
         @info "Initializing ModelStoreParams"
         IOM.init_model_store_params!(model)
-        IOM.set_status!(model, ModelBuildStatus.IN_PROGRESS)
+        set_status!(model, ModelBuildStatus.IN_PROGRESS)
     end
     return
 end
@@ -40,7 +40,7 @@ Build the Decision Model based on the specified DecisionProblem.
 # Arguments
 
   - `model::DecisionModel{<:DecisionProblem}`: DecisionModel object
-  - `output_dir::String`: Output directory for results
+  - `output_dir::String`: Output directory for outputs
   - `recorders::Vector{Symbol} = []`: recorder names to register
   - `console_level = Logging.Error`:
   - `file_level = Logging.Info`:
@@ -58,8 +58,8 @@ function build!(
     IOM.set_output_dir!(model, output_dir)
     IOM.set_console_level!(model, console_level)
     IOM.set_file_level!(model, file_level)
-    TimerOutputs.reset_timer!(IOM.BUILD_PROBLEMS_TIMER)
-    disable_timer_outputs && TimerOutputs.disable_timer!(IOM.BUILD_PROBLEMS_TIMER)
+    TimerOutputs.reset_timer!(BUILD_PROBLEMS_TIMER)
+    disable_timer_outputs && TimerOutputs.disable_timer!(BUILD_PROBLEMS_TIMER)
     file_mode = "w"
     IOM.add_recorders!(model, recorders)
     IOM.register_recorders!(model, file_mode)
@@ -67,13 +67,13 @@ function build!(
     try
         Logging.with_logger(logger) do
             try
-                TimerOutputs.@timeit IOM.BUILD_PROBLEMS_TIMER "Problem $(get_name(model))" begin
+                TimerOutputs.@timeit BUILD_PROBLEMS_TIMER "Problem $(get_name(model))" begin
                     build_model!(model)
                 end
-                IOM.set_status!(model, ModelBuildStatus.BUILT)
-                @info "\n$(IOM.BUILD_PROBLEMS_TIMER)\n"
+                set_status!(model, ModelBuildStatus.BUILT)
+                @info "\n$(BUILD_PROBLEMS_TIMER)\n"
             catch e
-                IOM.set_status!(model, ModelBuildStatus.FAILED)
+                set_status!(model, ModelBuildStatus.FAILED)
                 bt = catch_backtrace()
                 @error "DecisionModel Build Failed" exception = e, bt
             end
@@ -106,8 +106,8 @@ function reset!(model::DecisionModel{<:DefaultDecisionProblem})
     internal = get_internal(model)
     IOM.set_initial_conditions_model_container!(internal, nothing)
     IOM.empty_time_series_cache!(model)
-    empty!(IOM.get_store(model))
-    IOM.set_status!(model, ModelBuildStatus.EMPTY)
+    empty!(get_store(model))
+    set_status!(model, ModelBuildStatus.EMPTY)
     return
 end
 
@@ -121,7 +121,7 @@ keyword arguments to that function.
 # Arguments
 
   - `model::OperationModel = model`: operation model
-  - `export_problem_results::Bool = false`: If true, export OptimizationProblemResults DataFrames to CSV files.
+  - `export_problem_outputs::Bool = false`: If true, export OptimizationProblemOutputs DataFrames to CSV files.
   - `console_level = Logging.Error`:
   - `file_level = Logging.Info`:
   - `disable_timer_outputs = false` : Enable/Disable timing outputs
@@ -130,13 +130,13 @@ keyword arguments to that function.
 # Examples
 
 ```julia
-results = solve!(OpModel)
-results = solve!(OpModel, export_problem_results = true)
+outputs = solve!(OpModel)
+outputs = solve!(OpModel, export_problem_outputs = true)
 ```
 """
 function solve!(
     model::DecisionModel{<:DecisionProblem};
-    export_problem_results = false,
+    export_problem_outputs = false,
     console_level = Logging.Error,
     file_level = Logging.Info,
     disable_timer_outputs = false,
@@ -152,8 +152,8 @@ function solve!(
     )
     IOM.set_console_level!(model, console_level)
     IOM.set_file_level!(model, file_level)
-    TimerOutputs.reset_timer!(IOM.RUN_OPERATION_MODEL_TIMER)
-    disable_timer_outputs && TimerOutputs.disable_timer!(IOM.RUN_OPERATION_MODEL_TIMER)
+    TimerOutputs.reset_timer!(RUN_OPERATION_MODEL_TIMER)
+    disable_timer_outputs && TimerOutputs.disable_timer!(RUN_OPERATION_MODEL_TIMER)
     file_mode = "a"
     IOM.register_recorders!(model, file_mode)
     logger = IS.configure_logging(
@@ -166,33 +166,33 @@ function solve!(
         Logging.with_logger(logger) do
             try
                 IOM.initialize_storage!(
-                    IOM.get_store(model),
+                    get_store(model),
                     get_optimization_container(model),
                     IOM.get_store_params(model),
                 )
-                TimerOutputs.@timeit IOM.RUN_OPERATION_MODEL_TIMER "Solve" begin
+                TimerOutputs.@timeit RUN_OPERATION_MODEL_TIMER "Solve" begin
                     IOM._pre_solve_model_checks(model, optimizer)
                     IOM.solve_model!(model)
                     current_time = get_initial_time(model)
-                    write_results!(IOM.get_store(model), model, current_time, current_time)
+                    write_outputs!(get_store(model), model, current_time, current_time)
                     IOM.write_optimizer_stats!(
-                        IOM.get_store(model),
+                        get_store(model),
                         get_optimizer_stats(model),
                         current_time,
                     )
                 end
                 if export_optimization_problem
-                    TimerOutputs.@timeit IOM.RUN_OPERATION_MODEL_TIMER "Serialize" begin
+                    TimerOutputs.@timeit RUN_OPERATION_MODEL_TIMER "Serialize" begin
                         serialize_problem(model; optimizer = optimizer)
                         serialize_optimization_model(model)
                     end
                 end
-                TimerOutputs.@timeit IOM.RUN_OPERATION_MODEL_TIMER "Results processing" begin
-                    results = OptimizationProblemResults(model)
-                    serialize_results(results, IOM.get_output_dir(model))
-                    export_problem_results && export_results(results)
+                TimerOutputs.@timeit RUN_OPERATION_MODEL_TIMER "Outputs processing" begin
+                    outputs = OptimizationProblemOutputs(model)
+                    serialize_outputs(outputs, IOM.get_output_dir(model))
+                    export_problem_outputs && export_outputs(outputs)
                 end
-                @info "\n$(IOM.RUN_OPERATION_MODEL_TIMER)\n"
+                @info "\n$(RUN_OPERATION_MODEL_TIMER)\n"
             catch e
                 @error "Decision Problem solve failed" exception = (e, catch_backtrace())
                 IOM.set_run_status!(model, RunStatus.FAILED)
@@ -206,9 +206,8 @@ function solve!(
     return IOM.get_run_status(model)
 end
 
-# Same name as PSI; lived in decision_model.jl.
 function handle_initial_conditions!(model::DecisionModel{<:DecisionProblem})
-    TimerOutputs.@timeit IOM.BUILD_PROBLEMS_TIMER "Model Initialization" begin
+    TimerOutputs.@timeit BUILD_PROBLEMS_TIMER "Model Initialization" begin
         if isempty(get_template(model))
             return
         end

@@ -100,9 +100,9 @@ end
 """
 Add variables for ServiceRequirementVariable for StepWiseCostReserve
 """
-function add_variable!(
+function add_reserve_variables!(
     container::OptimizationContainer,
-    variable_type::T,
+    ::Type{T},
     service::D,
     formulation,
 ) where {
@@ -111,6 +111,7 @@ function add_variable!(
 }
     time_steps = get_time_steps(container)
     service_name = PSY.get_name(service)
+    variable_type = T()
     variable = add_variable_container!(
         container,
         variable_type,

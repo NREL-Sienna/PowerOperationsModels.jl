@@ -27,7 +27,7 @@ end
     @test_throws MethodError IOM.to_dataframe(three, mock_key)
 
     four = DenseAxisArray{Float64}(undef, ["a"], 1:2, 1:3, 1:5)
-    fill!(three, 1.0)
+    fill!(four, 1.0)
     @test_throws MethodError IOM.to_dataframe(four, mock_key)
 
     sparse_num =

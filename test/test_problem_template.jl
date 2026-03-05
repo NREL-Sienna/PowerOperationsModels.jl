@@ -20,6 +20,3 @@ end
     @test IOM.get_formulation(template.devices[:ThermalStandard]) ==
           ThermalBasicUnitCommitment
 end
-
-# Note: "Provided Templates Tests" from PSI omitted because template_unit_commitment()
-# and template_economic_dispatch() haven't been moved out of PSI yet.

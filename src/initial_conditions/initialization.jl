@@ -113,7 +113,6 @@ function build_initial_conditions_model!(model::T) where {T <: OperationModel}
     return
 end
 
-# Called `build_initial_conditions!` in PSI (lived in operation_model_interface.jl).
 function build_initial_conditions!(model::OperationModel)
     @assert get_initial_conditions_model_container(get_internal(model)) ===
             nothing

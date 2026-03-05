@@ -94,7 +94,7 @@ function construct_service!(
     add_parameters!(container, RequirementTimeSeriesParameter, service, model)
     contributing_devices = get_contributing_devices(model)
 
-    add_variables!(
+    add_service_variables!(
         container,
         ActivePowerReserveVariable,
         service,
@@ -151,7 +151,7 @@ function construct_service!(
     !PSY.get_available(service) && return
     contributing_devices = get_contributing_devices(model)
 
-    add_variables!(
+    add_service_variables!(
         container,
         ActivePowerReserveVariable,
         service,
@@ -206,8 +206,13 @@ function construct_service!(
     service = PSY.get_component(SR, sys, name)
     !PSY.get_available(service) && return
     contributing_devices = get_contributing_devices(model)
-    add_variable!(container, ServiceRequirementVariable(), service, StepwiseCostReserve())
-    add_variables!(
+    add_reserve_variables!(
+        container,
+        ServiceRequirementVariable,
+        service,
+        StepwiseCostReserve(),
+    )
+    add_service_variables!(
         container,
         ActivePowerReserveVariable,
         service,
@@ -264,7 +269,7 @@ function construct_service!(
         )
     end
 
-    add_variables!(container, SteadyStateFrequencyDeviation)
+    add_agc_variables!(container, SteadyStateFrequencyDeviation)
     add_variables!(container, AreaMismatchVariable, services, T())
     add_variables!(container, SmoothACE, services, T())
     add_variables!(container, LiftVariable, services, T())
@@ -401,7 +406,7 @@ function construct_service!(
     contributing_devices = get_contributing_devices(model)
     add_parameters!(container, RequirementTimeSeriesParameter, service, model)
 
-    add_variables!(
+    add_service_variables!(
         container,
         ActivePowerReserveVariable,
         service,
@@ -460,7 +465,7 @@ function construct_service!(
     contributing_devices = get_contributing_devices(model)
     add_parameters!(container, RequirementTimeSeriesParameter, service, model)
 
-    add_variables!(
+    add_service_variables!(
         container,
         ActivePowerReserveVariable,
         service,

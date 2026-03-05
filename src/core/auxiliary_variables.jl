@@ -25,17 +25,17 @@ Auxiliary Variables that are calculated using a `PowerFlowEvaluationModel`
 abstract type PowerFlowAuxVariableType <: AuxVariableType end
 
 """
-Auxiliary Variable for the bus angle results from power flow evaluation
+Auxiliary Variable for the bus angle outputs from power flow evaluation
 """
 struct PowerFlowVoltageAngle <: PowerFlowAuxVariableType end
 
 """
-Auxiliary Variable for the bus voltage magnitued results from power flow evaluation
+Auxiliary Variable for the bus voltage magnitude outputs from power flow evaluation
 """
 struct PowerFlowVoltageMagnitude <: PowerFlowAuxVariableType end
 
 """
-Auxiliary Variable for line power flow results from power flow evaluation
+Auxiliary Variable for line power flow outputs from power flow evaluation
 """
 abstract type BranchFlowAuxVariableType <: PowerFlowAuxVariableType end
 
@@ -69,12 +69,21 @@ Auxiliary Variable for the voltage stability factors from AC power flow evaluati
 """
 struct PowerFlowVoltageStabilityFactors <: PowerFlowAuxVariableType end
 
-convert_result_to_natural_units(::Type{PowerOutput}) = true
-convert_result_to_natural_units(
+# should this be a subtype of BranchFlowAuxVariableType? It's line-related but has no flow direction.
+"""
+Auxiliary Variable for the active power loss on a line from AC power flow evaluation.
+"""
+struct PowerFlowBranchActivePowerLoss <: PowerFlowAuxVariableType end
+
+# TODO reactive loss?
+
+convert_output_to_natural_units(::Type{PowerOutput}) = true
+convert_output_to_natural_units(
     ::Type{
         <:Union{
             PowerFlowBranchReactivePowerFromTo, PowerFlowBranchReactivePowerToFrom,
             PowerFlowBranchActivePowerFromTo, PowerFlowBranchActivePowerToFrom,
+            PowerFlowBranchActivePowerLoss,
         },
     },
 ) = true

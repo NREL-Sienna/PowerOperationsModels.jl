@@ -54,9 +54,9 @@ function build_problem!(
     # Order is required
     for device_model in values(template.devices)
         @debug "Building Arguments for $(get_component_type(device_model)) with $(get_formulation(device_model)) formulation" _group =
-            IOM.LOG_GROUP_OPTIMIZATION_CONTAINER
-        TimerOutputs.@timeit IOM.BUILD_PROBLEMS_TIMER "$(get_component_type(device_model))" begin
-            if IOM.validate_available_devices(device_model, sys)
+            LOG_GROUP_OPTIMIZATION_CONTAINER
+        TimerOutputs.@timeit BUILD_PROBLEMS_TIMER "$(get_component_type(device_model))" begin
+            if validate_available_devices(device_model, sys)
                 construct_device!(
                     container,
                     sys,
@@ -65,12 +65,12 @@ function build_problem!(
                     transmission_model,
                 )
             end
-            @debug "Problem size:" IOM.get_problem_size(container) _group =
-                IOM.LOG_GROUP_OPTIMIZATION_CONTAINER
+            @debug "Problem size:" get_problem_size(container) _group =
+                LOG_GROUP_OPTIMIZATION_CONTAINER
         end
     end
 
-    TimerOutputs.@timeit IOM.BUILD_PROBLEMS_TIMER "Services" begin
+    TimerOutputs.@timeit BUILD_PROBLEMS_TIMER "Services" begin
         construct_services!(
             container,
             sys,
@@ -83,9 +83,9 @@ function build_problem!(
 
     for branch_model in values(template.branches)
         @debug "Building Arguments for $(get_component_type(branch_model)) with $(get_formulation(branch_model)) formulation" _group =
-            IOM.LOG_GROUP_OPTIMIZATION_CONTAINER
-        TimerOutputs.@timeit IOM.BUILD_PROBLEMS_TIMER "$(get_component_type(branch_model))" begin
-            if IOM.validate_available_devices(branch_model, sys)
+            LOG_GROUP_OPTIMIZATION_CONTAINER
+        TimerOutputs.@timeit BUILD_PROBLEMS_TIMER "$(get_component_type(branch_model))" begin
+            if validate_available_devices(branch_model, sys)
                 construct_device!(
                     container,
                     sys,
@@ -94,15 +94,15 @@ function build_problem!(
                     transmission_model,
                 )
             end
-            @debug "Problem size:" IOM.get_problem_size(container) _group =
-                IOM.LOG_GROUP_OPTIMIZATION_CONTAINER
+            @debug "Problem size:" get_problem_size(container) _group =
+                LOG_GROUP_OPTIMIZATION_CONTAINER
         end
     end
     for device_model in values(template.devices)
         @debug "Building Model for $(get_component_type(device_model)) with $(get_formulation(device_model)) formulation" _group =
-            IOM.LOG_GROUP_OPTIMIZATION_CONTAINER
-        TimerOutputs.@timeit IOM.BUILD_PROBLEMS_TIMER "$(get_component_type(device_model))" begin
-            if IOM.validate_available_devices(device_model, sys)
+            LOG_GROUP_OPTIMIZATION_CONTAINER
+        TimerOutputs.@timeit BUILD_PROBLEMS_TIMER "$(get_component_type(device_model))" begin
+            if validate_available_devices(device_model, sys)
                 construct_device!(
                     container,
                     sys,
@@ -111,25 +111,25 @@ function build_problem!(
                     transmission_model,
                 )
             end
-            @debug "Problem size:" IOM.get_problem_size(container) _group =
-                IOM.LOG_GROUP_OPTIMIZATION_CONTAINER
+            @debug "Problem size:" get_problem_size(container) _group =
+                LOG_GROUP_OPTIMIZATION_CONTAINER
         end
     end
 
     # This function should be called after construct_device ModelConstructStage
-    TimerOutputs.@timeit IOM.BUILD_PROBLEMS_TIMER "$(transmission)" begin
+    TimerOutputs.@timeit BUILD_PROBLEMS_TIMER "$(transmission)" begin
         @debug "Building $(transmission) network formulation" _group =
-            IOM.LOG_GROUP_OPTIMIZATION_CONTAINER
+            LOG_GROUP_OPTIMIZATION_CONTAINER
         construct_network!(container, sys, transmission_model, template)
         construct_hvdc_network!(container, sys, transmission_model, hvdc_model, template)
-        @debug "Problem size:" IOM.get_problem_size(container) _group =
-            IOM.LOG_GROUP_OPTIMIZATION_CONTAINER
+        @debug "Problem size:" get_problem_size(container) _group =
+            LOG_GROUP_OPTIMIZATION_CONTAINER
     end
     for branch_model in values(template.branches)
         @debug "Building Model for $(get_component_type(branch_model)) with $(get_formulation(branch_model)) formulation" _group =
-            IOM.LOG_GROUP_OPTIMIZATION_CONTAINER
-        TimerOutputs.@timeit IOM.BUILD_PROBLEMS_TIMER "$(get_component_type(branch_model))" begin
-            if IOM.validate_available_devices(branch_model, sys)
+            LOG_GROUP_OPTIMIZATION_CONTAINER
+        TimerOutputs.@timeit BUILD_PROBLEMS_TIMER "$(get_component_type(branch_model))" begin
+            if validate_available_devices(branch_model, sys)
                 construct_device!(
                     container,
                     sys,
@@ -138,31 +138,31 @@ function build_problem!(
                     transmission_model,
                 )
             end
-            @debug "Problem size:" IOM.get_problem_size(container) _group =
-                IOM.LOG_GROUP_OPTIMIZATION_CONTAINER
+            @debug "Problem size:" get_problem_size(container) _group =
+                LOG_GROUP_OPTIMIZATION_CONTAINER
         end
     end
 
-    TimerOutputs.@timeit IOM.BUILD_PROBLEMS_TIMER "Services" begin
+    TimerOutputs.@timeit BUILD_PROBLEMS_TIMER "Services" begin
         construct_services!(
             container,
             sys,
             ModelConstructStage(),
-            IOM.get_service_models(template),
-            IOM.get_device_models(template),
+            get_service_models(template),
+            get_device_models(template),
             transmission_model,
         )
     end
 
-    TimerOutputs.@timeit IOM.BUILD_PROBLEMS_TIMER "Objective" begin
-        @debug "Building Objective" _group = IOM.LOG_GROUP_OPTIMIZATION_CONTAINER
+    TimerOutputs.@timeit BUILD_PROBLEMS_TIMER "Objective" begin
+        @debug "Building Objective" _group = LOG_GROUP_OPTIMIZATION_CONTAINER
         IOM.update_objective_function!(container)
     end
-    @debug "Total operation count $(IOM.get_jump_model(container).operator_counter)" _group =
-        IOM.LOG_GROUP_OPTIMIZATION_CONTAINER
+    @debug "Total operation count $(get_jump_model(container).operator_counter)" _group =
+        LOG_GROUP_OPTIMIZATION_CONTAINER
 
-    TimerOutputs.@timeit IOM.BUILD_PROBLEMS_TIMER "Power Flow Initialization" begin
-        IOM.add_power_flow_data!(
+    TimerOutputs.@timeit BUILD_PROBLEMS_TIMER "Power Flow Initialization" begin
+        add_power_flow_data!(
             container,
             get_power_flow_evaluation(transmission_model),
             sys,

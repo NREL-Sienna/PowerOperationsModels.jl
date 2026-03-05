@@ -1,5 +1,18 @@
 test_path = mktempdir()
 
+@testset "MotorLoad AreaBalancePowerModel" begin
+    c_sys = PSB.build_system(PSISystems, "two_area_pjm_DA")
+    transform_single_time_series!(c_sys, Hour(24), Hour(1))
+    template = get_thermal_dispatch_template_network(NetworkModel(AreaBalancePowerModel))
+    set_device_model!(template, AreaInterchange, StaticBranch)
+    ps_model =
+        DecisionModel(template, c_sys; resolution = Hour(1), optimizer = HiGHS_optimizer)
+
+    @test build!(ps_model; output_dir = mktempdir(; cleanup = true)) ==
+          IOM.ModelBuildStatus.BUILT
+    @test solve!(ps_model) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
+end
+
 @testset "StaticPowerLoad" begin
     models = [StaticPowerLoad, PowerLoadDispatch, PowerLoadInterruption]
     c_sys5_il = PSB.build_system(PSITestSystems, "c_sys5_il")
@@ -103,14 +116,14 @@ end
         optimizer_solve_log_print = true)
     @test build!(model; output_dir = test_path) == IOM.ModelBuildStatus.BUILT
     @test solve!(model) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
-    results = OptimizationProblemResults(model)
+    outputs = OptimizationProblemOutputs(model)
     expr = read_expression(
-        results,
+        outputs,
         "ProductionCostExpression__InterruptiblePowerLoad";
         table_format = TableFormat.WIDE,
     )
     p_l = read_variable(
-        results,
+        outputs,
         "ActivePowerVariable__InterruptiblePowerLoad";
         table_format = TableFormat.WIDE,
     )

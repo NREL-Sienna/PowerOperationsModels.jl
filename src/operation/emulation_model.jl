@@ -1,7 +1,7 @@
 # FIXME untested. Moved to accommodate a few methods dispatching on EmulationModelStore,
 # but not run in the tests and not yet refactored for IOM-POM split.
 function build_pre_step!(model::EmulationModel)
-    TimerOutputs.@timeit IOM.BUILD_PROBLEMS_TIMER "Build pre-step" begin
+    TimerOutputs.@timeit BUILD_PROBLEMS_TIMER "Build pre-step" begin
         IOM.validate_template(model)
         if !isempty(model)
             @info "EmulationProblem status not ModelBuildStatus.EMPTY. Resetting"
@@ -19,7 +19,7 @@ function build_pre_step!(model::EmulationModel)
 
         @info "Initializing ModelStoreParams"
         IOM.init_model_store_params!(model)
-        IOM.set_status!(model, ModelBuildStatus.IN_PROGRESS)
+        set_status!(model, ModelBuildStatus.IN_PROGRESS)
     end
     return
 end
@@ -56,8 +56,8 @@ function build!(
     IOM.set_output_dir!(model, output_dir)
     IOM.set_console_level!(model, console_level)
     IOM.set_file_level!(model, file_level)
-    TimerOutputs.reset_timer!(IOM.BUILD_PROBLEMS_TIMER)
-    disable_timer_outputs && TimerOutputs.disable_timer!(IOM.BUILD_PROBLEMS_TIMER)
+    TimerOutputs.reset_timer!(BUILD_PROBLEMS_TIMER)
+    disable_timer_outputs && TimerOutputs.disable_timer!(BUILD_PROBLEMS_TIMER)
     file_mode = "w"
     IOM.add_recorders!(model, recorders)
     IOM.register_recorders!(model, file_mode)
@@ -70,13 +70,13 @@ function build!(
         Logging.with_logger(logger) do
             try
                 IOM.set_executions!(model, executions)
-                TimerOutputs.@timeit IOM.BUILD_PROBLEMS_TIMER "Problem $(get_name(model))" begin
+                TimerOutputs.@timeit BUILD_PROBLEMS_TIMER "Problem $(get_name(model))" begin
                     build_model!(model)
                 end
-                IOM.set_status!(model, ModelBuildStatus.BUILT)
-                @info "\n$(IOM.BUILD_PROBLEMS_TIMER)\n"
+                set_status!(model, ModelBuildStatus.BUILT)
+                @info "\n$(BUILD_PROBLEMS_TIMER)\n"
             catch e
-                IOM.set_status!(model, ModelBuildStatus.FAILED)
+                set_status!(model, ModelBuildStatus.FAILED)
                 bt = catch_backtrace()
                 @error "EmulationModel Build Failed" exception = e, bt
             end
@@ -103,8 +103,8 @@ function reset!(model::EmulationModel{<:EmulationProblem})
     )
     IOM.set_initial_conditions_model_container!(get_internal(model), nothing)
     IOM.empty_time_series_cache!(model)
-    empty!(IOM.get_store(model))
-    IOM.set_status!(model, ModelBuildStatus.EMPTY)
+    empty!(get_store(model))
+    set_status!(model, ModelBuildStatus.EMPTY)
     return
 end
 
@@ -131,16 +131,16 @@ function execute_emulation!(
     prog_bar = ProgressMeter.Progress(executions; enabled = enable_progress_bar)
     initial_time = get_initial_time(model)
     for execution in 1:executions
-        TimerOutputs.@timeit IOM.RUN_OPERATION_MODEL_TIMER "Run execution" begin
+        TimerOutputs.@timeit RUN_OPERATION_MODEL_TIMER "Run execution" begin
             # NOTE: PSI's run_impl! calls update_model!(model) here to update parameters
             # and initial conditions between executions. That logic lives in IOM's
             # emulation_model.jl and is invoked by PSI during simulation. Standalone
             # emulation in POM does not update between steps.
             IOM.solve_model!(model)
             current_time = initial_time + (execution - 1) * get_resolution(model)
-            write_results!(IOM.get_store(model), model, execution, current_time)
+            write_outputs!(get_store(model), model, execution, current_time)
             IOM.write_optimizer_stats!(
-                IOM.get_store(model),
+                get_store(model),
                 get_optimizer_stats(model),
                 execution,
             )
@@ -167,7 +167,7 @@ keyword arguments to that function.
   - `model::EmulationModel = model`: Emulation model
   - `optimizer::MOI.OptimizerWithAttributes`: The optimizer that is used to solve the model
   - `executions::Int`: Number of executions for the emulator run
-  - `export_problem_results::Bool`: If true, export OptimizationProblemResults DataFrames to CSV files.
+  - `export_problem_outputs::Bool`: If true, export OptimizationProblemOutputs DataFrames to CSV files.
   - `output_dir::String`: Required if the model is not already built, otherwise ignored
   - `enable_progress_bar::Bool`: Enables/Disable progress bar printing
   - `export_optimization_model::Bool`: If true, serialize the model to a file to allow re-execution later.
@@ -181,11 +181,12 @@ status = run!(model; output_dir = ./model_output, optimizer = HiGHS.Optimizer, e
 """
 function run!(
     model::EmulationModel{<:EmulationProblem};
-    export_problem_results = false,
+    export_problem_outputs = false,
     console_level = Logging.Error,
     file_level = Logging.Info,
     disable_timer_outputs = false,
     export_optimization_model = true,
+    enable_progress_bar = _progress_meter_enabled(),
     kwargs...,
 )
     build_if_not_already_built!(
@@ -197,8 +198,8 @@ function run!(
     )
     IOM.set_console_level!(model, console_level)
     IOM.set_file_level!(model, file_level)
-    TimerOutputs.reset_timer!(IOM.RUN_OPERATION_MODEL_TIMER)
-    disable_timer_outputs && TimerOutputs.disable_timer!(IOM.RUN_OPERATION_MODEL_TIMER)
+    TimerOutputs.reset_timer!(RUN_OPERATION_MODEL_TIMER)
+    disable_timer_outputs && TimerOutputs.disable_timer!(RUN_OPERATION_MODEL_TIMER)
     file_mode = "a"
     IOM.register_recorders!(model, file_mode)
     logger = IS.configure_logging(
@@ -210,27 +211,31 @@ function run!(
         Logging.with_logger(logger) do
             try
                 IOM.initialize_storage!(
-                    IOM.get_store(model),
+                    get_store(model),
                     get_optimization_container(model),
                     IOM.get_store_params(model),
                 )
-                TimerOutputs.@timeit IOM.RUN_OPERATION_MODEL_TIMER "Run" begin
-                    execute_emulation!(model; kwargs...)
+                TimerOutputs.@timeit RUN_OPERATION_MODEL_TIMER "Run" begin
+                    execute_emulation!(
+                        model;
+                        enable_progress_bar = enable_progress_bar,
+                        kwargs...,
+                    )
                     IOM.set_run_status!(model, RunStatus.SUCCESSFULLY_FINALIZED)
                 end
                 if export_optimization_model
-                    TimerOutputs.@timeit IOM.RUN_OPERATION_MODEL_TIMER "Serialize" begin
+                    TimerOutputs.@timeit RUN_OPERATION_MODEL_TIMER "Serialize" begin
                         optimizer = get(kwargs, :optimizer, nothing)
                         serialize_problem(model; optimizer = optimizer)
                         serialize_optimization_model(model)
                     end
                 end
-                TimerOutputs.@timeit IOM.RUN_OPERATION_MODEL_TIMER "Results processing" begin
-                    results = OptimizationProblemResults(model)
-                    serialize_results(results, IOM.get_output_dir(model))
-                    export_problem_results && export_results(results)
+                TimerOutputs.@timeit RUN_OPERATION_MODEL_TIMER "Outputs processing" begin
+                    outputs = OptimizationProblemOutputs(model)
+                    serialize_outputs(outputs, IOM.get_output_dir(model))
+                    export_problem_outputs && export_outputs(outputs)
                 end
-                @info "\n$(IOM.RUN_OPERATION_MODEL_TIMER)\n"
+                @info "\n$(RUN_OPERATION_MODEL_TIMER)\n"
             catch e
                 @error "Emulation Problem Run failed" exception = (e, catch_backtrace())
                 IOM.set_run_status!(model, RunStatus.FAILED)
@@ -243,9 +248,8 @@ function run!(
     return IOM.get_run_status(model)
 end
 
-# Same name as PSI; lived in emulation_model.jl.
 function handle_initial_conditions!(model::EmulationModel{<:EmulationProblem})
-    TimerOutputs.@timeit IOM.BUILD_PROBLEMS_TIMER "Model Initialization" begin
+    TimerOutputs.@timeit BUILD_PROBLEMS_TIMER "Model Initialization" begin
         if isempty(get_template(model))
             return
         end
