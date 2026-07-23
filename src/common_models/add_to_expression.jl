@@ -2977,10 +2977,8 @@ function add_to_expression!(
     return
 end
 
-# TODO(services PWL cost): reads the per-service `meta = service_name` ORDC cost-expression
-# container. Update to the per-type folded container when the 3D/4D PWL cost containers for
-# services land (see the create site in add_expressions.jl and the ORDC slope/breakpoint
-# params in add_parameters.jl -- all kept on `meta` together until that migration).
+# Merged dense `(service_name, time)` ORDC cost-expression container (empty meta), read/written
+# by service name - same shape as the device `ProductionCostExpression` above.
 function add_to_expression!(
     container::OptimizationContainer,
     ::Type{S},
@@ -2991,9 +2989,8 @@ function add_to_expression!(
     S <: CostExpressions,
     T <: Union{PSY.ReserveDemandCurve, PSY.ReserveDemandTimeSeriesCurve},
 }
-    if has_container_key(container, S, T, PSY.get_name(component))
-        device_cost_expression =
-            get_expression(container, S, T, PSY.get_name(component))
+    if has_container_key(container, S, T)
+        device_cost_expression = get_expression(container, S, T)
         component_name = PSY.get_name(component)
         JuMP.add_to_expression!(
             device_cost_expression[component_name, time_period],

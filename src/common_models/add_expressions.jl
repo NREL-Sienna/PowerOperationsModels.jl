@@ -218,15 +218,10 @@ function add_expressions!(
 end
 
 """
-Per-service cost expression container (e.g. `ProductionCostExpression` for ORDC reserves).
-One container per service, `meta`-keyed by the service name, matching the reads in
+Merged cost-expression container for reserve services (e.g. `ProductionCostExpression` for ORDC):
+one dense `(service_name, time)` container per service type, empty meta - the same shape as the
+device `ProductionCostExpression`. Read/written by
 `add_to_expression!(container, ::CostExpressions, cost, ::ReserveDemand*, t)`.
-
-TODO(services PWL cost): this per-service `meta` keying is temporary. It will be
-removed/folded to a per-type dense `(service, time)` container (like the device
-`ProductionCostExpression`) once the 3D/4D PWL cost containers for services land. Kept on
-`meta` with the rest of the ORDC cost path (slope/breakpoint params, delta-PWL machinery)
-until that migration.
 """
 function add_expressions!(
     container::OptimizationContainer,
@@ -240,9 +235,12 @@ function add_expressions!(
     W <: AbstractReservesFormulation,
 } where {D <: PSY.Component}
     time_steps = get_time_steps(container)
-    for service in services
-        name = PSY.get_name(service)
-        add_expression_container!(container, T, D, [name], time_steps; meta = name)
-    end
+    add_expression_container!(
+        container,
+        T,
+        D,
+        [PSY.get_name(s) for s in services],
+        time_steps,
+    )
     return
 end

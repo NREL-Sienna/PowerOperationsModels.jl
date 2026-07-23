@@ -239,6 +239,8 @@ function construct_service!(
         services,
         StepwiseCostReserve(),
     )
+    # Merged dense `(service, time)` cost-expression container, built once over all services.
+    add_expressions!(container, ProductionCostExpression, services, model)
     for service in services
         contributing_devices = get_contributing_devices(model, PSY.get_name(service))
         add_service_variables!(
@@ -256,7 +258,6 @@ function construct_service!(
             model,
             devices_template,
         )
-        add_expressions!(container, ProductionCostExpression, [service], model)
     end
     return
 end
