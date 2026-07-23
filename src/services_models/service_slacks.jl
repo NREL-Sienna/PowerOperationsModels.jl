@@ -32,6 +32,7 @@ function transmission_interface_slacks!(
     interface_names = [PSY.get_name(s) for s in services]
     jump_model = get_jump_model(container)
 
+    # DELETE-AFTER-REVIEW: reviewer context on the container change; remove once the PR is approved.
     # One dense 2D container per (slack variable type, TransmissionInterface) keyed
     # `[interface_name, time]`, built once over all interfaces (`use_slacks` is per type),
     # empty meta. Each interface's slacks carry its own violation penalty.
