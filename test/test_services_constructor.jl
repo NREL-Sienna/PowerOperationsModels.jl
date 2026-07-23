@@ -730,9 +730,11 @@ end
 @testset "Interface slacks are one merged container per type (use_slacks)" begin
     # `use_slacks = true` on the interface ServiceModel builds InterfaceFlowSlackUp/Down as one
     # dense container per (variable type, TransmissionInterface) keyed by interface name (empty
-    # meta), each wired to the interface's violation penalty. Ports the previously-blocked
-    # ServiceModel use_slacks case (the old per-name + meta build had no working container-builder
-    # method). `deepcopy` so the added interface does not leak into the PSB cache.
+    # meta), each wired to the interface's violation penalty. `deepcopy` so the added interface
+    # does not leak into the PSB cache.
+    # DELETE-AFTER-REVIEW: reviewer context on the container change; remove once the PR is approved.
+    # Ports the previously-blocked ServiceModel use_slacks case (the old per-name + meta build had
+    # no working container-builder method).
     sys = deepcopy(PSB.build_system(PSITestSystems, "c_sys5_uc"; add_reserves = true))
     interface = TransmissionInterface(;
         name = "west_east",
@@ -767,8 +769,9 @@ end
 
 @testset "Interface flow-limit params are one merged container per type" begin
     # VariableMaxInterfaceFlow builds Min/MaxInterfaceFlowLimitParameter as one container per type
-    # over all interface names (empty meta). The 3-arg fetch below would throw if the container
-    # were still per-service `meta = name`.
+    # over all interface names (empty meta).
+    # DELETE-AFTER-REVIEW: reviewer context on the container change; remove once the PR is approved.
+    # The 3-arg fetch below would throw if the container were still per-service `meta = name`.
     sys = deepcopy(PSB.build_system(PSITestSystems, "c_sys5_uc"; add_reserves = true))
     interface = TransmissionInterface(;
         name = "west_east",

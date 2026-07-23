@@ -2021,6 +2021,7 @@ function add_to_expression!(
 }
     expression = get_expression(container, InterfaceTotalFlow, PSY.TransmissionInterface)
     service_name = PSY.get_name(service)
+    # DELETE-AFTER-REVIEW: reviewer context on the container change; remove once the PR is approved.
     # Merged slack container keyed `(interface_name, time)`; read the whole container and index
     # this interface's slice (was a per-service `meta = service_name` container).
     variable = get_variable(container, T, PSY.TransmissionInterface)
