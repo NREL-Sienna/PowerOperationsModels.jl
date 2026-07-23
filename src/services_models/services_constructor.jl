@@ -607,18 +607,17 @@ function construct_service!(
     incompatible_device_types::Set{<:DataType},
     network_model::NetworkModel{<:AbstractNetworkModel},
 ) where {T <: PSY.TransmissionInterface}
-    interfaces = get_available_components(model, sys)
+    interfaces = collect(get_available_components(model, sys))
     # Lazy container addition for the expressions.
     lazy_container_addition!(container, InterfaceTotalFlow,
         T,
         PSY.get_name.(interfaces),
         get_time_steps(container),
     )
+    if get_use_slacks(model)
+        transmission_interface_slacks!(container, interfaces)
+    end
     for interface in interfaces
-        if get_use_slacks(model)
-            # Adding the slacks can be done in a cleaner fashion
-            transmission_interface_slacks!(container, interface)
-        end
         add_feedforward_arguments!(container, model, interface)
     end
     return
@@ -633,7 +632,7 @@ function construct_service!(
     incompatible_device_types::Set{<:DataType},
     network_model::NetworkModel{AreaBalanceNetworkModel},
 )
-    interfaces = get_available_components(model, sys)
+    interfaces = collect(get_available_components(model, sys))
     # Lazy container addition for the expressions.
     lazy_container_addition!(container, InterfaceTotalFlow,
         PSY.TransmissionInterface,
@@ -641,11 +640,10 @@ function construct_service!(
         get_time_steps(container),
     )
     @warn "AreaBalanceNetworkModel doesn't model individual line flows and it ignores the flows on AC Transmission Devices"
+    if get_use_slacks(model)
+        transmission_interface_slacks!(container, interfaces)
+    end
     for interface in interfaces
-        if get_use_slacks(model)
-            # Adding the slacks can be done in a cleaner fashion
-            transmission_interface_slacks!(container, interface)
-        end
         add_feedforward_arguments!(container, model, interface)
     end
     return
@@ -864,7 +862,7 @@ function construct_service!(
     incompatible_device_types::Set{<:DataType},
     network_model::NetworkModel{<:AbstractNetworkModel},
 )
-    interfaces = get_available_components(model, sys)
+    interfaces = collect(get_available_components(model, sys))
     # Lazy container addition for the expressions.
     lazy_container_addition!(container, InterfaceTotalFlow,
         PSY.TransmissionInterface,
@@ -877,12 +875,11 @@ function construct_service!(
             "Not all TransmissionInterfaces devices have time series. Check data to complete (or remove) time series.",
         )
     end
-    for interface in interfaces
-        if get_use_slacks(model)
-            # Adding the slacks can be done in a cleaner fashion
-            transmission_interface_slacks!(container, interface)
-        end
-        if all(has_ts)
+    if get_use_slacks(model)
+        transmission_interface_slacks!(container, interfaces)
+    end
+    if !isempty(interfaces) && all(has_ts)
+        for interface in interfaces
             name = PSY.get_name(interface)
             num_ts = length(unique(PSY.get_name.(PSY.get_time_series_keys(interface))))
             if num_ts < 2
@@ -890,9 +887,13 @@ function construct_service!(
                     "TransmissionInterface $name has less than two time series. It is required to add both min_flow and max_flow time series.",
                 )
             end
-            add_parameters!(container, MinInterfaceFlowLimitParameter, interface, model)
-            add_parameters!(container, MaxInterfaceFlowLimitParameter, interface, model)
         end
+        # Merged per-type parameter containers over all interfaces (empty meta), filled per
+        # interface by the vector `_add_parameters!` path.
+        add_parameters!(container, MinInterfaceFlowLimitParameter, interfaces, model)
+        add_parameters!(container, MaxInterfaceFlowLimitParameter, interfaces, model)
+    end
+    for interface in interfaces
         add_feedforward_arguments!(container, model, interface)
     end
     return

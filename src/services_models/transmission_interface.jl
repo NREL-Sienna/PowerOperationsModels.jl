@@ -101,17 +101,22 @@ function add_constraints!(
         meta = "lb",
     )
     int_name = PSY.get_name(interface)
+    # Merged per-type parameter containers keyed by interface name (empty meta); fetch the whole
+    # container/multiplier array and index this interface's column/row (was a per-service
+    # `meta = int_name` container).
     param_container_min =
-        get_parameter(container, MinInterfaceFlowLimitParameter, PSY.TransmissionInterface, int_name)
-    param_multiplier_min = get_parameter_multiplier_array(container, MinInterfaceFlowLimitParameter,
+        get_parameter(container, MinInterfaceFlowLimitParameter, PSY.TransmissionInterface)
+    param_multiplier_min = get_parameter_multiplier_array(
+        container,
+        MinInterfaceFlowLimitParameter,
         PSY.TransmissionInterface,
-        int_name,
     )
     param_container_max =
-        get_parameter(container, MaxInterfaceFlowLimitParameter, PSY.TransmissionInterface, int_name)
-    param_multiplier_max = get_parameter_multiplier_array(container, MaxInterfaceFlowLimitParameter,
+        get_parameter(container, MaxInterfaceFlowLimitParameter, PSY.TransmissionInterface)
+    param_multiplier_max = get_parameter_multiplier_array(
+        container,
+        MaxInterfaceFlowLimitParameter,
         PSY.TransmissionInterface,
-        int_name,
     )
     param_min = get_parameter_column_refs(param_container_min, int_name)
     param_max = get_parameter_column_refs(param_container_max, int_name)

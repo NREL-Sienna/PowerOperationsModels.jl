@@ -727,6 +727,119 @@ end
     end
 end
 
+@testset "Interface slacks are one merged container per type (use_slacks)" begin
+    # `use_slacks = true` on the interface ServiceModel builds InterfaceFlowSlackUp/Down as one
+    # dense container per (variable type, TransmissionInterface) keyed by interface name (empty
+    # meta), each wired to the interface's violation penalty. Ports the previously-blocked
+    # ServiceModel use_slacks case (the old per-name + meta build had no working container-builder
+    # method). `deepcopy` so the added interface does not leak into the PSB cache.
+    sys = deepcopy(PSB.build_system(PSITestSystems, "c_sys5_uc"; add_reserves = true))
+    interface = TransmissionInterface(;
+        name = "west_east",
+        available = true,
+        active_power_flow_limits = (min = 0.0, max = 400.0),
+        violation_penalty = 1e5,
+    )
+    add_service!(sys, interface, [get_component(Line, sys, l) for l in ("1", "2", "6")])
+
+    template = get_thermal_dispatch_template_network(DCPNetworkModel)
+    set_service_model!(
+        template,
+        ServiceModel(TransmissionInterface, ConstantMaxInterfaceFlow; use_slacks = true),
+    )
+    model = DecisionModel(template, sys; optimizer = HiGHS_optimizer)
+    @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
+          IOM.ModelBuildStatus.BUILT
+
+    container = get_optimization_container(model)
+    time_steps = get_time_steps(container)
+    for V in (POM.InterfaceFlowSlackUp, POM.InterfaceFlowSlackDown)
+        # 3-arg fetch (no meta) proves the merged, empty-meta container.
+        slack = IOM.get_variable(container, V, TransmissionInterface)
+        @test axes(slack) == (["west_east"], time_steps)
+        @test all(JuMP.lower_bound(slack["west_east", t]) == 0.0 for t in time_steps)
+    end
+    # Slacks are wired into the objective at the interface's violation penalty.
+    obj = JuMP.objective_function(get_jump_model(model))
+    slack_up = IOM.get_variable(container, POM.InterfaceFlowSlackUp, TransmissionInterface)
+    @test all(JuMP.coefficient(obj, slack_up["west_east", t]) == 1e5 for t in time_steps)
+end
+
+@testset "Interface flow-limit params are one merged container per type" begin
+    # VariableMaxInterfaceFlow builds Min/MaxInterfaceFlowLimitParameter as one container per type
+    # over all interface names (empty meta). The 3-arg fetch below would throw if the container
+    # were still per-service `meta = name`.
+    sys = deepcopy(PSB.build_system(PSITestSystems, "c_sys5_uc"; add_reserves = true))
+    interface = TransmissionInterface(;
+        name = "west_east",
+        available = true,
+        active_power_flow_limits = (min = 0.0, max = 400.0),
+    )
+    add_service!(sys, interface, [get_component(Line, sys, l) for l in ("1", "2", "6")])
+    for (ts_name, sfm) in (
+        ("min_active_power_flow_limit", PSY.get_min_active_power_flow_limit),
+        ("max_active_power_flow_limit", PSY.get_max_active_power_flow_limit),
+    )
+        data = Dict(
+            DateTime("2024-01-01T00:00:00") => fill(0.5, 24),
+            DateTime("2024-01-02T00:00:00") => fill(0.5, 24),
+        )
+        add_time_series!(
+            sys,
+            interface,
+            Deterministic(ts_name, data, Hour(1); scaling_factor_multiplier = sfm),
+        )
+    end
+
+    template = get_thermal_dispatch_template_network(DCPNetworkModel)
+    set_service_model!(
+        template,
+        ServiceModel(TransmissionInterface, VariableMaxInterfaceFlow),
+    )
+    model = DecisionModel(template, sys; optimizer = HiGHS_optimizer)
+    @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
+          IOM.ModelBuildStatus.BUILT
+
+    container = get_optimization_container(model)
+    for P in (POM.MinInterfaceFlowLimitParameter, POM.MaxInterfaceFlowLimitParameter)
+        # 3-arg fetch (no meta) succeeds only if the container is merged per type.
+        param = IOM.get_parameter(container, P, TransmissionInterface)
+        @test param !== nothing
+    end
+    # The flow-limit constraint (which reads the merged params) built for the interface.
+    @test size(
+        IOM.get_constraint(container, POM.InterfaceFlowLimit, TransmissionInterface, "ub"),
+    ) == (1, 24)
+end
+
+@testset "Interface with no available contributing branches errors" begin
+    # A3: an interface whose contributing branches are all unavailable has an empty contributing
+    # map, so `_populate_contributing_devices!` (in the DecisionModel constructor) must error and
+    # name it rather than silently building a meaningless flow limit.
+    sys = deepcopy(PSB.build_system(PSITestSystems, "c_sys5_uc"; add_reserves = true))
+    interface = TransmissionInterface(;
+        name = "west_east",
+        available = true,
+        active_power_flow_limits = (min = 0.0, max = 400.0),
+    )
+    interface_lines = [get_component(Line, sys, l) for l in ("1", "2", "6")]
+    add_service!(sys, interface, interface_lines)
+    for l in interface_lines
+        PSY.set_available!(l, false)
+    end
+
+    template = get_thermal_dispatch_template_network(DCPNetworkModel)
+    set_service_model!(
+        template,
+        ServiceModel(TransmissionInterface, ConstantMaxInterfaceFlow),
+    )
+    @test_throws "no available contributing branches" DecisionModel(
+        template,
+        sys;
+        optimizer = HiGHS_optimizer,
+    )
+end
+
 @testset "Test Interfaces on Interchanges with AreaBalance" begin
     sys_rts_da = build_system(PSISystems, "modified_RTS_GMLC_DA_sys")
     transform_single_time_series!(sys_rts_da, Hour(24), Hour(1))
@@ -1115,11 +1228,6 @@ end
 #  - "Test Reserves with Feedforwards": the concrete feedforward types
 #    (`LowerBoundFeedforward`, `FixValueFeedforward`, …) are not defined in POM or IOM —
 #    only the feedforward constraint types and the abstract construct hooks exist.
-#  - TransmissionInterface with `use_slacks = true` on the ServiceModel: the interface slack
-#    construction calls `add_variable_container!(..., InterfaceFlowSlackUp,
-#    TransmissionInterface, ::String, ::UnitRange)`, which has no method — build returns
-#    FAILED. The landed interface testsets omit ServiceModel slacks; the slack path needs a
-#    src/IOM container-builder fix.
 # Also not ported (feature/framework not in POM): AGC (no `template_agc_reserve_deployment`),
 # Hydro reserves (`HydroTurbineEnergyDispatch` absent), the old bare-`TimeSeriesKey` ORDC
 # tests (psy6 uses `ReserveDemandTimeSeriesCurve`; covered by the two ORDC testsets above),
