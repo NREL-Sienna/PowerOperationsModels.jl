@@ -836,7 +836,7 @@ end
         template,
         ServiceModel(TransmissionInterface, ConstantMaxInterfaceFlow),
     )
-    @test_throws "no available contributing branches" DecisionModel(
+    @test_throws "no available contributing devices/branches" DecisionModel(
         template,
         sys;
         optimizer = HiGHS_optimizer,
