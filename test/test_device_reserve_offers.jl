@@ -7,9 +7,9 @@
 #
 # This is the (service, device, segment, time) 4D cost structure: one PWL offer per
 # (device, service) per hour. The reserve AWARD (`ActivePowerReserveVariable`) is already keyed
-# `(service, device, time)`; pricing it by these per-device offers (instead of the flat
-# `DEFAULT_RESERVE_COST`) is the piece not yet built. These tests pin the DATA MODEL and a
-# buildable fixture so that consumer can be developed against them.
+# `(service, device, time)`; `add_reserve_offer_costs!` prices it by these per-device offers
+# (instead of the flat `DEFAULT_RESERVE_COST`). These tests pin the DATA MODEL and assert the
+# consumer builds the 4D block variable, the award-linking constraint, and the offer-slope cost.
 
 # Give every contributing thermal device of `reserve` a MarketBidCost with an energy offer and a
 # per-device reserve OFFER curve (PiecewiseStepData, NaturalUnit) named after the service.
@@ -65,10 +65,10 @@ end
         get_components(ThermalStandard, sys))
 end
 
-@testset "Per-device reserve offers: fixture builds and solves (offers not yet priced)" begin
+@testset "Per-device reserve offers: builds, solves, and prices the offers" begin
     sys = deepcopy(PSB.build_system(PSITestSystems, "c_sys5_uc"; add_reserves = true))
     reserve = get_component(VariableReserve{ReserveUp}, sys, "Reserve1")
-    add_device_reserve_offers!(sys, reserve)
+    contributors = add_device_reserve_offers!(sys, reserve)
 
     template = get_thermal_standard_uc_template()
     set_service_model!(template, ServiceModel(VariableReserve{ReserveUp}, RangeReserve))
@@ -81,13 +81,35 @@ end
     # The reserve award exists, keyed by service type.
     @test IOM.has_container_key(
         container, ActivePowerReserveVariable, VariableReserve{ReserveUp})
-    # TODO(per-device reserve offers): no reserve-offer cost term is built yet - the device
-    # reserve offer curves are not consumed, the reserve is priced at the flat DEFAULT_RESERVE_COST.
-    # The only block-offer variable present is the ENERGY offer, not a reserve offer.
-    reserve_offer_vars = [
-        k for k in keys(container.variables)
-        if occursin("Reserve", string(IOM.get_entry_type(k))) &&
-        occursin("Offer", string(IOM.get_entry_type(k)))
-    ]
-    @test isempty(reserve_offer_vars)
+
+    # The per-device reserve OFFER is now consumed: a 4D block variable keyed
+    # (service, device, segment, time) exists for the contributing device type, plus the
+    # linking constraint that ties each device's segments to its reserve award.
+    @test IOM.has_container_key(
+        container, POM.PiecewiseLinearBlockReserveOffer, ThermalStandard)
+    @test IOM.has_container_key(
+        container, POM.ReserveOfferLinkingConstraint, ThermalStandard)
+    blk = IOM.get_variable(container, POM.PiecewiseLinearBlockReserveOffer, ThermalStandard)
+    cons = IOM.get_constraint(container, POM.ReserveOfferLinkingConstraint, ThermalStandard)
+    award =
+        IOM.get_variable(container, ActivePowerReserveVariable, VariableReserve{ReserveUp})
+    @test !isempty(blk)
+
+    sname = PSY.get_name(reserve)
+    obj = JuMP.objective_function(IOM.get_jump_model(container))
+    for g in contributors
+        gname = PSY.get_name(g)
+        # Both offer segments ([0,50,100] breakpoints -> 2 segments) are present at t = 1.
+        seg1 = blk[(sname, gname, 1, 1)]
+        seg2 = blk[(sname, gname, 2, 1)]
+        # The offer's second slope is 1.5x the first (offer_curve builds [price, 1.5*price]).
+        # The delta-cost coefficient is slope * dt, so the ratio is unit- and dt-invariant.
+        @test JuMP.coefficient(obj, seg2) / JuMP.coefficient(obj, seg1) ≈ 1.5
+        @test JuMP.coefficient(obj, seg1) > 0
+        # Linking constraint sum(segments) == award: normalized to sum(delta) - award == 0.
+        lc = cons[(sname, gname, 1)]
+        @test JuMP.normalized_coefficient(lc, seg1) ≈ 1.0
+        @test JuMP.normalized_coefficient(lc, seg2) ≈ 1.0
+        @test JuMP.normalized_coefficient(lc, award[(sname, gname, 1)]) ≈ -1.0
+    end
 end

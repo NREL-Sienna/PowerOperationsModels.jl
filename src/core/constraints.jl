@@ -25,6 +25,9 @@ The specified constraint is generally formulated as:
 """
 struct AreaParticipationAssignmentConstraint <: ConstraintType end
 struct BalanceAuxConstraint <: ConstraintType end
+# Links a device's per-service reserve OFFER blocks to its reserve award:
+# `Σ_k δ[(service, device, k, t)] == ActivePowerReserveVariable[(service, device, t)]`.
+struct ReserveOfferLinkingConstraint <: ConstraintType end
 """
 Struct to create the commitment constraint between the on, start, and stop variables.
 For more information check [ThermalGen Formulations](@ref ThermalGen-Formulations).

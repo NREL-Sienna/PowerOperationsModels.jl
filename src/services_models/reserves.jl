@@ -307,9 +307,13 @@ end
 function add_to_objective_function!(
     container::OptimizationContainer,
     service::SR,
-    ::ServiceModel{SR, T},
+    model::ServiceModel{SR, T},
 ) where {SR <: PSY.AbstractReserve, T <: AbstractReservesFormulation}
-    add_reserves_proportional_cost!(container, ActivePowerReserveVariable, service, T)
+    # Devices that submitted a reserve OFFER are priced by their offer curve; the rest keep the
+    # flat DEFAULT_RESERVE_COST.
+    offered = add_reserve_offer_costs!(container, service, model)
+    add_reserves_proportional_cost!(
+        container, ActivePowerReserveVariable, service, T; skip_devices = offered)
     return
 end
 
@@ -640,7 +644,8 @@ function add_reserves_proportional_cost!(
     container::OptimizationContainer,
     ::Type{U},
     service::T,
-    ::Type{V},
+    ::Type{V};
+    skip_devices = Set{String}(),
 ) where {
     T <: Union{PSY.Reserve, PSY.ReserveNonSpinning},
     U <: ActivePowerReserveVariable,
@@ -650,13 +655,15 @@ function add_reserves_proportional_cost!(
     service_name = PSY.get_name(service)
     reserve_variable = get_variable(container, U, T)
     # Iterate only this service's slice of the merged `(service, device, time)` container
-    # so each service's reserve provision is priced exactly once.
+    # so each service's reserve provision is priced exactly once. Devices in `skip_devices`
+    # are priced by their offer curve (add_reserve_offer_costs!), not the flat cost.
     # TODO(services efficiency, deferred B4): this scans the whole merged container per service
     # (O(entries) x #services). When the service's contributing device names are on hand, replace
     # the `.data` scan with a keyed slice. Build-time-only; typing here is fine (U, T concrete).
     # See .claude/plans/service-refactor-stability.md.
     for (key, var) in reserve_variable.data
         key[1] == service_name || continue
+        key[2] in skip_devices && continue
         add_to_objective_invariant_expression!(
             container,
             # possibly decouple
