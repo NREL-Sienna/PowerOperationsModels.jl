@@ -60,24 +60,26 @@ function add_parameters!(
     return
 end
 
+# Per-type ORDC PWL cost params: all the type's services share one merged container
+# (names axis + tranche axis, empty meta).
 function add_parameters!(
     container::OptimizationContainer,
     ::Type{T},
-    service::U,
-    model::ServiceModel{U, V},
+    services::Vector{U},
+    model::ServiceModel{V, W},
 ) where {
     T <: Union{
         AbstractPiecewiseLinearSlopeParameter,
         AbstractPiecewiseLinearBreakpointParameter,
     },
     U <: PSY.ReserveDemandTimeSeriesCurve,
-    V <: AbstractServiceFormulation,
+    V <: PSY.ReserveDemandTimeSeriesCurve,
+    W <: AbstractServiceFormulation,
 }
-    if get_rebuild_model(get_settings(container)) &&
-       has_container_key(container, T, U, PSY.get_name(service))
+    if get_rebuild_model(get_settings(container)) && has_container_key(container, T, U)
         return
     end
-    _add_parameters!(container, T, service, model)
+    _add_parameters!(container, T, services, model)
     return
 end
 
@@ -570,33 +572,38 @@ function get_max_tranches(component::PSY.Component, piecewise_ts::IS.TimeSeriesK
     return IOM.get_max_tranches(data)
 end
 
+# Batch form (mirrors the device methods below): the tranche axis is sized to the
+# batch-wide maximum tranche count across all the type's ORDC services, and each service's
+# shorter per-hour curves are padded in `unwrap_for_param`. A covariant `Vector{<:...}`
+# signature avoids the invariant-`Vector` unification problem between the concrete service
+# instance type and the `ServiceModel`'s (possibly partially-applied) component type.
 function calc_additional_axes(
     ::OptimizationContainer,
     ::Type{P},
-    service::U,
-    ::ServiceModel{U, W},
+    services::Vector{<:PSY.ReserveDemandTimeSeriesCurve},
+    ::ServiceModel{<:PSY.ReserveDemandTimeSeriesCurve, W},
 ) where {
     P <: AbstractPiecewiseLinearSlopeParameter,
-    U <: PSY.ReserveDemandTimeSeriesCurve,
     W <: AbstractServiceFormulation,
 }
-    ts_key = IS.get_time_series_key(PSY.get_variable(service))
-    max_tranches = get_max_tranches(service, ts_key)
+    max_tranches = maximum(services) do service
+        get_max_tranches(service, IS.get_time_series_key(PSY.get_variable(service)))
+    end
     return (IOM.make_tranche_axis(max_tranches),)
 end
 
 function calc_additional_axes(
     ::OptimizationContainer,
     ::Type{P},
-    service::U,
-    ::ServiceModel{U, W},
+    services::Vector{<:PSY.ReserveDemandTimeSeriesCurve},
+    ::ServiceModel{<:PSY.ReserveDemandTimeSeriesCurve, W},
 ) where {
     P <: AbstractPiecewiseLinearBreakpointParameter,
-    U <: PSY.ReserveDemandTimeSeriesCurve,
     W <: AbstractServiceFormulation,
 }
-    ts_key = IS.get_time_series_key(PSY.get_variable(service))
-    max_tranches = get_max_tranches(service, ts_key)
+    max_tranches = maximum(services) do service
+        get_max_tranches(service, IS.get_time_series_key(PSY.get_variable(service)))
+    end
     return (IOM.make_tranche_axis(max_tranches + 1),)  # one more breakpoint than tranches
 end
 
@@ -660,23 +667,15 @@ function calc_additional_axes(
     return (IOM.make_tranche_axis(max_tranches + 1),)  # one more breakpoint than tranches
 end
 
-# The shared `_add_objective_function_parameters!` helper holds the active components
-# as a vector, but `calc_additional_axes` is called differently per model: devices have
-# collection forms, while a service is passed singly (its concrete two-parameter type
-# can't unify with the ServiceModel's partially-applied component type through an
-# invariant `Vector`, and its forms take one service). Dispatch on the model type.
+# `_add_objective_function_parameters!` holds the active components as a vector and both
+# device and service `calc_additional_axes` now take that batch (services size the tranche
+# axis to the batch-wide maximum, like devices), so this simply forwards the collection.
 _calc_additional_axes(
     container::OptimizationContainer,
     ::Type{P},
     active,
-    model::DeviceModel,
+    model::Union{DeviceModel, ServiceModel},
 ) where {P <: ParameterType} = calc_additional_axes(container, P, active, model)
-_calc_additional_axes(
-    container::OptimizationContainer,
-    ::Type{P},
-    active,
-    model::ServiceModel,
-) where {P <: ParameterType} = calc_additional_axes(container, P, only(active), model)
 
 #################################################################################
 # _add_parameters! for ObjectiveFunctionParameter
@@ -787,34 +786,27 @@ end
 #################################################################################
 # _add_parameters! for time-varying ORDC slope/breakpoint cost parameters
 #
-# Same cost-parameter machinery as the device path, keyed per service by `meta = name`.
-#
-# TODO(services PWL cost): this per-service `meta` keying is temporary. It will be removed
-# or folded once the 3D/4D PWL cost containers for services (StepwiseCostReserve/ORDC and
-# the AS offers) land. The whole ORDC cost path -- these slope/breakpoint params, the
-# per-service `ProductionCostExpression` (add_expressions.jl), and the delta-PWL
-# block-offer machinery -- is intentionally kept on `meta` for now so it stays coherent
-# until that migration. (Contrast `RequirementTimeSeriesParameter`, already merged per
-# type; these ORDC params can be merged the same way, just not before their delta-PWL
-# siblings that PR2 reworks.)
+# Same cost-parameter machinery as the device path: batch all the type's ORDC services into
+# one merged container (names axis + tranche axis, empty meta), the tranche axis sized to the
+# batch-wide maximum via `calc_additional_axes`. Read back name-keyed (no meta) by the
+# delta-PWL machinery, matching the device offer path.
 #################################################################################
 
 function _add_parameters!(
     container::OptimizationContainer,
     ::Type{T},
-    service::U,
-    model::ServiceModel{U, V},
+    services::Vector{U},
+    model::ServiceModel{V, W},
 ) where {
     T <: Union{
         AbstractPiecewiseLinearSlopeParameter,
         AbstractPiecewiseLinearBreakpointParameter,
     },
     U <: PSY.ReserveDemandTimeSeriesCurve,
-    V <: AbstractServiceFormulation,
+    V <: PSY.ReserveDemandTimeSeriesCurve,
+    W <: AbstractServiceFormulation,
 }
-    _add_objective_function_parameters!(
-        container, T, [service], model, V; meta = PSY.get_name(service),
-    )
+    _add_objective_function_parameters!(container, T, services, model, W)
     return
 end
 

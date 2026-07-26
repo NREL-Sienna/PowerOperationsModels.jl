@@ -625,11 +625,13 @@ ORDC (`ReserveDemandTimeSeriesCurve`) service.
 function process_stepwise_cost_reserve_parameters!(
     container::OptimizationContainer,
     model::ServiceModel,
-    service::D,
+    services::Vector{D},
 ) where {D <: PSY.ReserveDemandTimeSeriesCurve}
-    dir = _reserve_offer_direction(service)
+    # All services of a per-type model share the same offer direction; build the merged
+    # slope/breakpoint param containers once over all services (empty meta).
+    dir = _reserve_offer_direction(first(services))
     for param in (IOM._breakpoint_param(dir), IOM._slope_param(dir))
-        add_parameters!(container, param, service, model)
+        add_parameters!(container, param, services, model)
     end
     return
 end

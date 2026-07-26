@@ -363,7 +363,8 @@ function add_pwl_term_delta!(
     time_steps = get_time_steps(container)
     pwl_cost_expressions = Vector{JuMP.AffExpr}(undef, time_steps[end])
     for t in time_steps
-        break_points, slopes = IOM._get_pwl_data(dir, container, component, t; meta = name)
+        # Merged (name-keyed, empty meta) slope/breakpoint params, same as the device offer path.
+        break_points, slopes = IOM._get_pwl_data(dir, container, component, t)
         pwl_vars = add_pwl_variables_delta!(
             container,
             IOM._block_offer_var(dir),

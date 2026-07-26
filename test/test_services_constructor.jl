@@ -399,6 +399,19 @@ end
     @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
           IOM.ModelBuildStatus.BUILT
     @test solve!(model) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
+
+    # C1: the ORDC slope/breakpoint PWL cost params are now ONE merged container per service type
+    # (names axis + batch-wide tranche axis, empty meta), not per-service `meta = name`. A 3-arg
+    # fetch succeeds only for the merged container; the two ORDCs above have different tranche
+    # counts, so the successful build+solve also exercises the batch-wide tranche padding.
+    container = get_optimization_container(model)
+    dir = POM._reserve_offer_direction(
+        first(get_components(ReserveDemandTimeSeriesCurve, c_sys5_uc)),
+    )
+    for P in (IOM._slope_param(dir), IOM._breakpoint_param(dir))
+        @test IOM.get_parameter(container, P, ReserveDemandTimeSeriesCurve{ReserveUp}) !==
+              nothing
+    end
 end
 
 # Ported from PSI test_services_constructor.jl. Exact `moi_tests` variable/constraint

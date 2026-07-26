@@ -218,9 +218,12 @@ function construct_service!(
     return
 end
 
-_maybe_process_stepwise(container, model, service::PSY.ReserveDemandTimeSeriesCurve) =
-    process_stepwise_cost_reserve_parameters!(container, model, service)
-_maybe_process_stepwise(container, model, service) = nothing
+_maybe_process_stepwise(
+    container,
+    model,
+    services::Vector{<:PSY.ReserveDemandTimeSeriesCurve},
+) = process_stepwise_cost_reserve_parameters!(container, model, services)
+_maybe_process_stepwise(container, model, services) = nothing
 
 function construct_service!(
     container::OptimizationContainer,
@@ -241,6 +244,8 @@ function construct_service!(
     )
     # Merged dense `(service, time)` cost-expression container, built once over all services.
     add_expressions!(container, ProductionCostExpression, services, model)
+    # Merged slope/breakpoint PWL cost params (empty meta), built once over all services.
+    _maybe_process_stepwise(container, model, services)
     for service in services
         contributing_devices = get_contributing_devices(model, PSY.get_name(service))
         add_service_variables!(
@@ -250,7 +255,6 @@ function construct_service!(
             contributing_devices,
             StepwiseCostReserve,
         )
-        _maybe_process_stepwise(container, model, service)
         add_to_expression!(
             container,
             ActivePowerReserveVariable,
