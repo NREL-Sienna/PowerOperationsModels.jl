@@ -31,20 +31,6 @@ function add_parameters!(
     return
 end
 
-function add_parameters!(
-    container::OptimizationContainer,
-    ::Type{T},
-    service::U,
-    model::ServiceModel{U, V},
-) where {T <: TimeSeriesParameter, U <: PSY.Service, V <: AbstractServiceFormulation}
-    if get_rebuild_model(get_settings(container)) &&
-       has_container_key(container, T, U, PSY.get_name(service))
-        return
-    end
-    _add_parameters!(container, T, service, model)
-    return
-end
-
 # Per-type service time-series parameter: all services of the type share one container
 # keyed `(ParameterType, ServiceType)` with empty meta, axed by service name.
 function add_parameters!(
@@ -813,56 +799,6 @@ end
 #################################################################################
 # _add_parameters! for ServiceModel TimeSeriesParameter
 #################################################################################
-
-function _add_parameters!(
-    container::OptimizationContainer,
-    ::Type{T},
-    service::U,
-    model::ServiceModel{U, V},
-) where {T <: TimeSeriesParameter, U <: PSY.Service, V <: AbstractServiceFormulation}
-    ts_type = get_default_time_series_type(container)
-    if !(ts_type <: Union{PSY.AbstractDeterministic, PSY.StaticTimeSeries})
-        error("add_parameters! for TimeSeriesParameter is not compatible with $ts_type")
-    end
-    ts_name = get_time_series_names(model)[T]
-    time_steps = get_time_steps(container)
-    name = PSY.get_name(service)
-    model_interval = get_interval(get_settings(container))
-    ts_interval = model_interval
-    ts_uuid = string(
-        IS.get_time_series_uuid(
-            ts_type,
-            service,
-            ts_name;
-            interval = _to_is_interval(ts_interval),
-        ),
-    )
-    @debug "adding" T U _group = IOM.LOG_GROUP_OPTIMIZATION_CONTAINER
-    additional_axes = calc_additional_axes(container, T, [service], model)
-    parameter_container = add_param_container!(container, T,
-        U,
-        ts_type,
-        ts_name,
-        [ts_uuid],
-        [name],
-        additional_axes,
-        time_steps;
-        meta = name,
-    )
-
-    IOM.set_subsystem!(IOM.get_attributes(parameter_container), IOM.get_subsystem(model))
-    jump_model = get_jump_model(container)
-    ts_vector = IOM.get_time_series(container, service, T, name; interval = ts_interval)
-    multiplier = get_multiplier_value(T, service, V)
-    parent_param = IOM.get_parameter_array_data(parameter_container)
-    parent_mult = IOM.get_multiplier_array_data(parameter_container)
-    IOM._set_multiplier_at!(parent_mult, multiplier, 1)
-    for t in time_steps
-        IOM._set_parameter_at!(parent_param, jump_model, ts_vector[t], 1, t)
-    end
-    IOM.add_component_name!(IOM.get_attributes(parameter_container), name, ts_uuid)
-    return
-end
 
 function _add_parameters!(
     container::OptimizationContainer,
