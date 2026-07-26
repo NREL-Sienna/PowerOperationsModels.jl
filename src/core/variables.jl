@@ -532,6 +532,11 @@ structure on top of the 3D `(service, device, time)` reserve award `ActivePowerR
 """
 struct PiecewiseLinearBlockReserveOffer <: SparseVariableType end
 
+# Widen the auto-created sparse container to the 4D reserve-offer key. The IOM default is the
+# 3D device-offer shape `(device, segment, time)`; this adds the leading service axis.
+IOM.sparse_variable_key_type(::Type{PiecewiseLinearBlockReserveOffer}) =
+    Tuple{String, String, Int, Int}
+
 """
 Struct to dispatch the creation of HVDC Piecewise Loss Variables
 

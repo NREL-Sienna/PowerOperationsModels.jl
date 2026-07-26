@@ -11,9 +11,13 @@
 # top of the 3D `(service, device, time)` reserve award. Reuses the device offer PWL machinery
 # (`_get_raw_pwl_data`, `get_piecewise_curve_per_system_unit`, `get_pwl_cost_expression_delta`).
 
+# Does `device` offer into `service`? Dispatch on the operation-cost type: only an
+# `OfferCurveCost` carries ancillary-service offers; every other cost never offers.
 _has_reserve_offer(device, service) =
-    (c = PSY.get_operation_cost(device);
-    c isa PSY.OfferCurveCost && service in PSY.get_ancillary_service_offers(c))
+    _cost_offers_reserve(PSY.get_operation_cost(device), service)
+_cost_offers_reserve(cost::PSY.OfferCurveCost, service) =
+    service in PSY.get_ancillary_service_offers(cost)
+_cost_offers_reserve(::PSY.OperationalCost, service) = false
 
 # Price every contributing device that offers into `service` by its offer curve; returns the set of
 # device names so priced (the flat-cost pass skips them).
@@ -36,14 +40,14 @@ function add_reserve_offer_costs!(
         offering = [d for d in devices if _has_reserve_offer(d, service)]
         isempty(offering) && continue
         names = [PSY.get_name(d) for d in offering]
-        # 4D block var keyed (service, device, segment, time). The segment axis `1:1` is only a
-        # key-type carrier: `sparse_container_spec` infers `Tuple{String,String,Int,Int}` from the
-        # axis eltypes and returns an empty SparseAxisArray with no axis validation, so segments
-        # (which vary per device/time) are filled sparsely below - same pattern IOM uses for its
-        # hardcoded 3-tuple device-cost PWL container, one axis wider.
-        blk = lazy_container_addition!(container, PiecewiseLinearBlockReserveOffer,
+        # 4D block var keyed (service, device, segment, time). The auto-created sparse container
+        # uses the 4-tuple key from `IOM.sparse_variable_key_type(PiecewiseLinearBlockReserveOffer)`;
+        # segments (which vary per device/time) are filled sparsely below.
+        blk = lazy_container_addition!(
+            container,
+            PiecewiseLinearBlockReserveOffer,
             device_type,
-            [service_name], names, 1:1, time_steps; sparse = true)
+        )
         cons =
             lazy_container_addition!(container, ReserveOfferLinkingConstraint, device_type,
                 [service_name], names, time_steps; sparse = true)

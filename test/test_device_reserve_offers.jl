@@ -24,6 +24,8 @@ function add_device_reserve_offers!(
         [d for d in get_components(ThermalStandard, sys) if reserve in PSY.get_services(d)]
     @assert !isempty(contributors) "reserve has no thermal contributors"
     offer_curve(price) = IS.PiecewiseStepData([0.0, 50.0, 100.0], [price, price * 1.5])
+    # device name -> first-segment offer slope ($/MWh, natural units); segment 2 is 1.5x it.
+    base_slope = Dict{String, Float64}()
     for (i, g) in enumerate(contributors)
         pmax = PSY.get_max_active_power(g, PSY.NU)
         set_operation_cost!(
@@ -38,17 +40,18 @@ function add_device_reserve_offers!(
             ),
         )
         price = 8.0 + 2.0 * i
+        base_slope[PSY.get_name(g)] = price
         data = Dict(it => [offer_curve(price) for _ in 1:horizon] for it in init_times)
         ts = Deterministic(PSY.get_name(reserve), data, resolution)
         PSY.set_service_bid!(sys, g, reserve, ts, IS.NaturalUnit())
     end
-    return contributors
+    return contributors, base_slope
 end
 
 @testset "Per-device reserve offers: data model" begin
     sys = deepcopy(PSB.build_system(PSITestSystems, "c_sys5_uc"; add_reserves = true))
     reserve = get_component(VariableReserve{ReserveUp}, sys, "Reserve1")
-    contributors = add_device_reserve_offers!(sys, reserve)
+    contributors, _ = add_device_reserve_offers!(sys, reserve)
 
     # Each contributor now bids into the service and exposes a per-(device, service) offer curve.
     for g in contributors
@@ -68,7 +71,7 @@ end
 @testset "Per-device reserve offers: builds, solves, and prices the offers" begin
     sys = deepcopy(PSB.build_system(PSITestSystems, "c_sys5_uc"; add_reserves = true))
     reserve = get_component(VariableReserve{ReserveUp}, sys, "Reserve1")
-    contributors = add_device_reserve_offers!(sys, reserve)
+    contributors, base_slope = add_device_reserve_offers!(sys, reserve)
 
     template = get_thermal_standard_uc_template()
     set_service_model!(template, ServiceModel(VariableReserve{ReserveUp}, RangeReserve))
@@ -97,15 +100,19 @@ end
 
     sname = PSY.get_name(reserve)
     obj = JuMP.objective_function(IOM.get_jump_model(container))
+    base_p = IOM.get_model_base_power(container)
+    dt = 1.0  # Hour(1) resolution -> 1 hour per step
     for g in contributors
         gname = PSY.get_name(g)
         # Both offer segments ([0,50,100] breakpoints -> 2 segments) are present at t = 1.
         seg1 = blk[(sname, gname, 1, 1)]
         seg2 = blk[(sname, gname, 2, 1)]
-        # The offer's second slope is 1.5x the first (offer_curve builds [price, 1.5*price]).
-        # The delta-cost coefficient is slope * dt, so the ratio is unit- and dt-invariant.
-        @test JuMP.coefficient(obj, seg2) / JuMP.coefficient(obj, seg1) ≈ 1.5
-        @test JuMP.coefficient(obj, seg1) > 0
+        # Independent magnitude check. The award delta is in system pu; the offer slope is in
+        # natural units ($/MWh). Cost = slope * (delta_pu * base_p) * dt, so the objective
+        # coefficient on delta_pu is slope * base_p * dt. Segment 2's slope is 1.5x segment 1's.
+        slope1 = base_slope[gname]
+        @test JuMP.coefficient(obj, seg1) ≈ slope1 * base_p * dt
+        @test JuMP.coefficient(obj, seg2) ≈ 1.5 * slope1 * base_p * dt
         # Linking constraint sum(segments) == award: normalized to sum(delta) - award == 0.
         lc = cons[(sname, gname, 1)]
         @test JuMP.normalized_coefficient(lc, seg1) ≈ 1.0
