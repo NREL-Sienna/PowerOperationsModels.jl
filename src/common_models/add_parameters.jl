@@ -162,8 +162,8 @@ function _add_time_series_parameters!(
     device_names = String[]
     devices_with_time_series = D[]
     initial_values = Dict{String, AbstractArray}()
-    # device name -> ts_uuid cache so the second loop below doesn't re-query IS.
-    device_ts_uuids = Dict{String, String}()
+    # device name -> data hash cache so the second loop below doesn't re-query IS.
+    device_ts_hashes = Dict{String, String}()
     model_interval = get_interval(get_settings(container))
     is_ts_interval = _to_is_interval(model_interval)
     model_resolution = get_resolution(get_settings(container))
@@ -171,26 +171,34 @@ function _add_time_series_parameters!(
 
     @debug "adding" T D ts_name ts_type _group = IOM.LOG_GROUP_OPTIMIZATION_CONTAINER
 
+    # One catalog query resolves the content hash of every device's stored array.
+    # Devices whose time series share an array share a hash, so the parameter rows
+    # dedupe on it (the role the per-array time series UUID used to play).
+    ts_hashes_by_id = IS.get_time_series_hashes(
+        devices,
+        ts_type,
+        ts_name;
+        resolution = is_ts_resolution,
+        interval = is_ts_interval,
+    )
     for device::D in devices
         if !PSY.has_time_series(device, ts_type, ts_name)
             @debug "Time series $(ts_type):$(ts_name) for $D, $(PSY.get_name(device)) not found. Skipping parameter addition for this device."
             continue
         end
         device_name = PSY.get_name(device)
+        ts_hash = get(ts_hashes_by_id, IS.get_id(device), nothing)
+        if ts_hash === nothing
+            error(
+                "Time series $(ts_type):$(ts_name) for $D, $device_name does not " *
+                "match resolution=$model_resolution interval=$model_interval.",
+            )
+        end
         push!(device_names, device_name)
         push!(devices_with_time_series, device)
-        ts_uuid = string(
-            IS.get_time_series_uuid(
-                ts_type,
-                device,
-                ts_name;
-                resolution = is_ts_resolution,
-                interval = is_ts_interval,
-            ),
-        )
-        device_ts_uuids[device_name] = ts_uuid
-        if !(ts_uuid in keys(initial_values))
-            initial_values[ts_uuid] =
+        device_ts_hashes[device_name] = ts_hash
+        if !(ts_hash in keys(initial_values))
+            initial_values[ts_hash] =
                 IOM.get_time_series_initial_values!(
                     container,
                     ts_type,
@@ -199,7 +207,7 @@ function _add_time_series_parameters!(
                     interval = model_interval,
                     resolution = model_resolution,
                 )
-            _check_branch_rating_ts(initial_values[ts_uuid], param, device, model)
+            _check_branch_rating_ts(initial_values[ts_hash], param, device, model)
         end
     end
 
@@ -227,7 +235,7 @@ function _add_time_series_parameters!(
     jump_model = get_jump_model(container)
     param_instance = T()
     parent_param = IOM.get_parameter_array_data(param_container)
-    for (i, (ts_uuid, raw_ts_vals)) in enumerate(initial_values)
+    for (i, (ts_hash, raw_ts_vals)) in enumerate(initial_values)
         ts_vals = IOM.unwrap_for_param.((param_instance,), raw_ts_vals, (additional_axes,))
         @assert all(_size_wrapper.(ts_vals) .== (length.(additional_axes),))
 
@@ -244,7 +252,7 @@ function _add_time_series_parameters!(
         IOM.add_component_name!(
             IOM.get_attributes(param_container),
             device_name,
-            device_ts_uuids[device_name],
+            device_ts_hashes[device_name],
         )
     end
     return
@@ -280,7 +288,7 @@ function _add_time_series_parameters!(
     ts_name = _get_time_series_name(T, first(devices), model)
     model_interval = get_interval(get_settings(container))
     ts_interval = model_interval
-    device_name_axis, ts_uuid_axis =
+    device_name_axis, ts_hash_axis =
         get_branch_argument_parameter_axes(
             net_reduction_data,
             devices,
@@ -292,9 +300,9 @@ function _add_time_series_parameters!(
         @info "No devices with time series $ts_name found for $D devices. Skipping parameter addition."
         return
     end
-    # name -> ts_uuid cache built from the axis pair so the per-branch loop below
-    # doesn't re-query IS.get_time_series_uuid for each branch.
-    branch_ts_uuids = Dict{String, String}(zip(device_name_axis, ts_uuid_axis))
+    # name -> data hash cache built from the axis pair so the per-branch loop below
+    # doesn't re-query the store catalog for each branch.
+    branch_ts_hashes = Dict{String, String}(zip(device_name_axis, ts_hash_axis))
     additional_axes = ()
     param_container = add_param_container!(
         container,
@@ -302,7 +310,7 @@ function _add_time_series_parameters!(
         D,
         ts_type,
         ts_name,
-        ts_uuid_axis,
+        ts_hash_axis,
         device_name_axis,
         additional_axes,
         time_steps,
@@ -312,10 +320,10 @@ function _add_time_series_parameters!(
     jump_model = get_jump_model(container)
     parent_param = IOM.get_parameter_array_data(param_container)
     parent_mult = IOM.get_multiplier_array_data(param_container)
-    # The param array's first axis is `ts_uuid_axis` (UUID-keyed) while the multiplier
-    # array's first axis is `device_name_axis` (name-keyed); we need two separate row
-    # lookups so parallel branches sharing a UUID still write their multiplier to the
-    # correct (per-branch-name) row.
+    # The param array's first axis is `ts_hash_axis` (content-hash-keyed) while the
+    # multiplier array's first axis is `device_name_axis` (name-keyed); we need two
+    # separate row lookups so parallel branches sharing an array still write their
+    # multiplier to the correct (per-branch-name) row.
     param_lookup = get_parameter_array(param_container).lookup[1]
     mult_lookup = get_multiplier_array(param_container).lookup[1]
     for (name, (arc, reduction)) in PNM.get_name_to_arc_map(net_reduction_data, D)
@@ -325,8 +333,8 @@ function _add_time_series_parameters!(
         if device_with_time_series === nothing
             continue
         end
-        ts_uuid = branch_ts_uuids[name]
-        i_param = param_lookup[ts_uuid]
+        ts_hash = branch_ts_hashes[name]
+        i_param = param_lookup[ts_hash]
         i_mult = mult_lookup[name]
 
         has_entry, tracker_container = search_for_reduced_branch_parameter!(
@@ -382,7 +390,7 @@ function _add_time_series_parameters!(
         IOM.add_component_name!(
             IOM.get_attributes(param_container),
             name,
-            ts_uuid,
+            ts_hash,
         )
     end
     return
@@ -418,7 +426,8 @@ function _get_time_series_name(
 )
     op_cost = PSY.get_operation_cost(device)
     IS.@assert_op op_cost isa TS_OFFER_CURVE_COST_TYPES
-    return IS.get_name(IS.get_time_series_key(PSY.get_start_up(op_cost)))
+    # The TS-backed startup field is the time-series key itself.
+    return IS.get_name(PSY.get_start_up(op_cost))
 end
 
 function _get_time_series_name(
@@ -816,21 +825,26 @@ function _add_parameters!(
     name = PSY.get_name(service)
     model_interval = get_interval(get_settings(container))
     ts_interval = model_interval
-    ts_uuid = string(
-        IS.get_time_series_uuid(
-            ts_type,
-            service,
-            ts_name;
-            interval = _to_is_interval(ts_interval),
-        ),
+    ts_hashes = IS.get_time_series_hashes(
+        (service,),
+        ts_type,
+        ts_name;
+        interval = _to_is_interval(ts_interval),
     )
+    ts_hash = get(ts_hashes, IS.get_id(service), nothing)
+    if ts_hash === nothing
+        error(
+            "Time series $(ts_type):$(ts_name) for $U, $name does not match " *
+            "interval=$ts_interval.",
+        )
+    end
     @debug "adding" T U _group = IOM.LOG_GROUP_OPTIMIZATION_CONTAINER
     additional_axes = calc_additional_axes(container, T, [service], model)
     parameter_container = add_param_container!(container, T,
         U,
         ts_type,
         ts_name,
-        [ts_uuid],
+        [ts_hash],
         [name],
         additional_axes,
         time_steps;
@@ -847,7 +861,7 @@ function _add_parameters!(
     for t in time_steps
         IOM._set_parameter_at!(parent_param, jump_model, ts_vector[t], 1, t)
     end
-    IOM.add_component_name!(IOM.get_attributes(parameter_container), name, ts_uuid)
+    IOM.add_component_name!(IOM.get_attributes(parameter_container), name, ts_hash)
     return
 end
 

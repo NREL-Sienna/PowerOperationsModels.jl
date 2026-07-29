@@ -189,7 +189,7 @@ function extend_mbc!(
 
         new_cost = MarketBidTimeSeriesCost(;
             no_load_cost = TimeSeriesLinearCurve(nl_key),
-            start_up = IS.TupleTimeSeries{PSY.StartUpStages}(su_key),
+            start_up = su_key,
             shut_down = TimeSeriesLinearCurve(sd_key),
             incremental_offer_curves = ts_curves["incremental"],
             decremental_offer_curves = ts_curves["decremental"],
