@@ -200,7 +200,7 @@ end
 """
 Find the first device within a reduction entry that has the given time series.
 Delegates to PNM, which handles BranchesParallel, BranchesSeries,
-ThreeWindingTransformerWinding, and plain ACTransmission entries.
+ThreeWindingTransformerCircuit, and plain ACTransmission entries.
 """
 function get_branch_with_time_series(
     branch::IS.InfrastructureSystemsComponent,
