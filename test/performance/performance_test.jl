@@ -40,8 +40,7 @@ function set_device_models!(template::PowerOperationsProblemTemplate, uc::Bool =
     set_device_model!(template, RenewableDispatch, RenewableFullDispatch)
     set_device_model!(template, PowerLoad, StaticPowerLoad)
     set_device_model!(template, DeviceModel(Line, StaticBranch))
-    set_device_model!(template, Transformer2W, StaticBranchUnbounded)
-    set_device_model!(template, TapTransformer, StaticBranchUnbounded)
+    set_device_model!(template, TwoWindingTransformer, StaticBranchUnbounded)
     set_service_model!(
         template,
         ServiceModel(VariableReserve{ReserveUp}, RangeReserve),
