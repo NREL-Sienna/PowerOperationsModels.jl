@@ -114,9 +114,10 @@ slack_spec(
 slack_spec(::Type{StaticBranchBounds}, ::Type{IVRNetworkModel}) =
     EqualityPairSlacks((FLOW_DEFINITION_SLACK_METAS..., CURRENT_DEFINITION_SLACK_METAS...))
 
+# psy6: disabled pending transformer refactor
 # TapControl shares the DCP StaticBranch rating-row machinery (tap-aware Ohm's law, same
 # slacked FlowRateConstraint rows and pricing).
-slack_spec(::Type{TapControl}, ::Type{DCPNetworkModel}) = RowPairSlacks()
+# slack_spec(::Type{TapControl}, ::Type{DCPNetworkModel}) = RowPairSlacks()
 
 # Security-constrained branches build the pre-contingency meta-less pair on their
 # supported networks; the post-contingency slacks are separate machinery gated by the

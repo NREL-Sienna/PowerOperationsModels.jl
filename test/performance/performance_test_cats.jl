@@ -36,7 +36,7 @@ try
         set_device_model!(template, HydroDispatch, HydroDispatchRunOfRiver)
         set_device_model!(template, PowerLoad, StaticPowerLoad)
         set_device_model!(template, Line, StaticBranch)
-        set_device_model!(template, Transformer2W, StaticBranch)
+        set_device_model!(template, TwoWindingTransformer, StaticBranch)
         model = DecisionModel(template, sys; name = "CATS_UC", optimizer = HiGHS.Optimizer)
 
         # Build

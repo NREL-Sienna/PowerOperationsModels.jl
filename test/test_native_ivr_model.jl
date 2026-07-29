@@ -30,7 +30,7 @@ import PowerNetworkMatrices as PNM
     )
     for line in PSY.get_components(PSY.Line, sys)
         arc = PSY.get_arc(line)
-        rate_a = PSY.get_rating(line, PSY.SU)
+        rate_a = branch_rating_su(line)
         vmin = min(
             PSY.get_voltage_limits(PSY.get_from(arc)).min,
             PSY.get_voltage_limits(PSY.get_to(arc)).min,
@@ -135,7 +135,7 @@ end
 
     for line in PSY.get_components(PSY.Line, sys)
         name = PSY.get_name(line)
-        rate = PSY.get_rating(line, PSY.SU)
+        rate = branch_rating_su(line)
         for t in time_steps
             # Directional flow variables keep hard ±rating box bounds.
             for var in (pft, ptf, qft, qtf)
@@ -270,7 +270,7 @@ end
     pft = IOM.get_variable(container, FlowActivePowerFromToVariable, PSY.Line)
     for line in PSY.get_components(PSY.Line, sys)
         name = PSY.get_name(line)
-        rate = PSY.get_rating(line, PSY.SU)
+        rate = branch_rating_su(line)
         for t in IOM.get_time_steps(container)
             @test abs(JuMP.value(pft[name, t])) <= rate + 1e-6
         end

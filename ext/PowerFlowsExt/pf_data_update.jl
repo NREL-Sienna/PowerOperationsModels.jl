@@ -99,17 +99,18 @@ pf_contribution(
     ::Type{POM.FlowActivePowerVariable},
     ::Type{<:PSY.TwoTerminalHVDC},
 ) = PFContribution(PFActiveQuantity(), PFHVDCNetRole(), 1.0, false)
+# psy6: disabled pending transformer refactor
 # PhaseShiftingTransformer stays on the generic injection array: from_to -1, to_from +1.
-pf_contribution(
-    ::Val{:active_power_hvdc_pst_from_to},
-    ::Type{<:_PF_FLOW_ENTRY},
-    ::Type{<:PSY.PhaseShiftingTransformer},
-) = PFContribution(PFActiveQuantity(), PFInjectionRole(), -1.0, false)
-pf_contribution(
-    ::Val{:active_power_hvdc_pst_to_from},
-    ::Type{<:_PF_FLOW_ENTRY},
-    ::Type{<:PSY.PhaseShiftingTransformer},
-) = PFContribution(PFActiveQuantity(), PFInjectionRole(), 1.0, false)
+# pf_contribution(
+#     ::Val{:active_power_hvdc_pst_from_to},
+#     ::Type{<:_PF_FLOW_ENTRY},
+#     ::Type{<:PSY.PhaseShiftingTransformer},
+# ) = PFContribution(PFActiveQuantity(), PFInjectionRole(), -1.0, false)
+# pf_contribution(
+#     ::Val{:active_power_hvdc_pst_to_from},
+#     ::Type{<:_PF_FLOW_ENTRY},
+#     ::Type{<:PSY.PhaseShiftingTransformer},
+# ) = PFContribution(PFActiveQuantity(), PFInjectionRole(), 1.0, false)
 
 # ---- parameter entries: the value already stores the signed nodal contribution ----
 # `param_array .* multiplier_array` bakes the direction in, identical to what

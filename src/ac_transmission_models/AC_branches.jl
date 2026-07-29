@@ -25,7 +25,7 @@ get_parameter_multiplier(::Type{FixValueParameter}, ::PSY.ACTransmission, ::Type
 get_parameter_multiplier(::Type{LowerBoundValueParameter}, ::PSY.ACTransmission, ::Type{<:AbstractBranchFormulation}) = 1.0
 get_parameter_multiplier(::Type{UpperBoundValueParameter}, ::PSY.ACTransmission, ::Type{<:AbstractBranchFormulation}) = 1.0
 
-get_multiplier_value(::Type{<:AbstractBranchRatingTimeSeriesParameter}, d::PSY.ACTransmission, ::Type{StaticBranch}) = PSY.get_rating(d, PSY.SU)
+get_multiplier_value(::Type{<:AbstractBranchRatingTimeSeriesParameter}, d::PSY.ACTransmission, ::Type{StaticBranch}) = _branch_rating(d)
 
 
 get_initial_conditions_device_model(::IOM.AbstractOptimizationModel, ::DeviceModel{T, U}) where {T <: PSY.ACTransmission, U <: AbstractBranchFormulation} = DeviceModel(T, U)
@@ -42,8 +42,8 @@ get_variable_upper_bound(::Type{FlowActivePowerVariable}, ::PNM.BranchesSeries, 
 get_variable_lower_bound(::Type{FlowActivePowerVariable}, ::PNM.BranchesSeries, ::Type{<:AbstractBranchFormulation}) = nothing
 get_variable_upper_bound(::Type{FlowActivePowerVariable}, ::PNM.BranchesParallel, ::Type{<:AbstractBranchFormulation}) = nothing
 get_variable_lower_bound(::Type{FlowActivePowerVariable}, ::PNM.BranchesParallel, ::Type{<:AbstractBranchFormulation}) = nothing
-get_variable_upper_bound(::Type{FlowActivePowerVariable}, ::PNM.ThreeWindingTransformerWinding, ::Type{<:AbstractBranchFormulation}) = nothing
-get_variable_lower_bound(::Type{FlowActivePowerVariable}, ::PNM.ThreeWindingTransformerWinding, ::Type{<:AbstractBranchFormulation}) = nothing
+get_variable_upper_bound(::Type{FlowActivePowerVariable}, ::PNM.ThreeWindingTransformerCircuit, ::Type{<:AbstractBranchFormulation}) = nothing
+get_variable_lower_bound(::Type{FlowActivePowerVariable}, ::PNM.ThreeWindingTransformerCircuit, ::Type{<:AbstractBranchFormulation}) = nothing
 
 # Active-flow variable creation bounds: matches the bridge convention so
 # `check_variable_bounded(...)` in test_device_branch_constructors.jl finds box bounds on
@@ -53,10 +53,10 @@ get_variable_upper_bound(::Type{FlowActivePowerFromToVariable}, d::PSY.Monitored
 get_variable_lower_bound(::Type{FlowActivePowerFromToVariable}, d::PSY.MonitoredLine, ::Type{<:AbstractBranchFormulation}) = -1 * PSY.get_flow_limits(d, PSY.SU).from_to
 get_variable_upper_bound(::Type{FlowActivePowerToFromVariable}, d::PSY.MonitoredLine, ::Type{<:AbstractBranchFormulation}) = PSY.get_flow_limits(d, PSY.SU).to_from
 get_variable_lower_bound(::Type{FlowActivePowerToFromVariable}, d::PSY.MonitoredLine, ::Type{<:AbstractBranchFormulation}) = -1 * PSY.get_flow_limits(d, PSY.SU).to_from
-get_variable_upper_bound(::Type{FlowActivePowerFromToVariable}, d::Union{PSY.TapTransformer, PSY.Transformer2W}, ::Type{<:AbstractBranchFormulation}) = PSY.get_rating(d, PSY.SU)
-get_variable_lower_bound(::Type{FlowActivePowerFromToVariable}, d::Union{PSY.TapTransformer, PSY.Transformer2W}, ::Type{<:AbstractBranchFormulation}) = -1 * PSY.get_rating(d, PSY.SU)
-get_variable_upper_bound(::Type{FlowActivePowerToFromVariable}, d::Union{PSY.TapTransformer, PSY.Transformer2W}, ::Type{<:AbstractBranchFormulation}) = PSY.get_rating(d, PSY.SU)
-get_variable_lower_bound(::Type{FlowActivePowerToFromVariable}, d::Union{PSY.TapTransformer, PSY.Transformer2W}, ::Type{<:AbstractBranchFormulation}) = -1 * PSY.get_rating(d, PSY.SU)
+get_variable_upper_bound(::Type{FlowActivePowerFromToVariable}, d::PSY.TwoWindingTransformer, ::Type{<:AbstractBranchFormulation}) = _branch_rating(d)
+get_variable_lower_bound(::Type{FlowActivePowerFromToVariable}, d::PSY.TwoWindingTransformer, ::Type{<:AbstractBranchFormulation}) = _negated_rating(_branch_rating(d))
+get_variable_upper_bound(::Type{FlowActivePowerToFromVariable}, d::PSY.TwoWindingTransformer, ::Type{<:AbstractBranchFormulation}) = _branch_rating(d)
+get_variable_lower_bound(::Type{FlowActivePowerToFromVariable}, d::PSY.TwoWindingTransformer, ::Type{<:AbstractBranchFormulation}) = _negated_rating(_branch_rating(d))
 
 #! format: on
 function get_default_time_series_names(
@@ -962,7 +962,7 @@ function add_constraints!(
     model::DeviceModel{T, U},
     ::NetworkModel{V},
 ) where {
-    T <: Union{PSY.PhaseShiftingTransformer, PSY.MonitoredLine},
+    T <: PSY.MonitoredLine,
     U <: AbstractBranchFormulation,
     V <: AbstractDCPNetworkModel,
 }
@@ -1101,7 +1101,7 @@ const BranchGeometry = @NamedTuple{
 # Per-branch geometry, un-reduced case (branch's own arc endpoints + PNM.branch_admittance).
 # Split per-branch so the caller's comprehension yields a concretely-typed vector.
 function _branch_geometry(d)
-    arc = PSY.get_arc(d)
+    arc = _branch_arc(d)
     from_bus = PSY.get_from(arc)
     to_bus = PSY.get_to(arc)
     return (
@@ -1331,7 +1331,7 @@ end
 # the network — MATPOWER-style data uses rating 0 to mean "unlimited", which must be
 # resolved in the data, not by the model.
 function _directional_flow_rating(d::PSY.ACTransmission, ::DeviceModel)
-    rating = PSY.get_rating(d, PSY.SU)
+    rating = _branch_rating(d)
     iszero(rating) && error(
         "Branch $(PSY.get_name(d)) has a zero rating; the flow limit would force zero \
          flow. Assign a non-zero thermal rating or use an unbounded formulation.",
@@ -1995,7 +1995,7 @@ end
 # Compute the per-unit current rating bound for an IVR branch variable.
 # c_rating_a = rate_a / vmin  (system-base power / per-unit voltage → per-unit current).
 function _ivr_current_rating(branch::PSY.ACTransmission)
-    rate_a = PSY.get_rating(branch, PSY.SU)
+    rate_a = _branch_rating(branch)
     iszero(rate_a) && error(
         "IVR: branch $(PSY.get_name(branch)) has zero rating — assign a non-zero thermal rating",
     )
@@ -2030,7 +2030,7 @@ function _ivr_current_rating(
 end
 
 function _min_endpoint_voltage_limit(branch::PSY.ACTransmission)
-    arc = PSY.get_arc(branch)
+    arc = _branch_arc(branch)
     # bus voltage limits are already per-unit
     vmin_fr = PSY.get_voltage_limits(PSY.get_from(arc)).min
     vmin_to = PSY.get_voltage_limits(PSY.get_to(arc)).min
@@ -2845,402 +2845,403 @@ function add_constraints!(
     return
 end
 
-################################################################################
-# Transformer3W explicit star-arc decomposition for DCP / ACP
+# psy6: disabled pending transformer refactor
+# ################################################################################
+# # Transformer3W explicit star-arc decomposition for DCP / ACP
+# #
+# # A PSY.Transformer3W is the Y-equivalent of three two-winding transformers
+# # meeting at an internal star bus (modeled in PSY as a real ACBus). The PNM
+# # reduction layer expands this into ThreeWindingTransformerWinding entries that
+# # are consumed through the generic branch path. Without reduction (the
+# # bare DCP/ACP path) the Transformer3W reaches the loops directly, and the
+# # generic single-arc helpers (branch_admittance, branch_flow_limits, get_arc)
+# # do not apply. The methods below decompose the device on the fly: one virtual
+# # per-winding flow per direction, one set of ohms per winding, per-winding rate
+# # limits.
+# #
+# # Per-winding flow variable naming follows PNM's convention:
+# #   "<device_name>_winding_<i>" for i in 1, 2, 3
+# #
+# # Indexing the flow containers by these unique strings keeps the variable
+# # storage 2D (name × time) without inventing a new container shape.
+# ################################################################################
 #
-# A PSY.Transformer3W is the Y-equivalent of three two-winding transformers
-# meeting at an internal star bus (modeled in PSY as a real ACBus). The PNM
-# reduction layer expands this into ThreeWindingTransformerWinding entries that
-# are consumed through the generic branch path. Without reduction (the
-# bare DCP/ACP path) the Transformer3W reaches the loops directly, and the
-# generic single-arc helpers (branch_admittance, branch_flow_limits, get_arc)
-# do not apply. The methods below decompose the device on the fly: one virtual
-# per-winding flow per direction, one set of ohms per winding, per-winding rate
-# limits.
+# "Build the list of per-winding variable names for a set of Transformer3W devices."
+# function _three_winding_var_names(devices)
+#     names = String[]
+#     for d in devices
+#         dname = PSY.get_name(d)
+#         for w in PNM.three_winding_arcs(d)
+#             push!(names, dname * "_" * w.suffix)
+#         end
+#     end
+#     return names
+# end
 #
-# Per-winding flow variable naming follows PNM's convention:
-#   "<device_name>_winding_<i>" for i in 1, 2, 3
+# #### Variable creation: 4 directional flow vars × 3 windings per device.
+# function _add_three_winding_flow_variables!(
+#     container::OptimizationContainer,
+#     devices,
+#     network_model::NetworkModel{ACPNetworkModel},
+# )
+#     time_steps = get_time_steps(container)
+#     names = _three_winding_var_names(devices)
 #
-# Indexing the flow containers by these unique strings keeps the variable
-# storage 2D (name × time) without inventing a new container shape.
-################################################################################
-
-"Build the list of per-winding variable names for a set of Transformer3W devices."
-function _three_winding_var_names(devices)
-    names = String[]
-    for d in devices
-        dname = PSY.get_name(d)
-        for w in PNM.three_winding_arcs(d)
-            push!(names, dname * "_" * w.suffix)
-        end
-    end
-    return names
-end
-
-#### Variable creation: 4 directional flow vars × 3 windings per device.
-function _add_three_winding_flow_variables!(
-    container::OptimizationContainer,
-    devices,
-    network_model::NetworkModel{ACPNetworkModel},
-)
-    time_steps = get_time_steps(container)
-    names = _three_winding_var_names(devices)
-
-    for (V, dir) in (
-        (FlowActivePowerFromToVariable, "p_ft"),
-        (FlowActivePowerToFromVariable, "p_tf"),
-        (FlowReactivePowerFromToVariable, "q_ft"),
-        (FlowReactivePowerToFromVariable, "q_tf"),
-    )
-        var = add_variable_container!(
-            container, V, PSY.Transformer3W, names, time_steps,
-        )
-        for n in names, t in time_steps
-            var[n, t] = JuMP.@variable(
-                get_jump_model(container),
-                base_name = "$(V)_Transformer3W_{$(n), $(t)}",
-            )
-        end
-    end
-    return
-end
-
-function _add_three_winding_flow_variables!(
-    container::OptimizationContainer,
-    devices,
-    network_model::NetworkModel{DCPNetworkModel},
-)
-    time_steps = get_time_steps(container)
-    names = _three_winding_var_names(devices)
-    var = add_variable_container!(
-        container, FlowActivePowerVariable, PSY.Transformer3W, names, time_steps,
-    )
-    for n in names, t in time_steps
-        var[n, t] = JuMP.@variable(
-            get_jump_model(container),
-            base_name = "FlowActivePowerVariable_Transformer3W_{$(n), $(t)}",
-        )
-    end
-    return
-end
-
-#### add_to_expression: contribute per-winding flow to nodal balance.
-function add_to_expression!(
-    container::OptimizationContainer,
-    ::Type{ActivePowerBalance},
-    ::Type{FlowActivePowerVariable},
-    devices::IS.FlattenIteratorWrapper{PSY.Transformer3W},
-    ::DeviceModel{PSY.Transformer3W, U},
-    network_model::NetworkModel{DCPNetworkModel},
-) where {U <: AbstractBranchFormulation}
-    var = get_variable(container, FlowActivePowerVariable, PSY.Transformer3W)
-    expression = get_expression(container, ActivePowerBalance, PSY.ACBus)
-    network_reduction = get_network_reduction(network_model)
-    time_steps = get_time_steps(container)
-    for d in devices
-        dname = PSY.get_name(d)
-        for w in PNM.three_winding_arcs(d)
-            wname = dname * "_" * w.suffix
-            from_no, to_no = PNM.get_arc_tuple(w.arc, network_reduction)
-            for t in time_steps
-                JuMP.add_to_expression!(expression[from_no, t], -1.0, var[wname, t])
-                JuMP.add_to_expression!(expression[to_no, t], +1.0, var[wname, t])
-            end
-        end
-    end
-    return
-end
-
-# ACP: 4 separate methods (one per directional × {active, reactive}). Each
-# specialization mirrors the generic ACTransmission methods but iterates the
-# three windings and indexes by the per-winding variable name.
-for (E, V, terminal_index) in (
-    (:ActivePowerBalance, :FlowActivePowerFromToVariable, 1),
-    (:ActivePowerBalance, :FlowActivePowerToFromVariable, 2),
-    (:ReactivePowerBalance, :FlowReactivePowerFromToVariable, 1),
-    (:ReactivePowerBalance, :FlowReactivePowerToFromVariable, 2),
-)
-    @eval function add_to_expression!(
-        container::OptimizationContainer,
-        ::Type{$E},
-        ::Type{$V},
-        devices::IS.FlattenIteratorWrapper{PSY.Transformer3W},
-        ::DeviceModel{PSY.Transformer3W, U},
-        network_model::NetworkModel{ACPNetworkModel},
-    ) where {U <: AbstractBranchFormulation}
-        var = get_variable(container, $V, PSY.Transformer3W)
-        expression = get_expression(container, $E, PSY.ACBus)
-        network_reduction = get_network_reduction(network_model)
-        time_steps = get_time_steps(container)
-        for d in devices
-            dname = PSY.get_name(d)
-            for w in PNM.three_winding_arcs(d)
-                wname = dname * "_" * w.suffix
-                bus_no = PNM.get_arc_tuple(w.arc, network_reduction)[$terminal_index]
-                for t in time_steps
-                    JuMP.add_to_expression!(expression[bus_no, t], -1.0, var[wname, t])
-                end
-            end
-        end
-        return
-    end
-end
-
-#### Ohms: DCP version — one linear constraint per winding per time.
-function add_constraints!(
-    container::OptimizationContainer,
-    sys::PSY.System,
-    ::Type{NetworkFlowConstraint},
-    devices::IS.FlattenIteratorWrapper{PSY.Transformer3W},
-    ::DeviceModel{PSY.Transformer3W, U},
-    network_model::NetworkModel{DCPNetworkModel},
-) where {U <: AbstractBranchFormulation}
-    time_steps = get_time_steps(container)
-    number_to_name = _retained_number_to_name(sys, network_model)
-    network_reduction = get_network_reduction(network_model)
-    va = get_variable(container, VoltageAngle, PSY.ACBus)
-    p = get_variable(container, FlowActivePowerVariable, PSY.Transformer3W)
-
-    names = _three_winding_var_names(devices)
-    cons = add_constraints_container!(
-        container, NetworkFlowConstraint, PSY.Transformer3W, names, time_steps,
-    )
-
-    for d in devices
-        dname = PSY.get_name(d)
-        for w in PNM.three_winding_arcs(d)
-            wname = dname * "_" * w.suffix
-            adm = PNM.winding_admittance(w.winding)
-            from_no, to_no = PNM.get_arc_tuple(w.arc, network_reduction)
-            from_no == to_no && continue
-            from_name = number_to_name[from_no]
-            to_name = number_to_name[to_no]
-            for t in time_steps
-                cons[wname, t] = JuMP.@constraint(
-                    get_jump_model(container),
-                    p[wname, t] == -adm.b * (va[from_name, t] - va[to_name, t]),
-                )
-            end
-        end
-    end
-    return
-end
-
-#### Ohms: ACP version — full π-model, 4 NL constraints per winding per time.
-function add_constraints!(
-    container::OptimizationContainer,
-    sys::PSY.System,
-    ::Type{NetworkFlowConstraint},
-    devices::IS.FlattenIteratorWrapper{PSY.Transformer3W},
-    ::DeviceModel{PSY.Transformer3W, U},
-    network_model::NetworkModel{ACPNetworkModel},
-) where {U <: AbstractBranchFormulation}
-    time_steps = get_time_steps(container)
-    number_to_name = _retained_number_to_name(sys, network_model)
-    network_reduction = get_network_reduction(network_model)
-    va = get_variable(container, VoltageAngle, PSY.ACBus)
-    vm = get_variable(container, VoltageMagnitude, PSY.ACBus)
-    pft = get_variable(container, FlowActivePowerFromToVariable, PSY.Transformer3W)
-    ptf = get_variable(container, FlowActivePowerToFromVariable, PSY.Transformer3W)
-    qft = get_variable(container, FlowReactivePowerFromToVariable, PSY.Transformer3W)
-    qtf = get_variable(container, FlowReactivePowerToFromVariable, PSY.Transformer3W)
-
-    names = _three_winding_var_names(devices)
-    cons_pft = add_constraints_container!(
-        container, NetworkFlowConstraint, PSY.Transformer3W, names, time_steps;
-        meta = "p_ft",
-    )
-    cons_qft = add_constraints_container!(
-        container, NetworkFlowConstraint, PSY.Transformer3W, names, time_steps;
-        meta = "q_ft",
-    )
-    cons_ptf = add_constraints_container!(
-        container, NetworkFlowConstraint, PSY.Transformer3W, names, time_steps;
-        meta = "p_tf",
-    )
-    cons_qtf = add_constraints_container!(
-        container, NetworkFlowConstraint, PSY.Transformer3W, names, time_steps;
-        meta = "q_tf",
-    )
-
-    for d in devices
-        dname = PSY.get_name(d)
-        for w in PNM.three_winding_arcs(d)
-            wname = dname * "_" * w.suffix
-            adm = PNM.winding_admittance(w.winding)
-            g, b, g_fr, b_fr, g_to, b_to, tm =
-                adm.g, adm.b, adm.g_fr, adm.b_fr, adm.g_to, adm.b_to, adm.tap
-            from_no, to_no = PNM.get_arc_tuple(w.arc, network_reduction)
-            from_no == to_no && continue
-            from_name = number_to_name[from_no]
-            to_name = number_to_name[to_no]
-            tr = tm * cos(0.0)  # no phase shift
-            ti = tm * sin(0.0)
-
-            for t in time_steps
-                θ = va[from_name, t] - va[to_name, t]
-                vmf = vm[from_name, t]
-                vmt = vm[to_name, t]
-
-                cons_pft[wname, t] = JuMP.@constraint(
-                    get_jump_model(container),
-                    pft[wname, t] ==
-                    (g + g_fr) / tm^2 * vmf^2 +
-                    ((-g * tr + b * ti) / tm^2) * vmf * vmt * cos(θ) +
-                    ((-b * tr - g * ti) / tm^2) * vmf * vmt * sin(θ)
-                )
-                cons_qft[wname, t] = JuMP.@constraint(
-                    get_jump_model(container),
-                    qft[wname, t] ==
-                    -(b + b_fr) / tm^2 * vmf^2 -
-                    ((-b * tr - g * ti) / tm^2) * vmf * vmt * cos(θ) +
-                    ((-g * tr + b * ti) / tm^2) * vmf * vmt * sin(θ)
-                )
-                cons_ptf[wname, t] = JuMP.@constraint(
-                    get_jump_model(container),
-                    ptf[wname, t] ==
-                    (g + g_to) * vmt^2 +
-                    ((-g * tr - b * ti) / tm^2) * vmt * vmf * cos(-θ) +
-                    ((-b * tr + g * ti) / tm^2) * vmt * vmf * sin(-θ)
-                )
-                cons_qtf[wname, t] = JuMP.@constraint(
-                    get_jump_model(container),
-                    qtf[wname, t] ==
-                    -(b + b_to) * vmt^2 -
-                    ((-b * tr + g * ti) / tm^2) * vmt * vmf * cos(-θ) +
-                    ((-g * tr - b * ti) / tm^2) * vmt * vmf * sin(-θ)
-                )
-            end
-        end
-    end
-    return
-end
-
-#### Rate limits: DCP version — box bounds per winding using winding rating.
-# Extracted from the loop body so both the generic-formulation method below and the
-# StaticBranch-specific disambiguator (needed because the generic
-# `DeviceModel{T, StaticBranch} where T <: PSY.ACTransmission` FlowRateConstraint method
-# for BThetaBranchFlow also matches `T = Transformer3W`, creating an ambiguity) can share
-# it without duplicating the winding loop.
-function _add_transformer3w_dcp_flow_rate_constraints!(
-    container::OptimizationContainer,
-    devices::IS.FlattenIteratorWrapper{PSY.Transformer3W},
-)
-    time_steps = get_time_steps(container)
-    p = get_variable(container, FlowActivePowerVariable, PSY.Transformer3W)
-    names = _three_winding_var_names(devices)
-    cons_lb = add_constraints_container!(
-        container, FlowRateConstraint, PSY.Transformer3W, names, time_steps;
-        meta = "lb",
-    )
-    cons_ub = add_constraints_container!(
-        container, FlowRateConstraint, PSY.Transformer3W, names, time_steps;
-        meta = "ub",
-    )
-    for d in devices
-        dname = PSY.get_name(d)
-        for w in PNM.three_winding_arcs(d)
-            wname = dname * "_" * w.suffix
-            for t in time_steps
-                cons_lb[wname, t] = JuMP.@constraint(
-                    get_jump_model(container), -w.rating <= p[wname, t],
-                )
-                cons_ub[wname, t] = JuMP.@constraint(
-                    get_jump_model(container), p[wname, t] <= w.rating,
-                )
-            end
-        end
-    end
-    return
-end
-
-function add_constraints!(
-    container::OptimizationContainer,
-    ::Type{FlowRateConstraint},
-    devices::IS.FlattenIteratorWrapper{PSY.Transformer3W},
-    ::DeviceModel{PSY.Transformer3W, U},
-    network_model::NetworkModel{DCPNetworkModel},
-) where {U <: AbstractBranchFormulation}
-    _add_transformer3w_dcp_flow_rate_constraints!(container, devices)
-    return
-end
-
-# Disambiguates against the generic `DeviceModel{T, StaticBranch} where T <: PSY.ACTransmission`
-# BThetaBranchFlow-rate method (AC_branches.jl, DCP StaticBranch section): Transformer3W
-# keeps its own explicit per-winding FlowActivePowerVariable rate limits, unrelated to
-# BThetaBranchFlow (Transformer3W has three arcs per device, not one, and is excluded from
-# the BThetaBranchFlow expression build itself — see network_models/network_constructor.jl).
-function add_constraints!(
-    container::OptimizationContainer,
-    ::Type{FlowRateConstraint},
-    devices::IS.FlattenIteratorWrapper{PSY.Transformer3W},
-    ::DeviceModel{PSY.Transformer3W, StaticBranch},
-    network_model::NetworkModel{DCPNetworkModel},
-)
-    _add_transformer3w_dcp_flow_rate_constraints!(container, devices)
-    return
-end
-
-#### Rate limits: ACP — apparent-power per winding per direction.
-function add_constraints!(
-    container::OptimizationContainer,
-    ::Type{FlowRateConstraintFromTo},
-    devices::IS.FlattenIteratorWrapper{PSY.Transformer3W},
-    ::DeviceModel{PSY.Transformer3W, U},
-    network_model::NetworkModel{ACPNetworkModel},
-) where {U <: AbstractBranchFormulation}
-    time_steps = get_time_steps(container)
-    pft = get_variable(container, FlowActivePowerFromToVariable, PSY.Transformer3W)
-    qft = get_variable(container, FlowReactivePowerFromToVariable, PSY.Transformer3W)
-    names = _three_winding_var_names(devices)
-    cons = add_constraints_container!(
-        container, FlowRateConstraintFromTo, PSY.Transformer3W, names, time_steps,
-    )
-    for d in devices
-        dname = PSY.get_name(d)
-        for w in PNM.three_winding_arcs(d)
-            wname = dname * "_" * w.suffix
-            r2 = _rate_rhs_squared(w.rating)
-            for t in time_steps
-                cons[wname, t] = JuMP.@constraint(
-                    get_jump_model(container),
-                    pft[wname, t]^2 + qft[wname, t]^2 <= r2,
-                )
-            end
-        end
-    end
-    return
-end
-
-function add_constraints!(
-    container::OptimizationContainer,
-    ::Type{FlowRateConstraintToFrom},
-    devices::IS.FlattenIteratorWrapper{PSY.Transformer3W},
-    ::DeviceModel{PSY.Transformer3W, U},
-    network_model::NetworkModel{ACPNetworkModel},
-) where {U <: AbstractBranchFormulation}
-    time_steps = get_time_steps(container)
-    ptf = get_variable(container, FlowActivePowerToFromVariable, PSY.Transformer3W)
-    qtf = get_variable(container, FlowReactivePowerToFromVariable, PSY.Transformer3W)
-    names = _three_winding_var_names(devices)
-    cons = add_constraints_container!(
-        container, FlowRateConstraintToFrom, PSY.Transformer3W, names, time_steps,
-    )
-    for d in devices
-        dname = PSY.get_name(d)
-        for w in PNM.three_winding_arcs(d)
-            wname = dname * "_" * w.suffix
-            r2 = _rate_rhs_squared(w.rating)
-            for t in time_steps
-                cons[wname, t] = JuMP.@constraint(
-                    get_jump_model(container),
-                    ptf[wname, t]^2 + qtf[wname, t]^2 <= r2,
-                )
-            end
-        end
-    end
-    return
-end
+#     for (V, dir) in (
+#         (FlowActivePowerFromToVariable, "p_ft"),
+#         (FlowActivePowerToFromVariable, "p_tf"),
+#         (FlowReactivePowerFromToVariable, "q_ft"),
+#         (FlowReactivePowerToFromVariable, "q_tf"),
+#     )
+#         var = add_variable_container!(
+#             container, V, PSY.Transformer3W, names, time_steps,
+#         )
+#         for n in names, t in time_steps
+#             var[n, t] = JuMP.@variable(
+#                 get_jump_model(container),
+#                 base_name = "$(V)_Transformer3W_{$(n), $(t)}",
+#             )
+#         end
+#     end
+#     return
+# end
+#
+# function _add_three_winding_flow_variables!(
+#     container::OptimizationContainer,
+#     devices,
+#     network_model::NetworkModel{DCPNetworkModel},
+# )
+#     time_steps = get_time_steps(container)
+#     names = _three_winding_var_names(devices)
+#     var = add_variable_container!(
+#         container, FlowActivePowerVariable, PSY.Transformer3W, names, time_steps,
+#     )
+#     for n in names, t in time_steps
+#         var[n, t] = JuMP.@variable(
+#             get_jump_model(container),
+#             base_name = "FlowActivePowerVariable_Transformer3W_{$(n), $(t)}",
+#         )
+#     end
+#     return
+# end
+#
+# #### add_to_expression: contribute per-winding flow to nodal balance.
+# function add_to_expression!(
+#     container::OptimizationContainer,
+#     ::Type{ActivePowerBalance},
+#     ::Type{FlowActivePowerVariable},
+#     devices::IS.FlattenIteratorWrapper{PSY.Transformer3W},
+#     ::DeviceModel{PSY.Transformer3W, U},
+#     network_model::NetworkModel{DCPNetworkModel},
+# ) where {U <: AbstractBranchFormulation}
+#     var = get_variable(container, FlowActivePowerVariable, PSY.Transformer3W)
+#     expression = get_expression(container, ActivePowerBalance, PSY.ACBus)
+#     network_reduction = get_network_reduction(network_model)
+#     time_steps = get_time_steps(container)
+#     for d in devices
+#         dname = PSY.get_name(d)
+#         for w in PNM.three_winding_arcs(d)
+#             wname = dname * "_" * w.suffix
+#             from_no, to_no = PNM.get_arc_tuple(w.arc, network_reduction)
+#             for t in time_steps
+#                 JuMP.add_to_expression!(expression[from_no, t], -1.0, var[wname, t])
+#                 JuMP.add_to_expression!(expression[to_no, t], +1.0, var[wname, t])
+#             end
+#         end
+#     end
+#     return
+# end
+#
+# # ACP: 4 separate methods (one per directional × {active, reactive}). Each
+# # specialization mirrors the generic ACTransmission methods but iterates the
+# # three windings and indexes by the per-winding variable name.
+# for (E, V, terminal_index) in (
+#     (:ActivePowerBalance, :FlowActivePowerFromToVariable, 1),
+#     (:ActivePowerBalance, :FlowActivePowerToFromVariable, 2),
+#     (:ReactivePowerBalance, :FlowReactivePowerFromToVariable, 1),
+#     (:ReactivePowerBalance, :FlowReactivePowerToFromVariable, 2),
+# )
+#     @eval function add_to_expression!(
+#         container::OptimizationContainer,
+#         ::Type{$E},
+#         ::Type{$V},
+#         devices::IS.FlattenIteratorWrapper{PSY.Transformer3W},
+#         ::DeviceModel{PSY.Transformer3W, U},
+#         network_model::NetworkModel{ACPNetworkModel},
+#     ) where {U <: AbstractBranchFormulation}
+#         var = get_variable(container, $V, PSY.Transformer3W)
+#         expression = get_expression(container, $E, PSY.ACBus)
+#         network_reduction = get_network_reduction(network_model)
+#         time_steps = get_time_steps(container)
+#         for d in devices
+#             dname = PSY.get_name(d)
+#             for w in PNM.three_winding_arcs(d)
+#                 wname = dname * "_" * w.suffix
+#                 bus_no = PNM.get_arc_tuple(w.arc, network_reduction)[$terminal_index]
+#                 for t in time_steps
+#                     JuMP.add_to_expression!(expression[bus_no, t], -1.0, var[wname, t])
+#                 end
+#             end
+#         end
+#         return
+#     end
+# end
+#
+# #### Ohms: DCP version — one linear constraint per winding per time.
+# function add_constraints!(
+#     container::OptimizationContainer,
+#     sys::PSY.System,
+#     ::Type{NetworkFlowConstraint},
+#     devices::IS.FlattenIteratorWrapper{PSY.Transformer3W},
+#     ::DeviceModel{PSY.Transformer3W, U},
+#     network_model::NetworkModel{DCPNetworkModel},
+# ) where {U <: AbstractBranchFormulation}
+#     time_steps = get_time_steps(container)
+#     number_to_name = _retained_number_to_name(sys, network_model)
+#     network_reduction = get_network_reduction(network_model)
+#     va = get_variable(container, VoltageAngle, PSY.ACBus)
+#     p = get_variable(container, FlowActivePowerVariable, PSY.Transformer3W)
+#
+#     names = _three_winding_var_names(devices)
+#     cons = add_constraints_container!(
+#         container, NetworkFlowConstraint, PSY.Transformer3W, names, time_steps,
+#     )
+#
+#     for d in devices
+#         dname = PSY.get_name(d)
+#         for w in PNM.three_winding_arcs(d)
+#             wname = dname * "_" * w.suffix
+#             adm = PNM.winding_admittance(w.winding)
+#             from_no, to_no = PNM.get_arc_tuple(w.arc, network_reduction)
+#             from_no == to_no && continue
+#             from_name = number_to_name[from_no]
+#             to_name = number_to_name[to_no]
+#             for t in time_steps
+#                 cons[wname, t] = JuMP.@constraint(
+#                     get_jump_model(container),
+#                     p[wname, t] == -adm.b * (va[from_name, t] - va[to_name, t]),
+#                 )
+#             end
+#         end
+#     end
+#     return
+# end
+#
+# #### Ohms: ACP version — full π-model, 4 NL constraints per winding per time.
+# function add_constraints!(
+#     container::OptimizationContainer,
+#     sys::PSY.System,
+#     ::Type{NetworkFlowConstraint},
+#     devices::IS.FlattenIteratorWrapper{PSY.Transformer3W},
+#     ::DeviceModel{PSY.Transformer3W, U},
+#     network_model::NetworkModel{ACPNetworkModel},
+# ) where {U <: AbstractBranchFormulation}
+#     time_steps = get_time_steps(container)
+#     number_to_name = _retained_number_to_name(sys, network_model)
+#     network_reduction = get_network_reduction(network_model)
+#     va = get_variable(container, VoltageAngle, PSY.ACBus)
+#     vm = get_variable(container, VoltageMagnitude, PSY.ACBus)
+#     pft = get_variable(container, FlowActivePowerFromToVariable, PSY.Transformer3W)
+#     ptf = get_variable(container, FlowActivePowerToFromVariable, PSY.Transformer3W)
+#     qft = get_variable(container, FlowReactivePowerFromToVariable, PSY.Transformer3W)
+#     qtf = get_variable(container, FlowReactivePowerToFromVariable, PSY.Transformer3W)
+#
+#     names = _three_winding_var_names(devices)
+#     cons_pft = add_constraints_container!(
+#         container, NetworkFlowConstraint, PSY.Transformer3W, names, time_steps;
+#         meta = "p_ft",
+#     )
+#     cons_qft = add_constraints_container!(
+#         container, NetworkFlowConstraint, PSY.Transformer3W, names, time_steps;
+#         meta = "q_ft",
+#     )
+#     cons_ptf = add_constraints_container!(
+#         container, NetworkFlowConstraint, PSY.Transformer3W, names, time_steps;
+#         meta = "p_tf",
+#     )
+#     cons_qtf = add_constraints_container!(
+#         container, NetworkFlowConstraint, PSY.Transformer3W, names, time_steps;
+#         meta = "q_tf",
+#     )
+#
+#     for d in devices
+#         dname = PSY.get_name(d)
+#         for w in PNM.three_winding_arcs(d)
+#             wname = dname * "_" * w.suffix
+#             adm = PNM.winding_admittance(w.winding)
+#             g, b, g_fr, b_fr, g_to, b_to, tm =
+#                 adm.g, adm.b, adm.g_fr, adm.b_fr, adm.g_to, adm.b_to, adm.tap
+#             from_no, to_no = PNM.get_arc_tuple(w.arc, network_reduction)
+#             from_no == to_no && continue
+#             from_name = number_to_name[from_no]
+#             to_name = number_to_name[to_no]
+#             tr = tm * cos(0.0)  # no phase shift
+#             ti = tm * sin(0.0)
+#
+#             for t in time_steps
+#                 θ = va[from_name, t] - va[to_name, t]
+#                 vmf = vm[from_name, t]
+#                 vmt = vm[to_name, t]
+#
+#                 cons_pft[wname, t] = JuMP.@constraint(
+#                     get_jump_model(container),
+#                     pft[wname, t] ==
+#                     (g + g_fr) / tm^2 * vmf^2 +
+#                     ((-g * tr + b * ti) / tm^2) * vmf * vmt * cos(θ) +
+#                     ((-b * tr - g * ti) / tm^2) * vmf * vmt * sin(θ)
+#                 )
+#                 cons_qft[wname, t] = JuMP.@constraint(
+#                     get_jump_model(container),
+#                     qft[wname, t] ==
+#                     -(b + b_fr) / tm^2 * vmf^2 -
+#                     ((-b * tr - g * ti) / tm^2) * vmf * vmt * cos(θ) +
+#                     ((-g * tr + b * ti) / tm^2) * vmf * vmt * sin(θ)
+#                 )
+#                 cons_ptf[wname, t] = JuMP.@constraint(
+#                     get_jump_model(container),
+#                     ptf[wname, t] ==
+#                     (g + g_to) * vmt^2 +
+#                     ((-g * tr - b * ti) / tm^2) * vmt * vmf * cos(-θ) +
+#                     ((-b * tr + g * ti) / tm^2) * vmt * vmf * sin(-θ)
+#                 )
+#                 cons_qtf[wname, t] = JuMP.@constraint(
+#                     get_jump_model(container),
+#                     qtf[wname, t] ==
+#                     -(b + b_to) * vmt^2 -
+#                     ((-b * tr + g * ti) / tm^2) * vmt * vmf * cos(-θ) +
+#                     ((-g * tr - b * ti) / tm^2) * vmt * vmf * sin(-θ)
+#                 )
+#             end
+#         end
+#     end
+#     return
+# end
+#
+# #### Rate limits: DCP version — box bounds per winding using winding rating.
+# # Extracted from the loop body so both the generic-formulation method below and the
+# # StaticBranch-specific disambiguator (needed because the generic
+# # `DeviceModel{T, StaticBranch} where T <: PSY.ACTransmission` FlowRateConstraint method
+# # for BThetaBranchFlow also matches `T = Transformer3W`, creating an ambiguity) can share
+# # it without duplicating the winding loop.
+# function _add_transformer3w_dcp_flow_rate_constraints!(
+#     container::OptimizationContainer,
+#     devices::IS.FlattenIteratorWrapper{PSY.Transformer3W},
+# )
+#     time_steps = get_time_steps(container)
+#     p = get_variable(container, FlowActivePowerVariable, PSY.Transformer3W)
+#     names = _three_winding_var_names(devices)
+#     cons_lb = add_constraints_container!(
+#         container, FlowRateConstraint, PSY.Transformer3W, names, time_steps;
+#         meta = "lb",
+#     )
+#     cons_ub = add_constraints_container!(
+#         container, FlowRateConstraint, PSY.Transformer3W, names, time_steps;
+#         meta = "ub",
+#     )
+#     for d in devices
+#         dname = PSY.get_name(d)
+#         for w in PNM.three_winding_arcs(d)
+#             wname = dname * "_" * w.suffix
+#             for t in time_steps
+#                 cons_lb[wname, t] = JuMP.@constraint(
+#                     get_jump_model(container), -w.rating <= p[wname, t],
+#                 )
+#                 cons_ub[wname, t] = JuMP.@constraint(
+#                     get_jump_model(container), p[wname, t] <= w.rating,
+#                 )
+#             end
+#         end
+#     end
+#     return
+# end
+#
+# function add_constraints!(
+#     container::OptimizationContainer,
+#     ::Type{FlowRateConstraint},
+#     devices::IS.FlattenIteratorWrapper{PSY.Transformer3W},
+#     ::DeviceModel{PSY.Transformer3W, U},
+#     network_model::NetworkModel{DCPNetworkModel},
+# ) where {U <: AbstractBranchFormulation}
+#     _add_transformer3w_dcp_flow_rate_constraints!(container, devices)
+#     return
+# end
+#
+# # Disambiguates against the generic `DeviceModel{T, StaticBranch} where T <: PSY.ACTransmission`
+# # BThetaBranchFlow-rate method (AC_branches.jl, DCP StaticBranch section): Transformer3W
+# # keeps its own explicit per-winding FlowActivePowerVariable rate limits, unrelated to
+# # BThetaBranchFlow (Transformer3W has three arcs per device, not one, and is excluded from
+# # the BThetaBranchFlow expression build itself — see network_models/network_constructor.jl).
+# function add_constraints!(
+#     container::OptimizationContainer,
+#     ::Type{FlowRateConstraint},
+#     devices::IS.FlattenIteratorWrapper{PSY.Transformer3W},
+#     ::DeviceModel{PSY.Transformer3W, StaticBranch},
+#     network_model::NetworkModel{DCPNetworkModel},
+# )
+#     _add_transformer3w_dcp_flow_rate_constraints!(container, devices)
+#     return
+# end
+#
+# #### Rate limits: ACP — apparent-power per winding per direction.
+# function add_constraints!(
+#     container::OptimizationContainer,
+#     ::Type{FlowRateConstraintFromTo},
+#     devices::IS.FlattenIteratorWrapper{PSY.Transformer3W},
+#     ::DeviceModel{PSY.Transformer3W, U},
+#     network_model::NetworkModel{ACPNetworkModel},
+# ) where {U <: AbstractBranchFormulation}
+#     time_steps = get_time_steps(container)
+#     pft = get_variable(container, FlowActivePowerFromToVariable, PSY.Transformer3W)
+#     qft = get_variable(container, FlowReactivePowerFromToVariable, PSY.Transformer3W)
+#     names = _three_winding_var_names(devices)
+#     cons = add_constraints_container!(
+#         container, FlowRateConstraintFromTo, PSY.Transformer3W, names, time_steps,
+#     )
+#     for d in devices
+#         dname = PSY.get_name(d)
+#         for w in PNM.three_winding_arcs(d)
+#             wname = dname * "_" * w.suffix
+#             r2 = _rate_rhs_squared(w.rating)
+#             for t in time_steps
+#                 cons[wname, t] = JuMP.@constraint(
+#                     get_jump_model(container),
+#                     pft[wname, t]^2 + qft[wname, t]^2 <= r2,
+#                 )
+#             end
+#         end
+#     end
+#     return
+# end
+#
+# function add_constraints!(
+#     container::OptimizationContainer,
+#     ::Type{FlowRateConstraintToFrom},
+#     devices::IS.FlattenIteratorWrapper{PSY.Transformer3W},
+#     ::DeviceModel{PSY.Transformer3W, U},
+#     network_model::NetworkModel{ACPNetworkModel},
+# ) where {U <: AbstractBranchFormulation}
+#     time_steps = get_time_steps(container)
+#     ptf = get_variable(container, FlowActivePowerToFromVariable, PSY.Transformer3W)
+#     qtf = get_variable(container, FlowReactivePowerToFromVariable, PSY.Transformer3W)
+#     names = _three_winding_var_names(devices)
+#     cons = add_constraints_container!(
+#         container, FlowRateConstraintToFrom, PSY.Transformer3W, names, time_steps,
+#     )
+#     for d in devices
+#         dname = PSY.get_name(d)
+#         for w in PNM.three_winding_arcs(d)
+#             wname = dname * "_" * w.suffix
+#             r2 = _rate_rhs_squared(w.rating)
+#             for t in time_steps
+#                 cons[wname, t] = JuMP.@constraint(
+#                     get_jump_model(container),
+#                     ptf[wname, t]^2 + qtf[wname, t]^2 <= r2,
+#                 )
+#             end
+#         end
+#     end
+#     return
+# end
 
 ################################## DCPLLNetworkModel branch constraints #################
 
@@ -3279,7 +3280,7 @@ function _set_dcpll_flow_bounds!(
     if isempty(network_reduction)
         for d in devices
             name = PSY.get_name(d)
-            rate = PSY.get_rating(d, PSY.SU)
+            rate = _branch_rating(d)
             iszero(rate) &&
                 error("Branch $name has a zero rating; cannot bound DCPLL flows.")
             for t in time_steps
