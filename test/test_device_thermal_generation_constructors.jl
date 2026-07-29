@@ -1487,8 +1487,7 @@ end
     template = PowerOperationsProblemTemplate(NetworkModel(PTDFNetworkModel))
     set_device_model!(template, ThermalStandard, ThermalDispatchNoMin)
     set_device_model!(template, Line, StaticBranchBounds)
-    set_device_model!(template, TapTransformer, StaticBranchBounds)
-    set_device_model!(template, Transformer2W, StaticBranchBounds)
+    set_device_model!(template, TwoWindingTransformer, StaticBranchBounds)
     set_device_model!(template, PowerLoad, StaticPowerLoad)
 
     solver = HiGHS_optimizer

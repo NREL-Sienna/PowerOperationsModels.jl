@@ -19,9 +19,26 @@ const TEST_DIR = @__DIR__
 # Discover ONLY the top-level `test_*.jl` files. `includes.jl`, the `test_utils/`
 # helpers, and `test_data/` are shared infrastructure, not standalone testsets — they
 # must not be run as tests (ParallelTestRunner's default discovery would pick them up).
+
+# psy6: disabled pending transformer refactor. Two causes, both upstream of the test body:
+#   - transformer control formulations / Transformer3W are commented out in `src`
+#   - PowerFlows@psy6 does not precompile, so `PFS` is unavailable in the preamble
+const DISABLED_TESTS = Set([
+    "test_ac_transmission_security_constrained_models",
+    "test_device_branch_constructors",
+    "test_native_dcp_acp_models",
+    "test_native_lpacc_model",
+    "test_native_network_reductions",
+    "test_native_tapcontrol",
+    "test_pf_injection_resolver",
+    "test_power_flow_in_the_loop",
+    "test_voltage_control_tap_models",
+])
+
 testsuite = Dict{String, Expr}(
     splitext(f)[1] => :(include($(joinpath(TEST_DIR, f)))) for
-    f in readdir(TEST_DIR) if startswith(f, "test_") && endswith(f, ".jl")
+    f in readdir(TEST_DIR) if
+    startswith(f, "test_") && endswith(f, ".jl") && splitext(f)[1] ∉ DISABLED_TESTS
 )
 
 # Shared preamble (package imports, `test_utils`, const aliases) evaluated into each

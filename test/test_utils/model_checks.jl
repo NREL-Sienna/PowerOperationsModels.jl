@@ -194,12 +194,15 @@ function check_flow_variable_values(
     return true
 end
 
+# psy6: a TwoWindingTransformer's arc, rating and impedance live on its TransformerCircuit,
+# not on the parent device — mirrors POM's `_two_winding_rating` / `_branch_arc`.
+branch_rating_su(d::PSY.ACTransmission) = PSY.get_rating(d, PSY.SU)
+branch_rating_su(d::PSY.TwoWindingTransformer) = PSY.get_rating(PSY.get_circuit(d), PSY.SU)
+
 # StaticBranch under DCPNetworkModel carries its flow as the BThetaBranchFlow expression
-# for every ACTransmission component EXCEPT Transformer3W, which keeps its own explicit
-# star-arc decomposition (FlowActivePowerVariable per winding + the variable-based Ohm's
-# law equality) — see network_models/network_constructor.jl.
+# for every ACTransmission component.
+# psy6: the ThreeWindingTransformer specialization is disabled pending transformer refactor
 _dcp_static_branch_uses_expression(::Type{<:PSY.ACTransmission}) = true
-_dcp_static_branch_uses_expression(::Type{PSY.Transformer3W}) = false
 
 function check_flow_variable_values(
     model::DecisionModel,

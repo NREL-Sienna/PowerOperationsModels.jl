@@ -30,7 +30,7 @@ function check_branch_rating_time_series_flows!(
             branch_name
         end
 
-        static_rating = PSY.get_rating(branch, PSY.SU) * PSY.get_base_power(sys, PSY.NU)
+        static_rating = branch_rating_su(branch) * PSY.get_base_power(sys, PSY.NU)
         if is_parallel_group_flow
             static_rating *= 2
         end
@@ -54,7 +54,7 @@ end
             BranchRatingTimeSeriesParameter => "branch_rating",
         ))
     TapTransf_device_model = DeviceModel(
-        TapTransformer,
+        TwoWindingTransformer,
         StaticBranch;
         time_series_names = Dict(
             BranchRatingTimeSeriesParameter => "branch_rating",
@@ -629,7 +629,7 @@ end
     n_rating = length(rating_factors)
     for name in branches_with_rating_ts
         branch = get_component(PSY.ACTransmission, sys, name)
-        static_rating = PSY.get_rating(branch, PSY.SU)
+        static_rating = branch_rating_su(branch)
         for (i, t) in enumerate(time_axis)
             @test isapprox(
                 JuMP.normalized_rhs(con_ub[name, t]),
@@ -701,7 +701,7 @@ end
     n_rating = length(rating_factors)
     for name in branches_with_rating_ts
         branch = get_component(PSY.ACTransmission, sys, name)
-        static_rating = PSY.get_rating(branch, PSY.SU)
+        static_rating = branch_rating_su(branch)
         for (i, t) in enumerate(time_axis)
             expected = (static_rating * rating_factors[mod1(i, n_rating)])^2
             @test isapprox(JuMP.normalized_rhs(ac_ft[name, t]), expected; rtol = 1e-5)

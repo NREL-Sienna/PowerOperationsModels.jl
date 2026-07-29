@@ -44,7 +44,7 @@ function _reduced_ptdf_duals_template()
             ),
         ),
     )
-    set_device_model!(template, Transformer2W, StaticBranch)
+    set_device_model!(template, TwoWindingTransformer, StaticBranch)
     return sys, template
 end
 
