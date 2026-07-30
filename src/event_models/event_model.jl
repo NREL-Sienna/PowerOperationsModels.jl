@@ -48,6 +48,9 @@ struct PresetTimeCondition <: AbstractEventCondition
     time_stamps::Vector{Dates.DateTime}
 end
 
+"""
+Return the time stamps at which `c` is triggered.
+"""
 get_time_stamps(c::PresetTimeCondition) = c.time_stamps
 
 """
@@ -124,12 +127,22 @@ function get_empty_timeseries_mapping(::Type{PSY.GeometricDistributionForcedOuta
     )
 end
 
+"""
+Return the `PSY.Contingency` subtype that `e` models.
+"""
 get_event_type(
     ::EventModel{D, B},
 ) where {D <: PSY.Contingency, B <: AbstractEventCondition} = D
 
+"""
+Return the trigger condition attached to `e`.
+"""
 get_event_condition(
     e::EventModel{D, B},
 ) where {D <: PSY.Contingency, B <: AbstractEventCondition} = e.condition
 
+"""
+Return `e`'s outage attribute UUID → device type → device names map, populated by
+build-time discovery.
+"""
 get_attribute_device_map(e::EventModel) = e.attribute_device_map
