@@ -54,9 +54,9 @@ get_network_formulation(template::PowerOperationsProblemTemplate) =
 get_hvdc_network_model(template::PowerOperationsProblemTemplate) =
     template.network_model.hvdc_network_model
 
-# Returns `Vector{Type}`, not `Vector{DataType}`: a service component type can be a
-# UnionAll (e.g. PSY6 parameterized `ReserveDemandCurve{ReserveUp}` on a unit-system
-# type, leaving a trailing free parameter), which is not a `DataType`.
+# Returns `Vector{Type}`, not `Vector{DataType}`: a service's component type can be a
+# `UnionAll` rather than a concrete `DataType` when it carries an unapplied type parameter
+# (e.g. `ReserveDemandCurve{ReserveUp}`, which still has a free parameter).
 function get_component_types(template::PowerOperationsProblemTemplate)::Vector{Type}
     return vcat(
         get_component_type.(values(get_device_models(template))),
@@ -240,9 +240,9 @@ function _populate_contributing_devices!(
         service_type = get_component_type(service_model)
         for service in get_available_components(service_model, sys)
             service_name = PSY.get_name(service)
-            # Key by the concrete service type. The model type can be a UnionAll
-            # (e.g. PSY6 parameterized `ReserveDemandCurve{ReserveUp}` on a unit-system
-            # type), but `get_contributing_device_mapping` keys by `typeof(service)`.
+            # Key by the concrete service instance type: the model's stored type can be a
+            # `UnionAll` (e.g. `ReserveDemandCurve{ReserveUp}` with a free parameter), while
+            # `get_contributing_device_mapping` keys by `typeof(service)`.
             service_devices_key = (type = typeof(service), name = service_name)
             if haskey(services_mapping, service_devices_key)
                 for d in services_mapping[service_devices_key].contributing_devices
@@ -256,10 +256,10 @@ function _populate_contributing_devices!(
                 end
             end
             # Exempt ConstantReserveGroup: a GroupReserve aggregates other services, so its
-            # contributing-device map is empty by design; without this the error would fire on
-            # every group reserve (the bug that previously made ConstantReserveGroup unbuildable).
-            # Reserves and transmission interfaces DO draw on devices/branches, so an empty map
-            # there is a real misconfiguration. AGC is not modeled in POM, so it never reaches here.
+            # contributing-device map is empty by design, and this check would otherwise reject
+            # every group reserve. Reserves and transmission interfaces DO draw on
+            # devices/branches, so an empty map there is a real misconfiguration. AGC is not
+            # modeled in POM, so it never reaches here.
             if !(service_type <: PSY.ConstantReserveGroup) &&
                isempty(get_contributing_devices_map(service_model, service_name))
                 error(
