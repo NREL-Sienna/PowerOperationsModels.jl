@@ -97,6 +97,19 @@ for (i, g) in enumerate(contributors)
     set_service_bid!(sys, g, reserve, ts, IS.NaturalUnit())
 end
 
+# `set_service_bid!` is what actually wires the offer to the device. For each call it does two
+# things (after validating that the device's cost is an `OfferCurveCost`, that the units are
+# natural, and that the device is eligible to provide the service):
+#
+# 1. **Attaches the offer curve as a time series** on the device, via `add_time_series!`. The
+#    time series *must* be named after the service (`get_name(reserve)`) - that name is how the
+#    curve is later looked up for this `(device, service)` pair.
+# 2. **Registers the service** in the device cost's `ancillary_service_offers` list, marking the
+#    device as an offering participant in that service.
+#
+# Together these two effects are what let the model find the per-device curve at build time and
+# price the reserve award by it instead of the flat `DEFAULT_RESERVE_COST`.
+
 # Each contributor now exposes its offer through `get_services_bid`:
 
 cost = get_operation_cost(first(contributors))
