@@ -114,6 +114,7 @@ function validate_template_impl!(model::IOM.AbstractOptimizationModel)
     _check_branch_rating_time_series_formulation!(template.branches, system)
     validate_network_model(network_model, unmodeled_branch_types, model_has_branch_filters)
     _build_device_model_outages!(template, system)
+    _build_device_model_events!(template, system)
     return
 end
 
@@ -650,6 +651,107 @@ function _warn_unmatched_user_outages(
                    of type $D in the system — it will not contribute any \
                    post-contingency constraints." _group =
                 IOM.LOG_GROUP_MODELS_VALIDATION
+        end
+    end
+    return
+end
+
+#################################################################################
+# Outage-event discovery and validation (time-series outage events; distinct
+# from the security-constrained `_build_device_model_outages!` above)
+#################################################################################
+
+"""
+For each event model attached to the template: validate its time-series mapping,
+populate `attribute_device_map` (attribute UUID → concrete device type → device names)
+from the system's supplemental attributes, and distribute the event model to every
+`DeviceModel` in the template whose device type carries the attribute and supports
+events.
+"""
+function _build_device_model_events!(
+    template::PowerOperationsProblemTemplate,
+    sys::PSY.System,
+)
+    for event_model in get_event_models(template)
+        event_type = get_event_type(event_model)
+        if isempty(PSY.get_supplemental_attributes(event_type, sys))
+            error(
+                "There are no supplemental attributes of type $event_type in the system. \
+                 Add the outage data to the system or remove the event model from the \
+                 template.",
+            )
+        end
+        for event in PSY.get_supplemental_attributes(event_type, sys)
+            _validate_event_timeseries_data(sys, event, event_model)
+            event_uuid = IS.get_uuid(event)
+            attribute_device_map = get_attribute_device_map(event_model)
+            attribute_device_map[event_uuid] = Dict{DataType, Set{String}}()
+            device_types_with_attribute = Set{DataType}()
+            for device in PSY.get_associated_components(sys, event)
+                dtype = typeof(device)
+                if !supports_events(dtype)
+                    @warn "Device $(PSY.get_name(device)) of type $dtype carries a \
+                           $event_type attribute but the type does not support events; \
+                           it will not be modeled." _group =
+                        IOM.LOG_GROUP_MODELS_VALIDATION
+                    continue
+                end
+                push!(device_types_with_attribute, dtype)
+                name_set = get!(
+                    attribute_device_map[event_uuid],
+                    dtype,
+                    Set{String}(),
+                )
+                push!(name_set, PSY.get_name(device))
+            end
+            for device_type in device_types_with_attribute
+                device_model = get_model(template, device_type)
+                if device_model === nothing
+                    @warn "Devices of type $device_type carry a $event_type attribute \
+                           but the template has no DeviceModel for that type; the event \
+                           will not be modeled for them." _group =
+                        IOM.LOG_GROUP_MODELS_VALIDATION
+                    continue
+                end
+                key = EventKey(event_type, device_type)
+                if !haskey(IOM.get_events(device_model), key)
+                    IOM.set_event_model!(device_model, key, event_model)
+                end
+            end
+        end
+    end
+    return
+end
+
+function _validate_event_timeseries_data(
+    sys::PSY.System,
+    event::PSY.Contingency,
+    event_model::EventModel,
+)
+    for (k, v) in event_model.timeseries_mapping
+        if !isnothing(v)
+            try
+                PSY.get_time_series(IS.SingleTimeSeries, event, v)
+            catch
+                device_names =
+                    PSY.get_name.(PSY.get_associated_components(sys, event))
+                error(
+                    "Event $event belonging to devices $device_names is missing a \
+                     time series with name $v",
+                )
+            end
+        end
+        if !haskey(get_empty_timeseries_mapping(typeof(event)), k)
+            error(
+                "Key $k passed as part of the event time series mapping does not \
+                 correspond to a parameter.",
+            )
+        end
+        if k == :outage_status && isnothing(v)
+            error(
+                "FixedForcedOutage requires a timeseries mapping for the \
+                 :outage_status parameter",
+            )
         end
     end
     return

@@ -187,6 +187,27 @@ function IOM.set_event_model!(
     return
 end
 
+# `IOM._deepcopy_template` already shares the network model's PNM matrices by reference
+# across the template/copy boundary because deep-copying them throws (PNM #312). Event
+# models need the same treatment for a different reason: build-time discovery
+# (`_build_device_model_events!`) mutates `EventModel.attribute_device_map`, and callers
+# inspect that mutation on the exact object they passed to `set_event_model!`. A plain
+# `deepcopy` of the template would clone each event model, so the mutation performed on
+# the copy used to build the model would be invisible on the caller's original object.
+# Null the field before delegating to the generic (PNM-matrix-aware) implementation, then
+# restore identity on both sides so discovery writes land on the caller's own objects.
+function IOM._deepcopy_template(template::PowerOperationsProblemTemplate)
+    events = template.events
+    template.events = IOM.AbstractEventModel[]
+    template_ = try
+        invoke(IOM._deepcopy_template, Tuple{IOM.AbstractProblemTemplate}, template)
+    finally
+        template.events = events
+    end
+    template_.events = copy(events)
+    return template_
+end
+
 """
 Sets the service model in a template using a name and the service type and formulation.
 Builds a default ServiceModel with use_service_name set to true.

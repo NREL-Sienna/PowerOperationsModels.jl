@@ -51,3 +51,105 @@ end
     # Same event model instance can't be attached twice
     @test_throws ErrorException set_event_model!(template, em)
 end
+
+@testset "Event discovery and validation at build" begin
+    sys = PSB.build_system(PSB.PSITestSystems, "c_sys5_uc")
+    thermal = first(PSY.get_components(PSY.ThermalStandard, sys))
+    outage = attach_fixed_forced_outage!(sys, thermal)
+
+    template = get_thermal_dispatch_template_network(NetworkModel(CopperPlateNetworkModel))
+    em = EventModel(
+        PSY.FixedForcedOutage,
+        ContinuousCondition();
+        timeseries_mapping = Dict{Symbol, Union{String, Nothing}}(
+            :outage_status => "outage_profile",
+        ),
+    )
+    set_event_model!(template, em)
+
+    model = DecisionModel(template, sys; optimizer = HiGHS_optimizer)
+    @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
+          IOM.ModelBuildStatus.BUILT
+
+    # Discovery populated the map: attribute uuid -> device type -> names
+    map_ = get_attribute_device_map(em)
+    uuid = IS.get_uuid(outage)
+    @test haskey(map_, uuid)
+    @test map_[uuid][PSY.ThermalStandard] == Set([PSY.get_name(thermal)])
+
+    # The caller's template DeviceModels were not mutated (build-copy isolation)
+    caller_dm = get_model(template, PSY.ThermalStandard)
+    @test isempty(IOM.get_events(caller_dm))
+end
+
+@testset "Event validation errors" begin
+    sys_clean = PSB.build_system(PSB.PSITestSystems, "c_sys5_uc")
+    template = get_thermal_dispatch_template_network(NetworkModel(CopperPlateNetworkModel))
+    em = EventModel(
+        PSY.FixedForcedOutage,
+        ContinuousCondition();
+        timeseries_mapping = Dict{Symbol, Union{String, Nothing}}(
+            :outage_status => "outage_profile",
+        ),
+    )
+    set_event_model!(template, em)
+    model = DecisionModel(template, sys_clean; optimizer = HiGHS_optimizer)
+    # No supplemental attributes in the system -> loud build failure
+    @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
+          IOM.ModelBuildStatus.FAILED
+
+    # Unknown mapping key rejected
+    sys2 = PSB.build_system(PSB.PSITestSystems, "c_sys5_uc")
+    thermal2 = first(PSY.get_components(PSY.ThermalStandard, sys2))
+    attach_fixed_forced_outage!(sys2, thermal2)
+    template2 = get_thermal_dispatch_template_network(NetworkModel(CopperPlateNetworkModel))
+    em_bad = EventModel(
+        PSY.FixedForcedOutage,
+        ContinuousCondition();
+        timeseries_mapping = Dict{Symbol, Union{String, Nothing}}(
+            :not_a_parameter => "outage_profile",
+        ),
+    )
+    set_event_model!(template2, em_bad)
+    model2 = DecisionModel(template2, sys2; optimizer = HiGHS_optimizer)
+    @test build!(model2; output_dir = mktempdir(; cleanup = true)) ==
+          IOM.ModelBuildStatus.FAILED
+
+    # FixedForcedOutage requires :outage_status mapping
+    sys3 = PSB.build_system(PSB.PSITestSystems, "c_sys5_uc")
+    thermal3 = first(PSY.get_components(PSY.ThermalStandard, sys3))
+    attach_fixed_forced_outage!(sys3, thermal3)
+    template3 = get_thermal_dispatch_template_network(NetworkModel(CopperPlateNetworkModel))
+    em_nomapping = EventModel(PSY.FixedForcedOutage, ContinuousCondition())
+    set_event_model!(template3, em_nomapping)
+    model3 = DecisionModel(template3, sys3; optimizer = HiGHS_optimizer)
+    @test build!(model3; output_dir = mktempdir(; cleanup = true)) ==
+          IOM.ModelBuildStatus.FAILED
+end
+
+@testset "Events excluded from initialization problem" begin
+    sys = PSB.build_system(PSB.PSITestSystems, "c_sys5_uc")
+    thermal = first(PSY.get_components(PSY.ThermalStandard, sys))
+    attach_fixed_forced_outage!(sys, thermal)
+    template = get_thermal_standard_uc_template()
+    em = EventModel(
+        PSY.FixedForcedOutage,
+        ContinuousCondition();
+        timeseries_mapping = Dict{Symbol, Union{String, Nothing}}(
+            :outage_status => "outage_profile",
+        ),
+    )
+    set_event_model!(template, em)
+    model = DecisionModel(template, sys; optimizer = HiGHS_optimizer)
+    # `build!` discards the initial-conditions container once it is solved and
+    # serialized (see `handle_initial_conditions!`), so inspect it directly by
+    # replicating the pre-solve portion of the build pipeline instead of going
+    # through the full `build!`/`solve!` round trip.
+    POM.build_pre_step!(model)
+    IOM.instantiate_network_model!(model)
+    POM.build_initial_conditions!(model)
+    ic_container = IOM.get_initial_conditions_model_container(IOM.get_internal(model))
+    @test ic_container !== nothing
+    ic_keys = IOM.get_parameter_keys(ic_container)
+    @test !any(k -> IOM.get_entry_type(k) <: EventParameter, ic_keys)
+end
