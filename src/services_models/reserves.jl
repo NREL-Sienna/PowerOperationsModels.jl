@@ -312,8 +312,11 @@ function add_to_objective_function!(
     # Devices that submitted a reserve OFFER are priced by their offer curve; the rest keep the
     # flat DEFAULT_RESERVE_COST.
     offered = add_reserve_offer_costs!(container, service, model)
+    contributing_names =
+        [PSY.get_name(d) for d in get_contributing_devices(model, PSY.get_name(service))]
     add_reserves_proportional_cost!(
-        container, ActivePowerReserveVariable, service, T; skip_devices = offered)
+        container, ActivePowerReserveVariable, service, T, contributing_names;
+        skip_devices = offered)
     return
 end
 
@@ -644,7 +647,8 @@ function add_reserves_proportional_cost!(
     container::OptimizationContainer,
     ::Type{U},
     service::T,
-    ::Type{V};
+    ::Type{V},
+    contributing_names::Vector{String};
     skip_devices = Set{String}(),
 ) where {
     T <: Union{PSY.Reserve, PSY.ReserveNonSpinning},
@@ -654,20 +658,19 @@ function add_reserves_proportional_cost!(
     base_p = get_model_base_power(container)
     service_name = PSY.get_name(service)
     reserve_variable = get_variable(container, U, T)
-    # Iterate only this service's slice of the merged `(service, device, time)` container
-    # so each service's reserve provision is priced exactly once. Devices in `skip_devices`
-    # are priced by their offer curve (add_reserve_offer_costs!), not the flat cost.
-    # TODO(services efficiency): this scans the whole merged container per service
-    # (O(entries) x #services). When the service's contributing device names are on hand, replace
-    # the `.data` scan with a keyed slice. Build-time-only; typing here is fine (U, T concrete).
-    for (key, var) in reserve_variable.data
-        key[1] == service_name || continue
-        key[2] in skip_devices && continue
-        add_to_objective_invariant_expression!(
-            container,
-            # possibly decouple
-            DEFAULT_RESERVE_COST / base_p * var,
-        )
+    # Index this service's slice of the merged `(service, device, time)` container directly by
+    # its contributing device names (every `(service, device, t)` key exists), so each provision
+    # is priced exactly once without scanning the whole container. Devices in `skip_devices` are
+    # priced by their offer curve (add_reserve_offer_costs!), not the flat cost.
+    cost = DEFAULT_RESERVE_COST / base_p
+    for name in contributing_names
+        name in skip_devices && continue
+        for t in get_time_steps(container)
+            add_to_objective_invariant_expression!(
+                container,
+                cost * reserve_variable[(service_name, name, t)],
+            )
+        end
     end
     return
 end
