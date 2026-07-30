@@ -208,7 +208,7 @@ function add_expressions!(
 } where {D <: PSY.Component}
     time_steps = get_time_steps(container)
     # One shared expression container per device type; every service of the type folds its
-    # reserve variable into it (reads use the default empty meta), so no per-service meta.
+    # reserve variable into it.
     add_expression_container!(container, T,
         D,
         PSY.get_name.(devices),
@@ -219,8 +219,8 @@ end
 
 """
 Merged cost-expression container for reserve services (e.g. `ProductionCostExpression` for ORDC):
-one dense `(service_name, time)` container per service type, empty meta - the same shape as the
-device `ProductionCostExpression`. Read/written by
+one dense `(service_name, time)` container per service type - the same shape as the device
+`ProductionCostExpression`. Read/written by
 `add_to_expression!(container, ::CostExpressions, cost, ::ReserveDemand*, t)`.
 """
 function add_expressions!(
