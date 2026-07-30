@@ -32,7 +32,7 @@ function add_parameters!(
 end
 
 # Per-type service time-series parameter: all services of the type share one container
-# keyed `(ParameterType, ServiceType)` with empty meta, axed by service name.
+# keyed `(ParameterType, ServiceType)`, axed by service name.
 function add_parameters!(
     container::OptimizationContainer,
     ::Type{T},
@@ -47,7 +47,7 @@ function add_parameters!(
 end
 
 # Per-type ORDC PWL cost params: all the type's services share one merged container
-# (names axis + tranche axis, empty meta).
+# (names axis + tranche axis).
 function add_parameters!(
     container::OptimizationContainer,
     ::Type{T},
@@ -558,11 +558,14 @@ function get_max_tranches(component::PSY.Component, piecewise_ts::IS.TimeSeriesK
     return IOM.get_max_tranches(data)
 end
 
-# Batch form (mirrors the device methods below): the tranche axis is sized to the
-# batch-wide maximum tranche count across all the type's ORDC services, and each service's
-# shorter per-hour curves are padded in `unwrap_for_param`. A covariant `Vector{<:...}`
-# signature avoids the invariant-`Vector` unification problem between the concrete service
-# instance type and the `ServiceModel`'s (possibly partially-applied) component type.
+# Batch form (mirrors the device methods below): size the tranche axis to the largest tranche
+# count across the type's ORDC services; each service's shorter per-hour curves are padded
+# later in `unwrap_for_param`.
+#
+# `services` is typed `Vector{<:ReserveDemandTimeSeriesCurve}` (covariant) rather than tied to
+# the `ServiceModel`'s component type, because that type can be partially applied (e.g.
+# `ReserveDemandCurve` without its reserve-direction parameter) and `Vector` is invariant - a
+# vector of the concrete service instances would not match `Vector{D}`.
 function calc_additional_axes(
     ::OptimizationContainer,
     ::Type{P},
@@ -593,8 +596,6 @@ function calc_additional_axes(
     return (IOM.make_tranche_axis(max_tranches + 1),)  # one more breakpoint than tranches
 end
 
-# Axes are sized to the batch-wide maximum tranche count; shorter per-hour curves
-# are padded in `unwrap_for_param`.
 function _device_offer_curve_ts_key(
     ::Type{
         <:Union{
@@ -623,6 +624,8 @@ function _device_offer_curve_ts_key(
     return IS.get_time_series_key(PSY.get_value_curve(get_input_offer_curves(op_cost)))
 end
 
+# Axes are sized to the batch-wide maximum tranche count; shorter per-hour curves
+# are padded in `unwrap_for_param`.
 function calc_additional_axes(
     ::OptimizationContainer,
     ::Type{T},
@@ -773,9 +776,9 @@ end
 # _add_parameters! for time-varying ORDC slope/breakpoint cost parameters
 #
 # Same cost-parameter machinery as the device path: batch all the type's ORDC services into
-# one merged container (names axis + tranche axis, empty meta), the tranche axis sized to the
-# batch-wide maximum via `calc_additional_axes`. Read back name-keyed (no meta) by the
-# delta-PWL machinery, matching the device offer path.
+# one merged container (names axis + tranche axis), the tranche axis sized to the batch-wide
+# maximum via `calc_additional_axes`. Read back name-keyed by the delta-PWL machinery,
+# matching the device offer path.
 #################################################################################
 
 function _add_parameters!(
