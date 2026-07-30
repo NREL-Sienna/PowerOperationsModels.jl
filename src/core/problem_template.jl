@@ -193,12 +193,8 @@ function _add_contributing_device_by_type!(
     if T ∈ incompatible_device_types || T ∉ modeled_devices
         return
     end
-    # Lazy `get!(f, dict, key)` defaults: the 3-arg `get!(dict, key, default)` builds
-    # `default` eagerly on every call, allocating a throwaway map/vector even on the common
-    # hit path (a service/type already present after its first device). Passing the type as `f`
-    # uses it as a zero-arg constructor - lazy (runs only on a miss), no anonymous closure. The
-    # map and vector here are inserted and then mutated (the `push!`), so - unlike the read-only
-    # accessor - they must be fresh instances and cannot share IOM's empty-map const.
+    # Register `contributing_device` in the nested `service_name -> device_type -> devices` map:
+    # get-or-create this service's inner map, then its device-type bucket, and append.
     inner = get!(
         Dict{DataType, Vector{<:IS.InfrastructureSystemsComponent}},
         get_contributing_devices_map(service_model),
