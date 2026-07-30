@@ -112,8 +112,8 @@ function add_reserve_variables!(
 }
     time_steps = get_time_steps(container)
     service_names = [PSY.get_name(s) for s in services]
-    # Merged 2D dense container keyed `(service_name, time)`, one per service type
-    # (empty meta). Dense so the ORDC delta-PWL constraint path can read its axes.
+    # Merged 2D dense container keyed `(service_name, time)`, one per service type.
+    # Dense so the ORDC delta-PWL constraint path can read its axes.
     variable = add_variable_container!(container, T, D, service_names, time_steps)
 
     jump_model = get_jump_model(container)
@@ -632,7 +632,7 @@ function process_stepwise_cost_reserve_parameters!(
     services::Vector{D},
 ) where {D <: PSY.ReserveDemandTimeSeriesCurve}
     # All services of a per-type model share the same offer direction; build the merged
-    # slope/breakpoint param containers once over all services (empty meta).
+    # slope/breakpoint param containers once over all services.
     dir = _reserve_offer_direction(first(services))
     for param in (IOM._breakpoint_param(dir), IOM._slope_param(dir))
         add_parameters!(container, param, services, model)
@@ -657,10 +657,9 @@ function add_reserves_proportional_cost!(
     # Iterate only this service's slice of the merged `(service, device, time)` container
     # so each service's reserve provision is priced exactly once. Devices in `skip_devices`
     # are priced by their offer curve (add_reserve_offer_costs!), not the flat cost.
-    # TODO(services efficiency, deferred B4): this scans the whole merged container per service
+    # TODO(services efficiency): this scans the whole merged container per service
     # (O(entries) x #services). When the service's contributing device names are on hand, replace
     # the `.data` scan with a keyed slice. Build-time-only; typing here is fine (U, T concrete).
-    # See .claude/plans/service-refactor-stability.md.
     for (key, var) in reserve_variable.data
         key[1] == service_name || continue
         key[2] in skip_devices && continue
