@@ -40,3 +40,14 @@ end
     @test POM.get_initial_parameter_value(ReactivePowerOffsetParameter(), d, em) == 0.0
     @test POM.get_parameter_multiplier(AvailableStatusParameter(), d, em) == 1.0
 end
+
+@testset "Template-level event attachment" begin
+    template = PowerOperationsProblemTemplate(CopperPlateNetworkModel)
+    @test isempty(get_event_models(template))
+    em = EventModel(PSY.FixedForcedOutage, ContinuousCondition())
+    set_event_model!(template, em)
+    @test length(get_event_models(template)) == 1
+    @test get_event_models(template)[1] === em
+    # Same event model instance can't be attached twice
+    @test_throws ErrorException set_event_model!(template, em)
+end

@@ -422,6 +422,7 @@ export get_event_type
 export get_event_condition
 export get_attribute_device_map
 export set_event_model!
+export get_event_models
 export supports_events
 export AvailableStatusParameter
 export ActivePowerOffsetParameter

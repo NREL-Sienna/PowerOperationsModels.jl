@@ -16,6 +16,7 @@ mutable struct PowerOperationsProblemTemplate <: IOM.AbstractProblemTemplate
     devices::DevicesModelContainer
     branches::BranchModelContainer
     services::ServicesModelContainer
+    events::Vector{IOM.AbstractEventModel}
     function PowerOperationsProblemTemplate(
         network::NetworkModel{T},
     ) where {T <: AbstractNetworkModel}
@@ -24,6 +25,7 @@ mutable struct PowerOperationsProblemTemplate <: IOM.AbstractProblemTemplate
             DevicesModelContainer(),
             BranchModelContainer(),
             ServicesModelContainer(),
+            Vector{IOM.AbstractEventModel}(),
         )
     end
 end
@@ -53,6 +55,11 @@ get_network_formulation(template::PowerOperationsProblemTemplate) =
     get_network_formulation(get_network_model(template))
 get_hvdc_network_model(template::PowerOperationsProblemTemplate) =
     template.network_model.hvdc_network_model
+
+"""
+Return the outage-event models attached to `template` via `set_event_model!`.
+"""
+get_event_models(template::PowerOperationsProblemTemplate) = template.events
 
 # Returns `Vector{Type}`, not `Vector{DataType}`: a service component type can be a
 # UnionAll (e.g. PSY6 parameterized `ReserveDemandCurve{ReserveUp}` on a unit-system
@@ -159,6 +166,24 @@ function set_device_model!(
     model::DeviceModel{D},
 ) where {D <: PSY.Branch}
     set_model!(template.branches, model)
+    return
+end
+
+"""
+    set_event_model!(template::PowerOperationsProblemTemplate, event_model)
+
+Attach an outage-event model to the template. At build time the event is validated,
+its `attribute_device_map` is populated from the system's supplemental attributes, and
+it is distributed to every matching `DeviceModel`.
+"""
+function IOM.set_event_model!(
+    template::PowerOperationsProblemTemplate,
+    event_model::IOM.AbstractEventModel,
+)
+    if any(e -> e === event_model, template.events)
+        error("This event model is already attached to the template")
+    end
+    push!(template.events, event_model)
     return
 end
 
