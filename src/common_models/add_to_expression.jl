@@ -2021,9 +2021,6 @@ function add_to_expression!(
 }
     expression = get_expression(container, InterfaceTotalFlow, PSY.TransmissionInterface)
     service_name = PSY.get_name(service)
-    # DELETE-AFTER-REVIEW: reviewer context on the container change; remove once the PR is approved.
-    # Merged slack container keyed `(interface_name, time)`; read the whole container and index
-    # this interface's slice (was a per-service `meta = service_name` container).
     variable = get_variable(container, T, PSY.TransmissionInterface)
     time_steps = get_time_steps(container)
     for t in time_steps
@@ -2977,8 +2974,9 @@ function add_to_expression!(
     return
 end
 
-# Merged dense `(service_name, time)` ORDC cost-expression container (empty meta), read/written
-# by service name - same shape as the device `ProductionCostExpression` above.
+# Add a reserve service's ORDC cost term into the merged dense `(service_name, time)`
+# cost-expression container at this service/time slot (a no-op if the container was not built).
+# Same shape as the device `ProductionCostExpression` path above.
 function add_to_expression!(
     container::OptimizationContainer,
     ::Type{S},
