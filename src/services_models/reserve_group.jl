@@ -74,7 +74,7 @@ end
 # TODO(services efficiency): this scans the contributing service's entire merged
 # `(service_name, device_name, time)` container per `(group, t)`. Once the group's contributing
 # device names are threaded through, replace the `.data` scan with a keyed slice to drop the
-# O(entries) cost. See .claude/plans/service-refactor-stability.md (deferred B4).
+# O(entries) cost.
 function _accumulate_group_reserve!(
     resource_expression::JuMP.GenericAffExpr,
     reserve_variable::SparseAxisArray,
