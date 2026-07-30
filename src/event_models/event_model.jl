@@ -68,7 +68,12 @@ end
 get_variable_type(c::StateVariableValueCondition) = c.variable_type
 get_device_type(c::StateVariableValueCondition) = c.device_type
 get_device_name(c::StateVariableValueCondition) = c.device_name
-get_value(c::StateVariableValueCondition) = c.value
+# Qualified: `get_value` is IOM's generic (`get_value(::InitialCondition)`); a bare
+# definition here would silently create a separate local `get_value` in POM's namespace
+# (since it was only ever `using`'d, not `import`ed) and shadow IOM's method for every
+# other unqualified `get_value(ic)` call across the package (storage, hybrid, thermal
+# generation, AGC initial-condition consumers).
+IOM.get_value(c::StateVariableValueCondition) = c.value
 
 """
     DiscreteEventCondition(condition_function::Function)
