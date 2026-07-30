@@ -48,21 +48,18 @@ function add_constraints!(
     # Dense 2D group-requirement container keyed `[group_name, time]`, created once per type
     # in `construct_service!`; fill this group's row.
     constraint = get_constraint(container, RequirementConstraint, SR)
-    # Each contributing reserve's provision comes from its type's merged
-    # `(service_name, device_name, time)` container; sum the contributing service's slice.
-    contributing = [
-        (PSY.get_name(r), get_variable(container, ActivePowerReserveVariable, typeof(r)))
-        for r in contributing_services
-    ]
-
     requirement = _get_requirement(service)
+
+    # Index each contributing reserve's provision from its type's merged
+    # `(service_name, device_name, time)` container, keyed `(service_name, t)`, in a single pass.
+    member_vars = _group_member_variables(container, contributing_services)
+
     for t in time_steps
         resource_expression = JuMP.GenericAffExpr{Float64, JuMP.VariableRef}()
-        for (r_name, reserve_variable) in contributing
-            # Function barrier: `contributing` holds abstractly-typed variable containers, so this
-            # call specializes on `reserve_variable`'s concrete type; the `add_to_expression!`
-            # inside is statically dispatched instead of once-per-entry dynamic dispatch.
-            _accumulate_group_reserve!(resource_expression, reserve_variable, r_name, t)
+        for r in contributing_services
+            for var in get(member_vars, (PSY.get_name(r), t), JuMP.VariableRef[])
+                JuMP.add_to_expression!(resource_expression, var)
+            end
         end
         constraint[service_name, t] =
             JuMP.@constraint(container.JuMPmodel, resource_expression >= requirement)
@@ -71,19 +68,26 @@ function add_constraints!(
     return
 end
 
-# TODO(services efficiency): this scans the contributing service's entire merged
-# `(service_name, device_name, time)` container per `(group, t)`. Once the group's contributing
-# device names are threaded through, replace the `.data` scan with a keyed slice to drop the
-# O(entries) cost.
-function _accumulate_group_reserve!(
-    resource_expression::JuMP.GenericAffExpr,
-    reserve_variable::SparseAxisArray,
-    r_name::String,
-    t::Int,
+# Bucket the group's contributing reserve variables by `(service_name, time)` in one pass over
+# each contributing service's merged `(service_name, device_name, time)` container, so the
+# constraint loop above does keyed lookups instead of re-scanning the whole container per
+# `(group, t)`. Same-type services share one merged container, so each container is scanned once.
+function _group_member_variables(
+    container::OptimizationContainer,
+    contributing_services::Vector{<:PSY.Service},
 )
-    for (key, var) in reserve_variable.data
-        key[1] == r_name && key[3] == t || continue
-        JuMP.add_to_expression!(resource_expression, var)
+    member_names = Set(PSY.get_name(r) for r in contributing_services)
+    index = Dict{Tuple{String, Int}, Vector{JuMP.VariableRef}}()
+    scanned = Set{DataType}()
+    for r in contributing_services
+        rtype = typeof(r)
+        rtype in scanned && continue
+        push!(scanned, rtype)
+        reserve_variable = get_variable(container, ActivePowerReserveVariable, rtype)
+        for (key, var) in reserve_variable.data
+            key[1] in member_names || continue
+            push!(get!(Vector{JuMP.VariableRef}, index, (key[1], key[3])), var)
+        end
     end
-    return
+    return index
 end
