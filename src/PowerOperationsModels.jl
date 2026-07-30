@@ -270,12 +270,22 @@ include("common_models/market_bid_plumbing.jl")
 
 # Initial Conditions
 include("initial_conditions/add_initial_condition.jl")
-include("initial_conditions/device_initial_conditions.jl")
 include("initial_conditions/update_initial_conditions.jl")
 
 # Device Models - Static Injectors
-include("static_injector_models/thermal_generation.jl")
-include("static_injector_models/thermalgeneration_constructor.jl")
+# Thermal: `family.jl` holds everything shared across the family; each remaining file
+# holds one formulation's behavior. Order is arbitrary — the structs are declared in
+# `core/formulations.jl`, so no file here depends on another.
+include("static_injector_models/thermal/family.jl")
+include("static_injector_models/thermal/thermal_basic_compact_unit_commitment.jl")
+include("static_injector_models/thermal/thermal_basic_dispatch.jl")
+include("static_injector_models/thermal/thermal_basic_unit_commitment.jl")
+include("static_injector_models/thermal/thermal_compact_dispatch.jl")
+include("static_injector_models/thermal/thermal_compact_unit_commitment.jl")
+include("static_injector_models/thermal/thermal_dispatch_no_min.jl")
+include("static_injector_models/thermal/thermal_multi_start_unit_commitment.jl")
+include("static_injector_models/thermal/thermal_standard_dispatch.jl")
+include("static_injector_models/thermal/thermal_standard_unit_commitment.jl")
 include("static_injector_models/renewable_generation.jl")
 include("static_injector_models/renewablegeneration_constructor.jl")
 include("static_injector_models/electric_loads.jl")

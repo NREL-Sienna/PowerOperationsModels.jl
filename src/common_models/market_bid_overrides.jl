@@ -57,39 +57,6 @@ function proportional_cost(
     return param_arr[name, t] * param_mult[name, t]
 end
 
-#################################################################################
-# Section 2: _consider_parameter — compact commitment startup
-# Compact/multi-start formulations have HotStart/WarmStart/ColdStart variables
-# in addition to the normal StartVariable.
-#################################################################################
-
-_consider_parameter(
-    ::Type{StartupCostParameter},
-    container::OptimizationContainer,
-    ::DeviceModel{T, D},
-) where {T, D <: AbstractCompactUnitCommitment} =
-    any(has_container_key.([container], [StartVariable, MULTI_START_VARIABLES...], [T]))
-
-#################################################################################
-# Section 3: Device-specific validate_occ_component
-#################################################################################
-
-# ThermalMultiStart: accept NTuple{3, Float64} and PSY.StartUpStages without warning
-function IOM.validate_occ_component(
-    ::Type{StartupCostParameter},
-    device::PSY.ThermalMultiStart,
-)
-    startup = PSY.get_start_up(PSY.get_operation_cost(device))
-    # TupleTimeSeries{PSY.StartUpStages} guarantees NTuple{3, Float64} values at construction
-    startup isa IS.TupleTimeSeries && return
-    _validate_eltype(
-        Union{Float64, NTuple{3, Float64}, PSY.StartUpStages},
-        device,
-        startup,
-        " startup cost",
-    )
-end
-
 # Renewable / Storage: warn on nonzero startup, shutdown, and no-load costs
 
 function IOM.validate_occ_component(

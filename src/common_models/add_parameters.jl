@@ -487,12 +487,6 @@ _get_expected_time_series_eltype(::Type{StartupCostParameter}) = NTuple{3, Float
 
 _param_to_vars(::Type{FuelCostParameter}, ::Type{<:AbstractDeviceFormulation}) =
     (ActivePowerVariable,)
-_param_to_vars(::Type{StartupCostParameter}, ::Type{<:AbstractThermalFormulation}) =
-    (StartVariable,)
-_param_to_vars(::Type{StartupCostParameter}, ::Type{ThermalMultiStartUnitCommitment}) =
-    MULTI_START_VARIABLES
-_param_to_vars(::Type{ShutdownCostParameter}, ::Type{<:AbstractThermalFormulation}) =
-    (StopVariable,)
 _param_to_vars(::Type{<:AbstractCostAtMinParameter}, ::Type{<:AbstractDeviceFormulation}) =
     (OnVariable,)
 _param_to_vars(
@@ -875,49 +869,6 @@ function _add_parameters!(
     parent_mult = IOM.get_multiplier_array_data(parameter_container)
     parent_param = IOM.get_parameter_array_data(parameter_container)
     for (i, d) in enumerate(devices)
-        IOM._set_multiplier_at!(
-            parent_mult,
-            get_parameter_multiplier(T, d, W),
-            i,
-        )
-        if get_variable_warm_start_value(U, d, W) === nothing
-            inital_parameter_value = 0.0
-        else
-            inital_parameter_value = get_variable_warm_start_value(U, d, W)
-        end
-        for t in time_steps
-            IOM._set_parameter_at!(parent_param, jump_model, inital_parameter_value, i, t)
-        end
-    end
-    return
-end
-
-#################################################################################
-# _add_parameters! for OnStatusParameter (ThermalGen-specific)
-#################################################################################
-
-function _add_parameters!(
-    container::OptimizationContainer,
-    ::Type{T},
-    key::VariableKey{U, D},
-    model::DeviceModel{D, W},
-    devices::V,
-) where {
-    T <: OnStatusParameter,
-    U <: OnVariable,
-    V <: Union{Vector{D}, IS.FlattenIteratorWrapper{D}},
-    W <: AbstractThermalFormulation,
-} where {D <: PSY.ThermalGen}
-    @debug "adding" T D U _group = IOM.LOG_GROUP_OPTIMIZATION_CONTAINER
-    names = [PSY.get_name(device) for device in devices if !PSY.get_must_run(device)]
-    time_steps = get_time_steps(container)
-    parameter_container = add_param_container!(container, T, D, key, names, time_steps)
-    jump_model = get_jump_model(container)
-    parent_mult = IOM.get_multiplier_array_data(parameter_container)
-    parent_param = IOM.get_parameter_array_data(parameter_container)
-    # Iterate the same filtered view used to construct `names` so enumeration index
-    # `i` lines up with the parameter container's first axis.
-    for (i, d) in enumerate(Iterators.filter(d -> !PSY.get_must_run(d), devices))
         IOM._set_multiplier_at!(
             parent_mult,
             get_parameter_multiplier(T, d, W),
