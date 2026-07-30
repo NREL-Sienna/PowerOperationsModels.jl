@@ -1239,6 +1239,164 @@ end
     @test solve!(model) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
 end
 
+@testset "GroupReserve sums across multiple contributing services" begin
+    # A group over two reserves must sum BOTH services' slices of the merged
+    # `(service, device, time)` container - the multi-service case the single-service test above
+    # does not exercise.
+    sys = deepcopy(PSB.build_system(PSITestSystems, "c_sys5_uc"; add_reserves = true))
+    r1 = PSY.get_component(VariableReserve{ReserveUp}, sys, "Reserve1")
+    r11 = PSY.get_component(VariableReserve{ReserveUp}, sys, "Reserve11")
+    group = ConstantReserveGroup{ReserveUp}(;
+        name = "group_up",
+        available = true,
+        requirement = 0.0,
+    )
+    add_service!(sys, group, Service[r1, r11])
+
+    template = get_thermal_dispatch_template_network(CopperPlateNetworkModel)
+    set_service_model!(template, ServiceModel(VariableReserve{ReserveUp}, RangeReserve))
+    set_service_model!(
+        template,
+        ServiceModel(ConstantReserveGroup{ReserveUp}, GroupReserve),
+    )
+    model = DecisionModel(template, sys; optimizer = HiGHS_optimizer)
+    @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
+          IOM.ModelBuildStatus.BUILT
+
+    container = get_optimization_container(model)
+    rv = IOM.get_variable(container, ActivePowerReserveVariable, VariableReserve{ReserveUp})
+    con = IOM.get_constraint(
+        container,
+        RequirementConstraint,
+        ConstantReserveGroup{ReserveUp},
+    )
+    c1 = con["group_up", 1]
+    # Both members' device variables enter the group sum with coefficient 1 at t=1.
+    seen_r1 = 0
+    seen_r11 = 0
+    for (key, var) in rv.data
+        key[3] == 1 || continue
+        @test JuMP.normalized_coefficient(c1, var) == 1.0
+        key[1] == "Reserve1" && (seen_r1 += 1)
+        key[1] == "Reserve11" && (seen_r11 += 1)
+    end
+    @test seen_r1 > 0 && seen_r11 > 0
+    @test solve!(model) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
+end
+
+@testset "GroupReserve builds and solves for ReserveDown" begin
+    # Direction parity: a ConstantReserveGroup{ReserveDown} over a down reserve.
+    sys = deepcopy(PSB.build_system(PSITestSystems, "c_sys5_uc"; add_reserves = true))
+    r2 = PSY.get_component(VariableReserve{ReserveDown}, sys, "Reserve2")
+    group = ConstantReserveGroup{ReserveDown}(;
+        name = "group_dn",
+        available = true,
+        requirement = 0.0,
+    )
+    add_service!(sys, group, Service[r2])
+
+    template = get_thermal_dispatch_template_network(CopperPlateNetworkModel)
+    set_service_model!(template, ServiceModel(VariableReserve{ReserveDown}, RangeReserve))
+    set_service_model!(
+        template,
+        ServiceModel(ConstantReserveGroup{ReserveDown}, GroupReserve),
+    )
+    model = DecisionModel(template, sys; optimizer = HiGHS_optimizer)
+    @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
+          IOM.ModelBuildStatus.BUILT
+    container = get_optimization_container(model)
+    @test IOM.has_container_key(
+        container, RequirementConstraint, ConstantReserveGroup{ReserveDown})
+    con = IOM.get_constraint(
+        container, RequirementConstraint, ConstantReserveGroup{ReserveDown})
+    @test "group_dn" in axes(con)[1]
+    @test solve!(model) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
+end
+
+@testset "GroupReserve requirement is enforced in the solution" begin
+    # A positive group requirement is a real lower bound on the summed provision of its
+    # contributing services. Solve and confirm the sum meets the requirement at every step.
+    req = 0.5
+    sys = deepcopy(PSB.build_system(PSITestSystems, "c_sys5_uc"; add_reserves = true))
+    r1 = PSY.get_component(VariableReserve{ReserveUp}, sys, "Reserve1")
+    group = ConstantReserveGroup{ReserveUp}(;
+        name = "group_up",
+        available = true,
+        requirement = req,
+    )
+    add_service!(sys, group, Service[r1])
+
+    template = get_thermal_dispatch_template_network(CopperPlateNetworkModel)
+    set_service_model!(template, ServiceModel(VariableReserve{ReserveUp}, RangeReserve))
+    set_service_model!(
+        template,
+        ServiceModel(ConstantReserveGroup{ReserveUp}, GroupReserve),
+    )
+    model = DecisionModel(template, sys; optimizer = HiGHS_optimizer)
+    @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
+          IOM.ModelBuildStatus.BUILT
+    @test solve!(model) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
+
+    container = get_optimization_container(model)
+    rv = IOM.get_variable(container, ActivePowerReserveVariable, VariableReserve{ReserveUp})
+    for t in IOM.get_time_steps(container)
+        provided =
+            sum(
+                JuMP.value(var) for
+                (key, var) in rv.data if key[1] == "Reserve1" && key[3] == t
+            )
+        @test provided >= req - 1e-4
+    end
+end
+
+@testset "GroupReserve build fails when a contributing service is not modeled" begin
+    # `check_activeservice_variables` (ArgumentConstructStage) requires each contributing service
+    # to be modeled first. With no ServiceModel for the member reserve, its
+    # ActivePowerReserveVariable is never created, so the build fails.
+    sys = deepcopy(PSB.build_system(PSITestSystems, "c_sys5_uc"; add_reserves = true))
+    r1 = PSY.get_component(VariableReserve{ReserveUp}, sys, "Reserve1")
+    group = ConstantReserveGroup{ReserveUp}(;
+        name = "group_up",
+        available = true,
+        requirement = 0.0,
+    )
+    add_service!(sys, group, Service[r1])
+
+    template = get_thermal_dispatch_template_network(CopperPlateNetworkModel)
+    # Deliberately omit `ServiceModel(VariableReserve{ReserveUp}, RangeReserve)`.
+    set_service_model!(
+        template,
+        ServiceModel(ConstantReserveGroup{ReserveUp}, GroupReserve),
+    )
+    model = DecisionModel(template, sys; optimizer = HiGHS_optimizer)
+    @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
+          IOM.ModelBuildStatus.FAILED
+end
+
+@testset "GroupReserve is constructed last regardless of template order" begin
+    # The group's ServiceModel is added before its member's; construction still defers the group
+    # to last (so the member's ActivePowerReserveVariable exists when the group reads it).
+    sys = deepcopy(PSB.build_system(PSITestSystems, "c_sys5_uc"; add_reserves = true))
+    r1 = PSY.get_component(VariableReserve{ReserveUp}, sys, "Reserve1")
+    group = ConstantReserveGroup{ReserveUp}(;
+        name = "group_up",
+        available = true,
+        requirement = 0.0,
+    )
+    add_service!(sys, group, Service[r1])
+
+    template = get_thermal_dispatch_template_network(CopperPlateNetworkModel)
+    set_service_model!(
+        template,
+        ServiceModel(ConstantReserveGroup{ReserveUp}, GroupReserve),
+    )
+    set_service_model!(template, ServiceModel(VariableReserve{ReserveUp}, RangeReserve))
+    model = DecisionModel(template, sys; optimizer = HiGHS_optimizer)
+    @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
+          IOM.ModelBuildStatus.BUILT
+    @test solve!(model) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
+end
+
 # NOT PORTED — blocked by POM source gaps (these PSI testsets need src changes, out of
 # scope for a test-only port):
 #  - "Test Reserves with Feedforwards": the concrete feedforward types
