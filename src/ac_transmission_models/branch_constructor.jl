@@ -2556,9 +2556,9 @@ function _get_branch_map(network_model::NetworkModel)
             area_from, area_to = _get_area_from_to(reduction_entry)
             if area_from != area_to
                 branch_typed_dict = get!(
+                    Dict{DataType, Vector{String}},
                     inter_area_branch_map,
                     (PSY.get_name(area_from), PSY.get_name(area_to)),
-                    Dict{DataType, Vector{String}}(),
                 )
                 _add_to_branch_map!(branch_typed_dict, reduction_entry, name)
             end
@@ -2706,9 +2706,9 @@ function _add_hvdc_inter_area_branches_of_type!(
         area_from, area_to = _get_area_from_to(device)
         if area_from != area_to
             branch_typed_dict = get!(
+                Dict{DataType, Vector{String}},
                 inter_area_branch_map,
                 (PSY.get_name(area_from), PSY.get_name(area_to)),
-                Dict{DataType, Vector{String}}(),
             )
             _add_to_branch_map!(branch_typed_dict, device, PSY.get_name(device))
         end

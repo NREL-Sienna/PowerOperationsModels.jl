@@ -439,7 +439,7 @@ function _check_voltage_regulation_conflicts!(
     for device_model in
         Iterators.flatten((values(template.devices), values(template.branches)))
         for (dev_name, bus) in _voltage_regulated_buses(device_model, sys)
-            push!(get!(bus_regulators, PSY.get_number(bus), String[]), dev_name)
+            push!(get!(Vector{String}, bus_regulators, PSY.get_number(bus)), dev_name)
         end
     end
     for (bus_no, regulators) in bus_regulators
@@ -499,7 +499,7 @@ function _build_device_model_outages!(
         per_type, uncovered =
             _monitored_components_by_modeled_type(outage, outage_uuid, sys, modeled_types)
         for comp_type in uncovered
-            push!(get!(uncovered_types, comp_type, Set{Base.UUID}()), outage_uuid)
+            push!(get!(Set{Base.UUID}, uncovered_types, comp_type), outage_uuid)
         end
         isempty(per_type) && continue
 
@@ -569,7 +569,7 @@ function _monitored_components_by_modeled_type(
         end
         comp_type = typeof(component)
         if comp_type <: PSY.ACTransmission && comp_type in modeled_types
-            push!(get!(per_type, comp_type, Set{String}()), PSY.get_name(component))
+            push!(get!(Set{String}, per_type, comp_type), PSY.get_name(component))
         else
             push!(uncovered, comp_type)
         end
