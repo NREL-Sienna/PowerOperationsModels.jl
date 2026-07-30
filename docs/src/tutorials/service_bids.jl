@@ -77,7 +77,9 @@ for (i, g) in enumerate(contributors)
     ## Keep the unit's own marginal energy cost as its energy offer: read the proportional
     ## (linear) term of its existing variable cost before we replace the operation cost.
     energy_slope =
-        PSY.get_proportional_term(PSY.get_value_curve(PSY.get_variable(get_operation_cost(g))))
+        PSY.get_proportional_term(
+            PSY.get_value_curve(PSY.get_variable(get_operation_cost(g))),
+        )
     ## Give the unit a MarketBidCost carrying that energy offer ...
     set_operation_cost!(
         g,
