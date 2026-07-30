@@ -28,6 +28,11 @@ function add_device_reserve_offers!(
     base_slope = Dict{String, Float64}()
     for (i, g) in enumerate(contributors)
         pmax = PSY.get_max_active_power(g, PSY.NU)
+        # Keep the unit's own marginal energy cost: read the proportional (linear) term of its
+        # existing variable cost before overwriting, and use it as the single-block energy offer.
+        energy_slope = PSY.get_proportional_term(
+            PSY.get_value_curve(PSY.get_variable(get_operation_cost(g))),
+        )
         set_operation_cost!(
             g,
             MarketBidCost(;
@@ -35,7 +40,7 @@ function add_device_reserve_offers!(
                 start_up = (hot = 0.0, warm = 0.0, cold = 0.0),
                 shut_down = LinearCurve(0.0),
                 incremental_offer_curves = make_market_bid_curve(
-                    [0.0, pmax], [20.0], 0.0; power_units = IS.NaturalUnit(),
+                    [0.0, pmax], [energy_slope], 0.0; power_units = IS.NaturalUnit(),
                 ),
             ),
         )
