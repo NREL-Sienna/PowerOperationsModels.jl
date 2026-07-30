@@ -363,7 +363,7 @@ function add_pwl_term_delta!(
     time_steps = get_time_steps(container)
     pwl_cost_expressions = Vector{JuMP.AffExpr}(undef, time_steps[end])
     for t in time_steps
-        # Merged (name-keyed, empty meta) slope/breakpoint params, same as the device offer path.
+        # Merged (name-keyed) slope/breakpoint params, same as the device offer path.
         break_points, slopes = IOM._get_pwl_data(dir, container, component, t)
         pwl_vars = add_pwl_variables_delta!(
             container,
@@ -374,10 +374,6 @@ function add_pwl_term_delta!(
             length(slopes);
             upper_bound = Inf,
         )
-        # DELETE-AFTER-REVIEW: reviewer context on the container change; remove once the PR is approved.
-        # ServiceRequirementVariable is now a merged dense container keyed
-        # `(service_name, time)` with empty meta, so the linking constraint reads it
-        # without a per-service meta and indexes by the service name.
         add_pwl_constraint_delta!(
             container,
             component,
