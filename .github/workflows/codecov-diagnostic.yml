@@ -1,0 +1,100 @@
+name: Codecov Upload Diagnostic
+
+# Temporary probe: isolates why Codecov rejects uploads with "Repository not found".
+# Uploads a one-line synthetic lcov report so each variant finishes in seconds.
+# Delete this branch once a real upload is confirmed on main.
+#
+# Round 1 (run 30517251589) — all against Sienna-Platform/PowerOperationsModels.jl:
+#   token + explicit slug   -> 404 Repository not found
+#   token + auto slug       -> 404 Repository not found
+#   token + lowercase slug  -> 404 Repository not found   (rules out slug casing)
+#   tokenless               -> 400 Token required - not valid tokenless upload
+#   OIDC                    -> 404 Repository not found
+#
+# Round 2 (run 30517366509):
+#   action v7 + token       -> 404 Repository not found   (rules out action version)
+#   action v7 + OIDC        -> 404 Repository not found
+#   legacy v4 endpoint      -> 404 Repository not found (fails at create-commit)
+#   token + sibling slug    -> 404 Repository not found   (token reaches NO repo in the org)
+#
+# Round 3 (run 30517453474):
+#   token + NREL-Sienna slug -> HTTP 200 ACCEPTED. The secret holds the pre-transfer token.
+#
+# Round 4: Codecov org setting "Token authentication for public repositories" was switched
+# to "Not required". Retest tokenless. A supplied token takes precedence over tokenless
+# auth, so the point of variant N is to show whether the stale token must be REMOVED from
+# the workflow rather than merely ignored.
+
+on:
+  push:
+    branches:
+      - jd/codecov-diagnostic
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    name: probe-${{ matrix.id }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        id:
+          - tokenless-explicit-slug
+          - tokenless-auto-slug
+          - stale-token-still-passed
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Write synthetic lcov report
+        run: |
+          {
+            printf 'TN:\n'
+            printf 'SF:src/PowerOperationsModels.jl\n'
+            printf 'DA:1,1\n'
+            printf 'LF:1\n'
+            printf 'LH:1\n'
+            printf 'end_of_record\n'
+          } > lcov.info
+
+      - name: L. tokenless + explicit slug
+        if: matrix.id == 'tokenless-explicit-slug'
+        uses: codecov/codecov-action@v5
+        with:
+          files: ./lcov.info
+          disable_search: true
+          flags: probe-l
+          name: probe-l
+          slug: ${{ github.repository }}
+          fail_ci_if_error: false
+          verbose: true
+
+      - name: M. tokenless + auto-detected slug
+        if: matrix.id == 'tokenless-auto-slug'
+        uses: codecov/codecov-action@v5
+        with:
+          files: ./lcov.info
+          disable_search: true
+          flags: probe-m
+          name: probe-m
+          fail_ci_if_error: false
+          verbose: true
+
+      # Does the stale token still poison the upload now that tokenless is allowed?
+      - name: N. stale token still supplied
+        if: matrix.id == 'stale-token-still-passed'
+        uses: codecov/codecov-action@v5
+        with:
+          files: ./lcov.info
+          disable_search: true
+          flags: probe-n
+          name: probe-n
+          slug: ${{ github.repository }}
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false
+          verbose: true
