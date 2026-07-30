@@ -754,8 +754,6 @@ function add_to_expression!(
     W <: AbstractReservesFormulation,
 }
     s_name = PSY.get_name(service)
-    # DELETE-AFTER-REVIEW: reviewer context on the container change; remove once the PR is approved.
-    # System reserve variable is now merged, keyed `(service, device, time)`.
     variable = get_variable(container, U, V)
     for d in devices
         name = PSY.get_name(d)
