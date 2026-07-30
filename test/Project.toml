@@ -43,13 +43,12 @@ UUIDs = "cf7118a7-6976-5b1a-9a39-7adc72f591a4"
 # needs its own entry (and InfraStore must be a direct dependency for the source
 # to apply). Drop the dep + entry once InfraStore is registered.
 [sources]
-InfrastructureOptimizationModels = {rev = "main", url = "https://github.com/Sienna-Platform/InfrastructureOptimizationModels.jl"}
 # psy6: disabled pending transformer refactor
 # PowerFlows = {rev = "psy6", url = "https://github.com/Sienna-Platform/PowerFlows.jl"}
 InfraStore = {path = "../../../infrastore/julia/InfraStore.jl"}
-InfrastructureSystems = {url = "https://github.com/Sienna-Platform/InfrastructureSystems.jl", rev = "feat/rust-time-series-store"}
+InfrastructureSystems = {path = "../../IS3.jl"}
 PowerSystems = {url = "https://github.com/Sienna-Platform/PowerSystems.jl", rev = "feat/rust-time-series-store"}
-InfrastructureOptimizationModels = {url = "https://github.com/Sienna-Platform/InfrastructureOptimizationModels.jl", rev = "feat/rust-time-series-store"}
+InfrastructureOptimizationModels = {path = "../../InfrastructureOptimizationModels.jl"}
 PowerNetworkMatrices = {rev = "psy6", url = "https://github.com/Sienna-Platform/PowerNetworkMatrices.jl"}
 PowerSystemCaseBuilder = {rev = "feat/rust-time-series-store", url = "https://github.com/Sienna-Platform/PowerSystemCaseBuilder.jl"}
 

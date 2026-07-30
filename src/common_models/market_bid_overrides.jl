@@ -85,7 +85,11 @@ function IOM.validate_occ_component(
     if startup isa IS.TimeSeriesKey
         if eltype(typeof(startup)) != NTuple{3, Float64}
             # TODO: should this be a helper in IOM?
-            throw(ArgumentError("Expected element type NTuple{3, Float64} but got $(typeof(startup))"))
+            throw(
+                ArgumentError(
+                    "Expected element type NTuple{3, Float64} but got $(typeof(startup))",
+                ),
+            )
         end
         return
     end
