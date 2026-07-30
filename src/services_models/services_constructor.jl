@@ -5,13 +5,7 @@
 # constraint containers are merged per `(entry type, service type)`; each service fills its
 # own slice. `GroupReserve` is deferred to last.
 #
-# TODO(services stability, deferred B1): `get_contributing_devices(model, service_name)` (used by
-# the `construct_service!` methods below) flattens across device types, so its element type widens
-# to an abstract ancestor when a service has more than one contributing device type; the downstream
-# builders then dynamic-dispatch per device. Iterate `get_contributing_devices_map(model, name)`
-# (`Dict{DataType, Vector}`, concretely-typed groups) and call the builders once per homogeneous
-# group instead. Build-time-only; this is the POM twin of the deferred IOM per-type-group barrier.
-# See .claude/plans/service-refactor-stability.md.
+# TODO(services stability): See issue #216.
 
 # Collect the type's available services that have at least one modeled contributing device.
 # The concrete element type keeps `add_parameters!` / `add_service_variables!` dispatch happy.
