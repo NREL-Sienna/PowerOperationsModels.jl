@@ -714,9 +714,24 @@ function _build_device_model_events!(
                     continue
                 end
                 key = EventKey(event_type, device_type)
-                if !haskey(IOM.get_events(device_model), key)
-                    IOM.set_event_model!(device_model, key, event_model)
+                existing_events = IOM.get_events(device_model)
+                if haskey(existing_events, key)
+                    # The same event model can legitimately be discovered again for this
+                    # device type (e.g. a second outage attribute of the same contingency
+                    # type attached to another device of the same type); re-registering it
+                    # is a no-op. A *different* event model targeting the same
+                    # (contingency type, device type) pair can't both be honored — the
+                    # device model has one slot per key — so that case must fail loudly
+                    # instead of silently dropping the second registration.
+                    existing_events[key] === event_model && continue
+                    error(
+                        "Two distinct event models of contingency type $event_type both \
+                         target device type $device_type. Only one event model per \
+                         (contingency type, device type) pair is supported. Merge the \
+                         event models or remove one from the template.",
+                    )
                 end
+                IOM.set_event_model!(device_model, key, event_model)
             end
         end
     end
