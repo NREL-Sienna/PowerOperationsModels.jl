@@ -16,12 +16,11 @@
     set_hvdc_network_model!(template_uc, TransportHVDCNetworkModel)
     model = DecisionModel(
         template_uc, sys_5;
-        name = "UC", optimizer = HiGHS_optimizer, horizon = Hour(2),
+        name = "UC", optimizer = HiGHS_optimizer, horizon = _SHORT_HORIZON,
     )
     @test build!(model; output_dir = mktempdir()) == IOM.ModelBuildStatus.BUILT
     # StaticBranch under DCP carries flow as the BThetaBranchFlow expression (no
     # FlowActivePowerVariable, no Ohm's-law equality): -24 variables and -24 equalities.
-    # Counts are for a 2-step horizon (per-step scaling confirmed against 24-step baseline).
     moi_tests(model, 114, 24, 104, 44, 52, true)
     @test solve!(model) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
 
@@ -43,7 +42,7 @@
     set_hvdc_network_model!(template_uc, TransportHVDCNetworkModel)
     model = DecisionModel(
         template_uc, sys_5;
-        name = "UC", optimizer = HiGHS_optimizer, horizon = Hour(2),
+        name = "UC", optimizer = HiGHS_optimizer, horizon = _SHORT_HORIZON,
     )
     @test build!(model; output_dir = mktempdir()) == IOM.ModelBuildStatus.BUILT
     moi_tests(model, 94, 0, 104, 44, 32, true)
@@ -89,7 +88,7 @@ end
 
 @testset "HVDC System with Transport Network" begin
     sys = _generate_test_hvdc_sys()
-    template = PowerOperationsProblemTemplate()
+    template = PowerOperationsProblemTemplate(NetworkModel(DCPNetworkModel))
     set_device_model!(template, ThermalStandard, ThermalDispatchNoMin)
     set_device_model!(template, PowerLoad, StaticPowerLoad)
     set_device_model!(template, DeviceModel(Line, StaticBranch))
@@ -102,7 +101,7 @@ end
             sys;
             store_variable_names = true,
             optimizer = HiGHS_optimizer,
-            horizon = Hour(2),
+            horizon = _SHORT_HORIZON,
         )
     @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
           IOM.ModelBuildStatus.BUILT
@@ -110,8 +109,23 @@ end
 end
 
 @testset "HVDC CurrentAbsoluteValueVariable matches |ConverterCurrent| at MILP optimum" begin
-    sys = _generate_test_hvdc_sys()
-    template = PowerOperationsProblemTemplate()
+    # Force a ~2 pu side-2 generation deficit (within the 2 converters × 2.0 pu DC
+    # import capacity) so side-2 must import over the DC ties. Under CopperPlate the
+    # HVDC links are ignored and the converters idle at I = 0 — a degenerate optimum
+    # sitting on the bin2 |I| PWL breakpoint (the vacuous, x86_64-HiGHS-fragile solve).
+    # PTDF keeps the two AC islands separate, so the deficit drives real converter
+    # current and the |I| check below is non-vacuous and off the breakpoint. deepcopy
+    # isolates the limit change from the PSB-cached system shared by the other testsets.
+    sys = deepcopy(_generate_test_hvdc_sys())
+    for (name, cap) in (("Brighton-2", 2.0), ("Solitude-2", 2.0))
+        PSY.set_active_power_limits!(
+            get_component(ThermalStandard, sys, name),
+            (min = 0.0 * PSY.SU, max = cap * PSY.SU),
+        )
+    end
+    template = PowerOperationsProblemTemplate(
+        NetworkModel(PTDFNetworkModel; network_matrix = PTDF(sys)),
+    )
     set_device_model!(template, ThermalStandard, ThermalDispatchNoMin)
     set_device_model!(template, PowerLoad, StaticPowerLoad)
     set_device_model!(template, DeviceModel(Line, StaticBranch))
@@ -129,8 +143,8 @@ end
     set_hvdc_network_model!(template, VoltageDispatchHVDCNetworkModel)
     model = DecisionModel(
         template, sys;
-        store_variable_names = true, optimizer = HiGHS_optimizer_single_threaded,
-        horizon = Hour(2),
+        store_variable_names = true, optimizer = HiGHS_optimizer,
+        horizon = _SHORT_HORIZON,
     )
     @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
           IOM.ModelBuildStatus.BUILT
@@ -149,13 +163,17 @@ end
                 InterconnectingConverter,
             ).data,
         )
-    @test isapprox(abs_i_vals, abs.(i_vals); atol = 1e-6)
+    # Making sure we avoided I = 0
+    @test maximum(abs.(i_vals)) > 0.5
+    @test isapprox(abs_i_vals, abs.(i_vals); atol = 1e-4)
 end
 
 @testset "QuadraticLossConverter builds under representative bilinear schemes" begin
     sys = _generate_test_hvdc_sys()
     for scheme in ("bin2", "nmdt")
-        template = PowerOperationsProblemTemplate()
+        template = PowerOperationsProblemTemplate(
+            NetworkModel(PTDFNetworkModel; network_matrix = PTDF(sys)),
+        )
         set_device_model!(template, ThermalStandard, ThermalDispatchNoMin)
         set_device_model!(template, PowerLoad, StaticPowerLoad)
         set_device_model!(template, DeviceModel(Line, StaticBranch))
@@ -168,7 +186,12 @@ end
             ),
         )
         set_hvdc_network_model!(template, VoltageDispatchHVDCNetworkModel)
-        model = DecisionModel(template, sys; optimizer = HiGHS_optimizer, horizon = Hour(2))
+        model = DecisionModel(
+            template,
+            sys;
+            optimizer = HiGHS_optimizer,
+            horizon = _SHORT_HORIZON,
+        )
         @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
               IOM.ModelBuildStatus.BUILT
     end
@@ -245,7 +268,7 @@ function _build_vsc_model(
     set_device_model!(template, converter_model)
     return DecisionModel(
         template, sys;
-        store_variable_names = true, optimizer = optimizer, horizon = Hour(2),
+        store_variable_names = true, optimizer = optimizer, horizon = _SHORT_HORIZON,
     )
 end
 
@@ -299,7 +322,12 @@ end
                 attributes = Dict{String, Any}("bilinear_approximation" => scheme),
             ),
         )
-        model = DecisionModel(template, sys; optimizer = HiGHS_optimizer, horizon = Hour(2))
+        model = DecisionModel(
+            template,
+            sys;
+            optimizer = HiGHS_optimizer,
+            horizon = _SHORT_HORIZON,
+        )
         @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
               IOM.ModelBuildStatus.BUILT
     end

@@ -206,7 +206,7 @@ entry per regulating device per time step:
 \\quad \\forall d \\in \\mathcal{D},\\, t \\in \\{1,\\dots,T\\}
 ```
 
-Created by [`VoltageControlTap`](@ref), [`VoltageControlVSC`](@ref), and
+Created by [`VoltageControlVSC`](@ref) and
 [`VoltageControlConverter`](@ref) (and [`ShuntSusceptanceDispatch`](@ref) for
 `FACTSControlDevice`). Under ACP the network [`VoltageMagnitude`](@ref) is a scalar
 primitive, so neither this constraint nor [`RegulatedVoltageMagnitude`](@ref) is added.

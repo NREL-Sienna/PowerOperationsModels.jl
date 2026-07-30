@@ -104,16 +104,6 @@ function _assert_converter_ac_side(container, ic, v, t, ::Type{<:AbstractNetwork
     return
 end
 
-# CopperPlate keys the System expression by per-subnetwork reference bus; the
-# converter must land in exactly one row with +1.0.
-function _assert_converter_ac_side(container, ic, v, t, ::Type{CopperPlateNetworkModel})
-    expr = IOM.get_expression(container, ActivePowerBalance, PSY.System)
-    coefficients = [JuMP.coefficient(expr[r, t], v) for r in axes(expr)[1]]
-    @test count(==(1.0), coefficients) == 1
-    @test count(iszero, coefficients) == length(coefficients) - 1
-    return
-end
-
 function _assert_converter_ac_side(container, ic, v, t, ::Type{PTDFNetworkModel})
     sys_expr = IOM.get_expression(container, ActivePowerBalance, PSY.System)
     coefficients = [JuMP.coefficient(sys_expr[r, t], v) for r in axes(sys_expr)[1]]
@@ -163,7 +153,6 @@ end
     b_term = 0.05
     c_term = 0.01
     for (net, optimizer) in (
-        (CopperPlateNetworkModel, HiGHS_optimizer),
         (PTDFNetworkModel, HiGHS_optimizer),
         (AreaPTDFNetworkModel, HiGHS_optimizer),
         (NFANetworkModel, HiGHS_optimizer),
@@ -182,18 +171,6 @@ end
         container = IOM.get_optimization_container(model)
         _assert_linear_loss_coefficients(container, sys, b_term, c_term, net)
     end
-
-    # AreaBalance mirrors LosslessConverter: converters wire nothing, build only.
-    sys = _build_converter_sys(;
-        loss = QuadraticCurve(0.0, b_term, c_term),
-        with_areas = true,
-    )
-    template = _converter_template(
-        AreaBalanceNetworkModel,
-        DeviceModel(InterconnectingConverter, LinearLossConverter),
-    )
-    _, status = _build_converter_model(template, sys, HiGHS_optimizer)
-    @test status == IOM.ModelBuildStatus.BUILT
 end
 
 @testset "LinearLossConverter loss surrogate pins |P| at the optimum" begin

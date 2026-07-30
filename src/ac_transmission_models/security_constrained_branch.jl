@@ -30,7 +30,7 @@ end
 Min and max limits for Abstract Branch Formulation and Post-Contingency conditions
 """
 function get_emergency_min_max_limits(
-    transformer_entry::PNM.ThreeWindingTransformerWinding,
+    transformer_entry::PNM.ThreeWindingTransformerCircuit,
     ::Type{<:PostContingencyConstraintType},
     ::Type{<:AbstractBranchFormulation},
 )
@@ -67,16 +67,17 @@ function get_emergency_min_max_limits(
     return (min = -1 * equivalent_rating, max = equivalent_rating)
 end
 
-"""
-Min and max limits for Abstract Branch Formulation and Post-Contingency conditions
-"""
-function get_emergency_min_max_limits(
-    entry::PSY.PhaseShiftingTransformer,
-    ::Type{PhaseAngleControlLimit},
-    ::Type{PhaseAngleControl},
-)
-    return get_min_max_limits(entry, PhaseAngleControlLimit, PhaseAngleControl)
-end
+# psy6: disabled pending transformer refactor
+# """
+# Min and max limits for Abstract Branch Formulation and Post-Contingency conditions
+# """
+# function get_emergency_min_max_limits(
+#     entry::PSY.PhaseShiftingTransformer,
+#     ::Type{PhaseAngleControlLimit},
+#     ::Type{PhaseAngleControl},
+# )
+#     return get_min_max_limits(entry, PhaseAngleControlLimit, PhaseAngleControl)
+# end
 
 # -----------------------------------------------------
 # ------ MULTI-COMPONENT OUTAGE DEDUP HELPERS ---------

@@ -3,7 +3,7 @@ function construct_device!(
     sys::PSY.System,
     ::ArgumentConstructStage,
     model::DeviceModel{PSY.InterconnectingConverter, LosslessConverter},
-    network_model::NetworkModel{<:AbstractActivePowerModel},
+    network_model::NetworkModel{<:AbstractDCPNetworkModel},
 )
     devices = get_available_components(
         model,
@@ -27,7 +27,7 @@ function construct_device!(
     sys::PSY.System,
     ::ModelConstructStage,
     model::DeviceModel{PSY.InterconnectingConverter, LosslessConverter},
-    network_model::NetworkModel{<:AbstractActivePowerModel},
+    network_model::NetworkModel{<:AbstractDCPNetworkModel},
 )
     devices = get_available_components(
         model,
@@ -179,7 +179,7 @@ function construct_device!(
     sys::PSY.System,
     ::ArgumentConstructStage,
     model::DeviceModel{PSY.InterconnectingConverter, T},
-    network_model::NetworkModel{<:AbstractActivePowerModel},
+    network_model::NetworkModel{<:AbstractDCPNetworkModel},
 ) where {T <: AbstractQuadraticLossConverter}
     devices = get_available_components(model, sys)
     _add_converter_dc_arguments!(container, devices, model, network_model)
@@ -220,7 +220,7 @@ function construct_device!(
     sys::PSY.System,
     ::ModelConstructStage,
     model::DeviceModel{PSY.InterconnectingConverter, T},
-    network_model::NetworkModel{<:AbstractActivePowerModel},
+    network_model::NetworkModel{<:AbstractDCPNetworkModel},
 ) where {T <: AbstractQuadraticLossConverter}
     devices = get_available_components(model, sys)
     _add_converter_dc_model!(container, devices, model, network_model)
@@ -322,7 +322,7 @@ function construct_device!(
     sys::PSY.System,
     ::ArgumentConstructStage,
     model::DeviceModel{PSY.InterconnectingConverter, LinearLossConverter},
-    network_model::NetworkModel{<:AbstractActivePowerModel},
+    network_model::NetworkModel{<:AbstractDCPNetworkModel},
 )
     devices = get_available_components(model, sys)
     add_variables!(container, ActivePowerVariable, devices, LinearLossConverter)
@@ -345,7 +345,7 @@ function construct_device!(
     sys::PSY.System,
     ::ModelConstructStage,
     model::DeviceModel{PSY.InterconnectingConverter, LinearLossConverter},
-    network_model::NetworkModel{<:AbstractActivePowerModel},
+    network_model::NetworkModel{<:AbstractDCPNetworkModel},
 )
     devices = get_available_components(model, sys)
     _add_abs_value_constraints!(

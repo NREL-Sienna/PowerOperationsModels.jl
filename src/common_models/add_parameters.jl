@@ -131,10 +131,10 @@ function _check_branch_rating_ts(
         return
     end
 
-    rating = PSY.get_rating(device, PSY.SU)
+    rating = _branch_rating(device)
     if (T <: PostContingencyBranchRatingTimeSeriesParameter)
-        if !(PSY.get_rating_b(device, PSY.SU) === nothing)
-            rating = PSY.get_rating_b(device, PSY.SU)
+        if !(_branch_rating_b(device) === nothing)
+            rating = _branch_rating_b(device)
         else
             @warn "Device $(typeof(device)) '$(PSY.get_name(device))' has Parameter $T but it has no static 'rating_b' defined."
         end

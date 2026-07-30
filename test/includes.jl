@@ -7,7 +7,9 @@ using InfrastructureSystems
 import InfrastructureSystems: TableFormat
 using PowerNetworkMatrices
 import PowerSystemCaseBuilder: PSITestSystems
-using PowerFlows
+# psy6: disabled pending transformer refactor — PowerFlows@psy6 does not precompile
+# (UndefVarError: ThreeWindingTransformerWinding, renamed to ThreeWindingTransformerCircuit)
+# using PowerFlows
 using DataFramesMeta
 
 # Test Packages
@@ -34,7 +36,8 @@ import LinearAlgebra
 const PSY = PowerSystems
 const POM = PowerOperationsModels
 const IOM = InfrastructureOptimizationModels
-const PFS = PowerFlows
+# psy6: disabled pending transformer refactor
+# const PFS = PowerFlows
 const PSB = PowerSystemCaseBuilder
 const PNM = PowerNetworkMatrices
 const ISOPT = InfrastructureSystems.Optimization
@@ -58,3 +61,5 @@ include("test_utils/hybrid_test_utils.jl")
 
 ENV["RUNNING_SIENNA_TESTS"] = "true"
 ENV["SIENNA_RANDOM_SEED"] = 1234  # Set a fixed seed for reproducibility in tests
+
+const _SHORT_HORIZON = Hour(2)

@@ -225,7 +225,8 @@ function _add_two_terminal_elements_map!(
     available_keys::Vector{Pair{OptimizationContainerKey, Any}},
     input_key_map::Dict{Symbol, <:Dict{OptimizationContainerKey, <:Dict}},
 )
-    for element_type in (PSY.TwoTerminalHVDC, PSY.PhaseShiftingTransformer)
+    # psy6: PSY.PhaseShiftingTransformer dropped from this tuple pending transformer refactor
+    for element_type in (PSY.TwoTerminalHVDC,)
         # A two-terminal element whose from and to resolve to one bus would collapse its
         # from_to/to_from injections onto the same row; guard against that here.
         for comp in PSY.get_available_components(element_type, sys)
