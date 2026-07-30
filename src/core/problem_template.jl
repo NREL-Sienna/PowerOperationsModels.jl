@@ -195,20 +195,23 @@ function _add_contributing_device_by_type!(
     end
     # Lazy `get!(f, dict, key)` defaults: the 3-arg `get!(dict, key, default)` builds
     # `default` eagerly on every call, allocating a throwaway map/vector even on the common
-    # hit path (a service/type already present after its first device). The map and vector
-    # here are inserted and then mutated (the `push!`), so - unlike the read-only accessor -
-    # they must be fresh instances and cannot share IOM's empty-map const.
+    # hit path (a service/type already present after its first device). Passing the type as `f`
+    # uses it as a zero-arg constructor - lazy (runs only on a miss), no anonymous closure. The
+    # map and vector here are inserted and then mutated (the `push!`), so - unlike the read-only
+    # accessor - they must be fresh instances and cannot share IOM's empty-map const.
     inner = get!(
-        () -> Dict{DataType, Vector{<:IS.InfrastructureSystemsComponent}}(),
+        Dict{DataType, Vector{<:IS.InfrastructureSystemsComponent}},
         get_contributing_devices_map(service_model),
         service_name,
     )
     # TODO(services stability, deferred B2): the map value is typed
     # `Vector{<:IS.InfrastructureSystemsComponent}` (abstract element) in the IOM
-    # `contributing_devices_map` field, so this `push!` dynamic-dispatches. The `() -> T[]` default
+    # `contributing_devices_map` field, so this `push!` dynamic-dispatches. The `Vector{T}` default
     # does build a concrete `Vector{T}` at runtime, but the declared field type widens what the
     # compiler sees. Rooted in the IOM struct (Comment A); build-time-only.
-    push!(get!(() -> T[], inner, T), contributing_device)
+    # `get!(Vector{T}, ...)` uses the type as the zero-arg constructor - lazy (runs only on a
+    # miss) with no anonymous closure.
+    push!(get!(Vector{T}, inner, T), contributing_device)
     return
 end
 
