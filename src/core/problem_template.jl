@@ -187,8 +187,9 @@ function IOM.set_event_model!(
 end
 
 # `IOM._deepcopy_template` already shares the network model's PNM matrices by reference
-# across the template/copy boundary because deep-copying them throws (PNM #312). Event
-# models need the same treatment for a different reason: build-time discovery
+# across the template/copy boundary because their solver caches hold raw factorization
+# handles that error on deepcopy; the matrices are read-only inputs, so sharing them is
+# safe. Event models need the same treatment for a different reason: build-time discovery
 # (`_build_device_model_events!`) mutates `EventModel.attribute_device_map`, and callers
 # inspect that mutation on the exact object they passed to `set_event_model!`. A plain
 # `deepcopy` of the template would clone each event model, so the mutation performed on

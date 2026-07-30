@@ -125,6 +125,33 @@ end
     model3 = DecisionModel(template3, sys3; optimizer = HiGHS_optimizer)
     @test build!(model3; output_dir = mktempdir(; cleanup = true)) ==
           IOM.ModelBuildStatus.FAILED
+
+    # Two distinct event models of the same contingency type both discovering the same
+    # device type is a conflict: a DeviceModel has one events slot per (contingency
+    # type, device type) key, so the second registration can't be silently dropped.
+    sys4 = PSB.build_system(PSB.PSITestSystems, "c_sys5_uc")
+    thermal4 = first(PSY.get_components(PSY.ThermalStandard, sys4))
+    attach_fixed_forced_outage!(sys4, thermal4)
+    template4 = get_thermal_dispatch_template_network(NetworkModel(CopperPlateNetworkModel))
+    em4a = EventModel(
+        PSY.FixedForcedOutage,
+        ContinuousCondition();
+        timeseries_mapping = Dict{Symbol, Union{String, Nothing}}(
+            :outage_status => "outage_profile",
+        ),
+    )
+    em4b = EventModel(
+        PSY.FixedForcedOutage,
+        ContinuousCondition();
+        timeseries_mapping = Dict{Symbol, Union{String, Nothing}}(
+            :outage_status => "outage_profile",
+        ),
+    )
+    set_event_model!(template4, em4a)
+    set_event_model!(template4, em4b)
+    model4 = DecisionModel(template4, sys4; optimizer = HiGHS_optimizer)
+    @test build!(model4; output_dir = mktempdir(; cleanup = true)) ==
+          IOM.ModelBuildStatus.FAILED
 end
 
 @testset "Events excluded from initialization problem" begin
