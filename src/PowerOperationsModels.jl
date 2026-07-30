@@ -258,6 +258,7 @@ include("feedforward/feedforwards.jl")
 include("core/initial_conditions.jl")
 
 include("event_models/event_model.jl")
+include("event_models/event_traits.jl")
 
 # Common models - expression infrastructure
 # Expression container creation (add_expressions!) and helpers
@@ -435,6 +436,11 @@ export get_event_type
 export get_event_condition
 export get_attribute_device_map
 export set_event_model!
+export supports_events
+export AvailableStatusParameter
+export ActivePowerOffsetParameter
+export ReactivePowerOffsetParameter
+export AvailableStatusChangeCountdownParameter
 
 # Initial Conditions Quantities
 export DevicePower
