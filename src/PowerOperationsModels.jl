@@ -257,6 +257,8 @@ include("core/feedforward_interface.jl")
 include("feedforward/feedforwards.jl")
 include("core/initial_conditions.jl")
 
+include("event_models/event_model.jl")
+
 # Common models - expression infrastructure
 # Expression container creation (add_expressions!) and helpers
 include("common_models/add_expressions.jl")
@@ -418,6 +420,21 @@ export NetworkModel
 export DeviceModel
 export ServiceModel
 export OptimizationContainer
+
+# Event Model Container Types
+export EventModel
+export EventKey
+export AbstractEventCondition
+export ContinuousCondition
+export PresetTimeCondition
+export StateVariableValueCondition
+export DiscreteEventCondition
+export get_time_stamps
+export get_empty_timeseries_mapping
+export get_event_type
+export get_event_condition
+export get_attribute_device_map
+export set_event_model!
 
 # Initial Conditions Quantities
 export DevicePower
