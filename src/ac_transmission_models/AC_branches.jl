@@ -795,22 +795,92 @@ function _assert_flow_expression_dimensions(
     return
 end
 
+"""
+One retained arc's DC phase shift, expressed as the nodal injection pair that reproduces it.
+
+A phase shifter is modeled as its shift-free branch plus `+b·α` injected at the from bus and
+`−b·α` at the to bus; the shifter's own flow then needs `b·α` taken back out (`f = b·Δθ − b·α`).
+PNM's `BA_Matrix` and PTDF deliberately exclude `α` from their susceptances and leave this to
+the consumer, so a factor-matrix flow (`PTDF`/`MODF` row × injections) is short by exactly
+this correction until it is applied.
+
+`from_row`/`to_row` are positions in the nodal-balance / factor-column bus order, not bus
+numbers.
+"""
+const DCShiftInjection = @NamedTuple{
+    arc::Tuple{Int, Int},
+    from_row::Int,
+    to_row::Int,
+    injection::Float64,
+}
+
+# Bus number -> row position in the nodal-balance matrix (which is also the factor-column
+# order; `_assert_flow_expression_dimensions` pins the two to the same length).
+_bus_row_lookup(bus_axis) = Dict{Int, Int}(b => i for (i, b) in enumerate(bus_axis))
+
+"""
+Phase-shift injections for every retained arc that carries one, or an empty vector when the
+system has no phase-shifting branch (the overwhelmingly common case, which makes every
+consumer's correction a no-op).
+"""
+function _dc_shift_injections(nr::PNM.NetworkReductionData, bus_row::Dict{Int, Int})
+    shifts = DCShiftInjection[]
+    seen = Set{Tuple{Int, Int}}()
+    for branch_map in (
+        PNM.get_direct_branch_map(nr),
+        PNM.get_parallel_branch_map(nr),
+        PNM.get_series_branch_map(nr),
+    )
+        for arc in keys(branch_map)
+            arc in seen && continue
+            push!(seen, arc)
+            injection = PNM.arc_dc_shift_injection(nr, arc)
+            iszero(injection) && continue
+            push!(
+                shifts,
+                (
+                    arc = arc,
+                    from_row = bus_row[arc[1]],
+                    to_row = bus_row[arc[2]],
+                    injection = injection,
+                ),
+            )
+        end
+    end
+    return shifts
+end
+
+# Constant offset this factor row picks up from every phase shifter, plus `-b·α` for the
+# row's own arc when it is itself a shifter. Time-invariant, so callers hoist it out of the
+# time loop.
+function _shift_offset(ptdf_col, shifts::Vector{DCShiftInjection}, self_injection::Float64)
+    offset = -self_injection
+    for s in shifts
+        offset += (ptdf_col[s.from_row] - ptdf_col[s.to_row]) * s.injection
+    end
+    return offset
+end
+
 function _make_flow_expressions!(
     name::String,
     time_steps::UnitRange{Int},
     ptdf_col::Vector{Float64},
     nodal_balance_expressions::Matrix{JuMP.AffExpr},
+    shifts::Vector{DCShiftInjection} = DCShiftInjection[],
+    self_injection::Float64 = 0.0,
 )
     @debug "Making Flow Expression on thread $(Threads.threadid()) for branch $name"
     _assert_flow_expression_dimensions(name, length(ptdf_col), nodal_balance_expressions)
     nz_idx = [i for i in eachindex(ptdf_col) if abs(ptdf_col[i]) > PTDF_ZERO_TOL]
     hint = length(nz_idx)
+    offset = _shift_offset(ptdf_col, shifts, self_injection)
     expressions = Vector{JuMP.AffExpr}(undef, length(time_steps))
     for t in time_steps
         acc = IOM.get_hinted_aff_expr(hint)
         @inbounds for i in nz_idx
             JuMP.add_to_expression!(acc, ptdf_col[i], nodal_balance_expressions[i, t])
         end
+        iszero(offset) || JuMP.add_to_expression!(acc, offset)
         expressions[t] = acc
     end
     return name, expressions
@@ -821,12 +891,15 @@ function _make_flow_expressions!(
     time_steps::UnitRange{Int},
     ptdf_col::SparseArrays.SparseVector{Float64, Int},
     nodal_balance_expressions::Matrix{JuMP.AffExpr},
+    shifts::Vector{DCShiftInjection} = DCShiftInjection[],
+    self_injection::Float64 = 0.0,
 )
     @debug "Making Flow Expression on thread $(Threads.threadid()) for branch $name"
     _assert_flow_expression_dimensions(name, length(ptdf_col), nodal_balance_expressions)
     nz_idx = SparseArrays.nonzeroinds(ptdf_col)
     nz_val = SparseArrays.nonzeros(ptdf_col)
     hint = length(nz_idx)
+    offset = _shift_offset(ptdf_col, shifts, self_injection)
     expressions = Vector{JuMP.AffExpr}(undef, length(time_steps))
     for t in time_steps
         acc = IOM.get_hinted_aff_expr(hint)
@@ -837,6 +910,7 @@ function _make_flow_expressions!(
                 nodal_balance_expressions[nz_idx[k], t],
             )
         end
+        iszero(offset) || JuMP.add_to_expression!(acc, offset)
         expressions[t] = acc
     end
     return name, expressions
@@ -865,6 +939,14 @@ function add_expressions!(
         time_steps,
     )
 
+    # PTDF flows are built per device type (each branch DeviceModel's ModelConstructStage),
+    # so a phase shift cannot be applied by writing the injection pair into
+    # `ActivePowerBalance` and letting the rows pick it up — a transformer's injection would
+    # miss any branch type constructed earlier. Fold it into each row instead.
+    bus_row = _bus_row_lookup(axes(nodal_balance_expressions, 1))
+    shifts = _dc_shift_injections(net_reduction_data, bus_row)
+    self_injections = Dict(s.arc => s.injection for s in shifts)
+
     # `ptdf[arc, :]` is a KLU solve; libklu is not concurrency-safe, so the
     # solves run serially on the dispatcher and only the JuMP `AffExpr` build is
     # parallelized via `Threads.@spawn`. The try/catch surfaces the inner
@@ -873,12 +955,15 @@ function add_expressions!(
     tasks = map(name_to_arc_map) do pair
         (name, (arc, _)) = pair
         ptdf_col = ptdf[arc, :]
+        self_injection = get(self_injections, arc, 0.0)
         Threads.@spawn try
             _make_flow_expressions!(
                 name,
                 time_steps,
                 ptdf_col,
                 nodal_balance_expressions.data,
+                shifts,
+                self_injection,
             )
         catch e
             @error "PTDF flow-expression task failed" name = name arc = arc exception =

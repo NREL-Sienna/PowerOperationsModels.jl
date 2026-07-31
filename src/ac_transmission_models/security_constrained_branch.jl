@@ -554,6 +554,8 @@ function _build_post_contingency_flow_expressions_for_outage(
     modf_cols::Dict{Tuple{String, Tuple{Int64, Int64}}, Vector{Float64}},
     nodal_balance_expressions::Matrix{JuMP.AffExpr},
     entries::Vector{Tuple{DataType, String, Tuple{Int, Int}, String}},
+    shifts::Vector{DCShiftInjection},
+    self_injections::Dict{Tuple{Int, Int}, Float64},
 )
     results = Vector{Tuple{String, Vector{JuMP.AffExpr}}}(undef, length(entries))
     for (i, entry) in enumerate(entries)
@@ -564,10 +566,41 @@ function _build_post_contingency_flow_expressions_for_outage(
             time_steps,
             modf_col,
             nodal_balance_expressions,
+            shifts,
+            get(self_injections, arc, 0.0),
         )
         results[i] = (name, expressions)
     end
     return results
+end
+
+"""
+Phase-shift injections that survive contingency `spec`.
+
+A shifter removed by the contingency no longer injects, so its pair must drop from the
+post-contingency correction — otherwise every monitored flow carries a shift that is not
+there any more. Arcs the contingency touches are identified by `ArcModification.arc_index`
+against the MODF's arc axis.
+
+Currently defensive rather than exercised: PNM's `_assert_not_phase_shifting` rejects any
+contingency whose outaged component is phase-shifting, and `_register_all_outages!` warns
+and skips it, so no registered contingency can remove a shifter today. The filter is kept
+because without it a later PNM that lifts that restriction would silently leave a phantom
+shift in every post-contingency flow.
+
+Exact when the modification removes the arc. A contingency that only *partially* modifies a
+shifted arc — one member of a shifted parallel group tripping — also drops the whole group's
+injection, which is conservative rather than exact; PNM has no per-member post-contingency
+shift equivalent to ask for.
+"""
+function _surviving_shift_injections(
+    shifts::Vector{DCShiftInjection},
+    arc_axis,
+    spec::PNM.ContingencySpec,
+)
+    isempty(shifts) && return shifts
+    modified = Set(arc_axis[m.arc_index] for m in spec.modification.arc_modifications)
+    return filter(s -> !(s.arc in modified), shifts)
 end
 
 """
@@ -622,10 +655,24 @@ function _add_modf_post_contingency_flow_expressions!(
         end
     end
 
+    # Phase-shift correction: `nodal_injection_expressions` carries device injections only
+    # (on DCP the flow terms are stripped out; on PTDF the balance never held the shift), so
+    # a MODF row times those injections is short the shifters' contribution. Computed per
+    # outage because a contingency can remove the shifter itself.
+    bus_row = _bus_row_lookup(PNM.get_bus_axis(modf_matrix))
+    all_shifts = _dc_shift_injections(net_reduction_data, bus_row)
+    arc_axis = PNM.get_arc_axis(modf_matrix)
+
     # Parallel JuMP `AffExpr` build (no libklu): tasks return results, the main
     # thread does the serial writes. The try/catch surfaces the inner exception.
     tasks = map(fresh_resolved) do (uuid, entries)
         outage_id = string(uuid)
+        shifts = _surviving_shift_injections(
+            all_shifts,
+            arc_axis,
+            registered_contingencies[uuid],
+        )
+        self_injections = Dict(s.arc => s.injection for s in shifts)
         Threads.@spawn try
             _build_post_contingency_flow_expressions_for_outage(
                 time_steps,
@@ -633,6 +680,8 @@ function _add_modf_post_contingency_flow_expressions!(
                 modf_cols,
                 nodal_injection_expressions,
                 entries,
+                shifts,
+                self_injections,
             )
         catch e
             @error "Post-contingency flow-expression task failed" outage_id =
