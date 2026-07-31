@@ -645,7 +645,7 @@ Struct to create the constraint that bounds a device's reactive power by its
 available capacity squared during an outage event.
 
 ```math
-q_t^2 \\le Q^\\text{max} \\cdot \\text{status}_t, \\quad \\forall t \\in \\{1,\\dots,T\\}
+q_t^2 \\le \\max\\left((Q^\\text{max})^2, (Q^\\text{min})^2\\right) \\cdot \\text{status}_t, \\quad \\forall t \\in \\{1,\\dots,T\\}
 ```
 """
 struct ReactivePowerOutageConstraint <: EventConstraint end

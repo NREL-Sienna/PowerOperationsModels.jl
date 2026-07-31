@@ -20,6 +20,17 @@
     @test get_time_stamps(pc) == [Dates.DateTime("2024-01-01T05:00:00")]
 end
 
+@testset "Event condition types: accessors" begin
+    svc = StateVariableValueCondition(ActivePowerVariable(), PSY.ThermalStandard, "x", 0.0)
+    @test POM.get_variable_type(svc) isa ActivePowerVariable
+    @test POM.get_device_type(svc) == PSY.ThermalStandard
+    @test POM.get_device_name(svc) == "x"
+    @test IOM.get_value(svc) == 0.0
+
+    dec = DiscreteEventCondition(x -> true)
+    @test POM.get_condition_function(dec)(1) == true
+end
+
 @testset "Event traits" begin
     @test POM.supports_events(PSY.ThermalStandard)
     @test POM.supports_events(PSY.RenewableDispatch)
@@ -240,6 +251,48 @@ end
     @test !isnothing(system_balance)
 end
 
+@testset "Event arguments for FixedOutput take the offset path, not the constraint path" begin
+    # FixedOutput has no dispatch variable, so events reach it the same way they
+    # reach loads: status/countdown parameters plus an ActivePowerOffsetParameter
+    # wired into the balance, and no outage constraint at all (`construct_device!`'s
+    # ModelConstructStage for `DeviceModel{<:PSY.ThermalGen, FixedOutput}` is a no-op).
+    device_model = DeviceModel(PSY.ThermalStandard, FixedOutput)
+    sys = PSB.build_system(PSITestSystems, "c_sys5_uc")
+    # FixedOutput is driven by a `max_active_power` time series; c_sys5_uc's thermal
+    # units carry none, so borrow the load's forecast shape (matches the pattern in
+    # test_device_thermal_generation_constructors.jl's FixedOutput testset).
+    forecast = PSY.get_time_series(
+        Deterministic,
+        first(PSY.get_components(PSY.PowerLoad, sys)),
+        "max_active_power",
+    )
+    for device in PSY.get_components(PSY.ThermalStandard, sys)
+        PSY.add_time_series!(sys, device, forecast)
+    end
+    model = DecisionModel(MockOperationProblem, CopperPlateNetworkModel, sys)
+    mock_construct_device!(model, device_model; add_event_model = true)
+    container = IOM.get_optimization_container(model)
+    @test !isnothing(
+        IOM.get_parameter(container, AvailableStatusParameter, PSY.ThermalStandard),
+    )
+    @test !isnothing(
+        IOM.get_parameter(
+            container,
+            AvailableStatusChangeCountdownParameter,
+            PSY.ThermalStandard,
+        ),
+    )
+    @test !isnothing(
+        IOM.get_parameter(container, ActivePowerOffsetParameter, PSY.ThermalStandard),
+    )
+    @test_throws IS.InvalidValue IOM.get_constraint(
+        container,
+        ActivePowerOutageConstraint(),
+        PSY.ThermalStandard,
+        "ub",
+    )
+end
+
 @testset "Event constraints - thermal UC counts and coefficients" begin
     device_model = DeviceModel(PSY.ThermalStandard, ThermalBasicUnitCommitment)
     sys = PSB.build_system(PSITestSystems, "c_sys5_uc")
@@ -260,8 +313,19 @@ end
     @test size(cons)[2] == length(time_steps)
     # Coefficient check: constraint is expr(p) - ub * status <= 0 with status = 1.0
     # (params are plain Float64 in a non-recurrent build, so the RHS is baked in).
-    c1 = JuMP.constraint_object(cons[axes(cons)[1][1], 1])
+    outaged_name = axes(cons)[1][1]
+    c1 = JuMP.constraint_object(cons[outaged_name, 1])
     @test c1.set isa MOI.LessThan{Float64}
+    # Value-level check on the baked RHS: guards the IOM
+    # `_bound_range_with_parameter!` EventParameter specialization together with
+    # `IOM.get_max_active_power`. At build time status = 1.0 and the LHS
+    # expression (ActivePowerRangeExpressionUB) carries no constant term here, so
+    # the normalized upper bound must equal the device's rated max active power.
+    outaged_device = first(
+        d for d in PSY.get_components(PSY.ThermalStandard, sys) if
+        PSY.get_name(d) == outaged_name
+    )
+    @test c1.set.upper ≈ PSY.get_max_active_power(outaged_device, PSY.SU)
 end
 
 @testset "Event constraints - renewable counts on ActivePowerVariable" begin
@@ -560,11 +624,16 @@ end
         JuMP.fix(param_array[outaged_name, t], 0.0; force = true)
     end
     jm = IOM.get_jump_model(container)
+    p = IOM.get_variable(container, ActivePowerVariable, PSY.ThermalStandard)
+    # The mock model has no objective, so without an incentive to raise output,
+    # the LP returns p = 0 by default even if ActivePowerOutageConstraint were
+    # removed. Maximizing the outaged device's own output means the test only
+    # passes if the constraint is actually forcing p to zero.
+    JuMP.@objective(jm, Max, sum(p[outaged_name, t] for t in axes(p)[2]))
     JuMP.set_optimizer(jm, HiGHS.Optimizer)
     JuMP.set_silent(jm)
     JuMP.optimize!(jm)
     @test JuMP.termination_status(jm) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED)
-    p = IOM.get_variable(container, ActivePowerVariable, PSY.ThermalStandard)
     @test all(
         abs(JuMP.value(p[outaged_name, t])) <= 1e-6 for t in axes(p)[2]
     )

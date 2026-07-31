@@ -532,7 +532,7 @@ together for `PSY.EnergyReservoirStorage`, and, for `PSY.HydroPumpTurbine`, both
 variable ([`ActivePowerOutageConstraint`](@ref)) and the pump variable
 ([`ActivePowerPumpOutageConstraint`](@ref)). Under reactive-power-capable networks,
 [`ReactivePowerOutageConstraint`](@ref) additionally bounds
-``q_t^2 \le (Q^\text{max})^2 \cdot \text{status}_t``.
+``q_t^2 \le \max\left((Q^\text{max})^2, (Q^\text{min})^2\right) \cdot \text{status}_t``.
 
 The parameter values are constant within a single build; updating them across solves (outage
 sampling, countdown projection) is simulation-runtime functionality that lives outside this
