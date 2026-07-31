@@ -296,3 +296,74 @@ end
     c1 = JuMP.constraint_object(cons[axes(cons)[1][1], 1])
     @test c1.set isa MOI.LessThan{Float64}
 end
+
+@testset "Event constraints - hydro" begin
+    device_model = DeviceModel(PSY.HydroDispatch, HydroDispatchRunOfRiver)
+    sys = PSB.build_system(PSITestSystems, "c_sys5_hy")
+    model = DecisionModel(MockOperationProblem, DCPNetworkModel, sys)
+    mock_construct_device!(model, device_model; add_event_model = true)
+    container = IOM.get_optimization_container(model)
+    # add_parameterized_upper_bound_range_constraints stores its constraint under
+    # meta = "ub" (constraint_meta(UpperBound())), matching the thermal/renewable pattern.
+    @test !isnothing(
+        IOM.get_constraint(
+            container,
+            ActivePowerOutageConstraint(),
+            PSY.HydroDispatch,
+            "ub",
+        ),
+    )
+end
+
+@testset "Event constraints - storage" begin
+    device_model = DeviceModel(EnergyReservoirStorage, StorageDispatchWithReserves)
+    sys = PSB.build_system(PSITestSystems, "c_sys5_bat")
+    model = DecisionModel(MockOperationProblem, DCPNetworkModel, sys)
+    mock_construct_device!(model, device_model; add_event_model = true)
+    container = IOM.get_optimization_container(model)
+    cons_in = IOM.get_constraint(
+        container,
+        ActivePowerOutageConstraint(),
+        EnergyReservoirStorage,
+        "input",
+    )
+    cons_out = IOM.get_constraint(
+        container,
+        ActivePowerOutageConstraint(),
+        EnergyReservoirStorage,
+        "output",
+    )
+    @test !isnothing(cons_in)
+    @test !isnothing(cons_out)
+end
+
+@testset "Event constraints - hydro pump turbine" begin
+    device_model = DeviceModel(
+        HydroPumpTurbine,
+        HydroPumpEnergyDispatch;
+        attributes = Dict{String, Any}(
+            "reservation" => true,
+            "energy_target" => true,
+        ),
+    )
+    sys = PSB.build_system(
+        PSITestSystems,
+        "c_sys5_hydro_pump_energy";
+        add_reserves = true,
+        add_single_time_series = true,
+    )
+    transform_single_time_series!(sys, Hour(24), Hour(24))
+    model = DecisionModel(MockOperationProblem, CopperPlateNetworkModel, sys)
+    mock_construct_device!(model, device_model; add_event_model = true)
+    container = IOM.get_optimization_container(model)
+    @test !isnothing(
+        IOM.get_constraint(container, ActivePowerOutageConstraint(), HydroPumpTurbine),
+    )
+    @test !isnothing(
+        IOM.get_constraint(
+            container,
+            ActivePowerPumpOutageConstraint(),
+            HydroPumpTurbine,
+        ),
+    )
+end

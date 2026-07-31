@@ -447,6 +447,7 @@ export ReactivePowerOffsetParameter
 export AvailableStatusChangeCountdownParameter
 export ActivePowerOutageConstraint
 export ReactivePowerOutageConstraint
+export ActivePowerPumpOutageConstraint
 
 # Initial Conditions Quantities
 export DevicePower
