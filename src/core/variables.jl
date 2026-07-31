@@ -61,18 +61,6 @@ Docs abbreviation: ``b``
 """
 struct ShuntSusceptanceVariable <: VariableType end
 
-"""
-Continuous off-nominal turns ratio ``t \\in [t_{\\min}, t_{\\max}]`` (pu) for a
-the disabled `VoltageControlTap` formulation. The variable enters the AC π-model
-Ohm's law nonlinearly: self terms scale as ``1/t^2``, coupling terms scale as ``1/t``,
-so the formulation reduces to `StaticBranch` when ``t = t_m`` (the nominal tap).
-Warm-started at the transformer's current tap position. Both bounds must be finite and
-positive (validated at construction time). Only valid under AC network models.
-
-Docs abbreviation: ``t``
-"""
-struct TapRatioVariable <: VariableType end
-
 # ReservationVariable: moved to IOM (used in range_constraint.jl)
 
 """
@@ -363,13 +351,6 @@ Struct to dispatch the creation of post-contingency active power flow lower boun
 Docs abbreviation: ``f^\\text{sl,lo,N-1}``
 """
 struct PostContingencyFlowActivePowerSlackLowerBound <: VariableType end
-
-"""
-Struct to dispatch the creation of Phase Shifters Variables
-
-Docs abbreviation: ``\\theta^\\text{shift}``
-"""
-struct PhaseShifterAngle <: VariableType end
 
 # Necessary as a work around for HVDCTwoTerminal models with losses
 """

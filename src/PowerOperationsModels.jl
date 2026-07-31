@@ -301,9 +301,6 @@ include("common_models/market_bid_overrides.jl")
 include("ac_transmission_models/AC_branches.jl")
 include("ac_transmission_models/security_constrained_branch.jl")
 include("ac_transmission_models/branch_constructor.jl")
-# psy6: disabled pending transformer refactor
-# include("ac_transmission_models/voltage_control_tap_models.jl")
-# include("ac_transmission_models/transformer_models.jl")
 
 # Network Models
 include("network_models/network_reductions.jl")
@@ -565,7 +562,6 @@ export FlowActivePowerFromToVariable
 export FlowActivePowerToFromVariable
 export FlowReactivePowerFromToVariable
 export FlowReactivePowerToFromVariable
-export PhaseShifterAngle
 
 # Feedforward Slack Variables
 export UpperBoundFeedForwardSlack
@@ -879,11 +875,6 @@ export StaticBranch
 export StaticBranchBounds
 export StaticBranchUnbounded
 export SecurityConstrainedStaticBranch
-# psy6: disabled pending transformer refactor
-# export PhaseAngleControl
-# export TapControl
-# export VoltageControlTap
-export TapRatioVariable
 
 # DC Branch Formulations
 export HVDCTwoTerminalUnbounded
