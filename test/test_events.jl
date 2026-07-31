@@ -228,3 +228,71 @@ end
     system_balance = IOM.get_expression(container, ActivePowerBalance, PSY.System)
     @test !isnothing(system_balance)
 end
+
+@testset "Event constraints - thermal UC counts and coefficients" begin
+    device_model = DeviceModel(PSY.ThermalStandard, ThermalBasicUnitCommitment)
+    sys = PSB.build_system(PSITestSystems, "c_sys5_uc")
+    model = DecisionModel(MockOperationProblem, DCPNetworkModel, sys)
+    mock_construct_device!(model, device_model; add_event_model = true)
+    container = IOM.get_optimization_container(model)
+    # add_parameterized_upper_bound_range_constraints stores its constraint under
+    # meta = "ub" (constraint_meta(UpperBound())).
+    cons = IOM.get_constraint(
+        container,
+        ActivePowerOutageConstraint(),
+        PSY.ThermalStandard,
+        "ub",
+    )
+    n_thermal_with_event = 1  # mock attaches the outage to exactly one device
+    time_steps = IOM.get_time_steps(container)
+    @test size(cons)[1] == n_thermal_with_event
+    @test size(cons)[2] == length(time_steps)
+    # Coefficient check: constraint is expr(p) - ub * status <= 0 with status = 1.0
+    # (params are plain Float64 in a non-recurrent build, so the RHS is baked in).
+    c1 = JuMP.constraint_object(cons[axes(cons)[1][1], 1])
+    @test c1.set isa MOI.LessThan{Float64}
+end
+
+@testset "Event constraints - renewable counts on ActivePowerVariable" begin
+    device_model = DeviceModel(PSY.RenewableDispatch, RenewableFullDispatch)
+    sys = PSB.build_system(PSITestSystems, "c_sys5_re")
+    model = DecisionModel(MockOperationProblem, DCPNetworkModel, sys)
+    mock_construct_device!(model, device_model; add_event_model = true)
+    container = IOM.get_optimization_container(model)
+    # No service model attached -> lhs_type falls back to ActivePowerVariable.
+    cons = IOM.get_constraint(
+        container,
+        ActivePowerOutageConstraint(),
+        PSY.RenewableDispatch,
+        "ub",
+    )
+    n_renewable_with_event = 1  # mock attaches the outage to exactly one device
+    time_steps = IOM.get_time_steps(container)
+    @test size(cons)[1] == n_renewable_with_event
+    @test size(cons)[2] == length(time_steps)
+    c1 = JuMP.constraint_object(cons[axes(cons)[1][1], 1])
+    @test c1.set isa MOI.LessThan{Float64}
+end
+
+@testset "Event constraints - load counts on ActivePowerVariable" begin
+    # PowerLoadDispatch is a controllable-load formulation: applying it to a plain
+    # PSY.PowerLoad silently swaps to StaticPowerLoad (no ActivePowerVariable), so
+    # use InterruptiblePowerLoad + c_sys5_il, matching the constructor test fixture.
+    device_model = DeviceModel(PSY.InterruptiblePowerLoad, PowerLoadDispatch)
+    sys = PSB.build_system(PSITestSystems, "c_sys5_il")
+    model = DecisionModel(MockOperationProblem, DCPNetworkModel, sys)
+    mock_construct_device!(model, device_model; add_event_model = true)
+    container = IOM.get_optimization_container(model)
+    cons = IOM.get_constraint(
+        container,
+        ActivePowerOutageConstraint(),
+        PSY.InterruptiblePowerLoad,
+        "ub",
+    )
+    n_load_with_event = 1  # mock attaches the outage to exactly one device
+    time_steps = IOM.get_time_steps(container)
+    @test size(cons)[1] == n_load_with_event
+    @test size(cons)[2] == length(time_steps)
+    c1 = JuMP.constraint_object(cons[axes(cons)[1][1], 1])
+    @test c1.set isa MOI.LessThan{Float64}
+end
