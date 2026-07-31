@@ -180,3 +180,25 @@ end
     ic_keys = IOM.get_parameter_keys(ic_container)
     @test !any(k -> IOM.get_entry_type(k) <: EventParameter, ic_keys)
 end
+
+@testset "Event parameters via mock construct - ThermalStandard UC" begin
+    device_model = DeviceModel(PSY.ThermalStandard, ThermalBasicUnitCommitment)
+    sys = PSB.build_system(PSITestSystems, "c_sys5_uc")
+    model = DecisionModel(MockOperationProblem, DCPNetworkModel, sys)
+    mock_construct_device!(model, device_model; add_event_model = true)
+    container = IOM.get_optimization_container(model)
+    @test !isnothing(
+        IOM.get_parameter(container, AvailableStatusParameter, PSY.ThermalStandard),
+    )
+    @test !isnothing(
+        IOM.get_parameter(
+            container,
+            AvailableStatusChangeCountdownParameter,
+            PSY.ThermalStandard,
+        ),
+    )
+    param_array =
+        IOM.get_parameter_array(container, AvailableStatusParameter(), PSY.ThermalStandard)
+    # Initial availability is 1.0 for every (device, t)
+    @test all(IOM.jump_value.(param_array.data) .== 1.0)
+end

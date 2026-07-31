@@ -283,6 +283,8 @@ include("common_models/converter_control.jl")
 # before device-specific files that reference MBC_TYPES / IEC_TYPES.
 include("common_models/market_bid_plumbing.jl")
 
+include("event_models/event_arguments.jl")
+
 # Initial Conditions
 include("initial_conditions/add_initial_condition.jl")
 include("initial_conditions/device_initial_conditions.jl")
