@@ -179,6 +179,17 @@ end
     @test ic_container !== nothing
     ic_keys = IOM.get_parameter_keys(ic_container)
     @test !any(k -> IOM.get_entry_type(k) <: EventParameter, ic_keys)
+
+    # Continue the build pipeline into the main container (the next step after
+    # initial conditions in `build_model!`) to confirm event parameters land there,
+    # in contrast to their absence from the IC container asserted above.
+    POM.build_problem!(
+        IOM.get_optimization_container(model),
+        IOM.get_template(model),
+        IOM.get_system(model),
+    )
+    main_keys = IOM.get_parameter_keys(IOM.get_optimization_container(model))
+    @test any(k -> IOM.get_entry_type(k) <: EventParameter, main_keys)
 end
 
 @testset "Event parameters via mock construct - ThermalStandard UC" begin
@@ -365,5 +376,154 @@ end
             ActivePowerPumpOutageConstraint(),
             HydroPumpTurbine,
         ),
+    )
+end
+
+@testset "E2E: thermal UC with FixedForcedOutage event - $(net)" for net in
+                                                                     (
+    CopperPlateNetworkModel,
+    PTDFNetworkModel,
+    DCPNetworkModel,
+)
+    sys = PSB.build_system(PSB.PSITestSystems, "c_sys5_uc")
+    thermal = first(PSY.get_components(PSY.ThermalStandard, sys))
+    attach_fixed_forced_outage!(sys, thermal)
+    template = get_thermal_dispatch_template_network(NetworkModel(net))
+    em = EventModel(
+        PSY.FixedForcedOutage,
+        ContinuousCondition();
+        timeseries_mapping = Dict{Symbol, Union{String, Nothing}}(
+            :outage_status => "outage_profile",
+        ),
+    )
+    set_event_model!(template, em)
+    model = DecisionModel(template, sys; optimizer = HiGHS_optimizer)
+    @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
+          IOM.ModelBuildStatus.BUILT
+    @test solve!(model) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
+    res = IOM.OptimizationProblemOutputs(model)
+    # Event parameters are written to results (should_write_resulting_value = true)
+    @test "AvailableStatusParameter__ThermalStandard" in
+          IOM.list_parameter_names(res)
+end
+
+@testset "E2E: thermal UC with FixedForcedOutage event - ACPNetworkModel (reactive)" begin
+    sys = PSB.build_system(PSB.PSITestSystems, "c_sys5_uc")
+    thermal = first(PSY.get_components(PSY.ThermalStandard, sys))
+    attach_fixed_forced_outage!(sys, thermal)
+    template = get_thermal_dispatch_template_network(NetworkModel(ACPNetworkModel))
+    em = EventModel(
+        PSY.FixedForcedOutage,
+        ContinuousCondition();
+        timeseries_mapping = Dict{Symbol, Union{String, Nothing}}(
+            :outage_status => "outage_profile",
+        ),
+    )
+    set_event_model!(template, em)
+    model = DecisionModel(template, sys; optimizer = ipopt_optimizer)
+    @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
+          IOM.ModelBuildStatus.BUILT
+    @test solve!(model) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
+    container = IOM.get_optimization_container(model)
+    # The quadratic reactive-power outage constraint (q^2 <= ub * status) is only
+    # added under AbstractReactivePowerNetworkModel; confirm it was actually built.
+    @test !isnothing(
+        IOM.get_constraint(
+            container,
+            ReactivePowerOutageConstraint(),
+            PSY.ThermalStandard,
+            "ub",
+        ),
+    )
+end
+
+@testset "E2E: PTDF network with a load event exercises the 2-target balance offset" begin
+    # PTDF's `_balance_expression_targets` writes an offset term to both the
+    # system-level entry and the nodal (ACBus) entry -- unlike CopperPlate/DCP,
+    # which only write one target. A load's FixedForcedOutage exercises this
+    # because loads get an `ActivePowerOffsetParameter` injected directly into the
+    # balance expression (see `_add_event_offset_arguments!`), unlike thermal units
+    # which only touch the status/countdown parameters.
+    sys = PSB.build_system(PSB.PSITestSystems, "c_sys5_uc")
+    load = first(PSY.get_components(PSY.PowerLoad, sys))
+    attach_fixed_forced_outage!(sys, load)
+    template = get_thermal_dispatch_template_network(NetworkModel(PTDFNetworkModel))
+    em = EventModel(
+        PSY.FixedForcedOutage,
+        ContinuousCondition();
+        timeseries_mapping = Dict{Symbol, Union{String, Nothing}}(
+            :outage_status => "outage_profile",
+        ),
+    )
+    set_event_model!(template, em)
+    model = DecisionModel(template, sys; optimizer = HiGHS_optimizer)
+    @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
+          IOM.ModelBuildStatus.BUILT
+    container = IOM.get_optimization_container(model)
+    @test !isnothing(
+        IOM.get_parameter(container, ActivePowerOffsetParameter, PSY.PowerLoad),
+    )
+    @test solve!(model) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
+end
+
+@testset "E2E: ACP network with a load event drives the reactive offset parameter into ReactivePowerBalance" begin
+    # ACPNetworkModel <: AbstractReactivePowerNetworkModel, so the load
+    # add_event_arguments! method with `with_reactive = true` runs, adding
+    # ReactivePowerOffsetParameter and injecting it into ReactivePowerBalance.
+    sys = PSB.build_system(PSB.PSITestSystems, "c_sys5_uc")
+    load = first(PSY.get_components(PSY.PowerLoad, sys))
+    attach_fixed_forced_outage!(sys, load)
+    template = get_thermal_dispatch_template_network(NetworkModel(ACPNetworkModel))
+    em = EventModel(
+        PSY.FixedForcedOutage,
+        ContinuousCondition();
+        timeseries_mapping = Dict{Symbol, Union{String, Nothing}}(
+            :outage_status => "outage_profile",
+        ),
+    )
+    set_event_model!(template, em)
+    model = DecisionModel(template, sys; optimizer = ipopt_optimizer)
+    @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
+          IOM.ModelBuildStatus.BUILT
+    container = IOM.get_optimization_container(model)
+    @test !isnothing(
+        IOM.get_parameter(container, ReactivePowerOffsetParameter, PSY.PowerLoad),
+    )
+    # ACPNetworkModel is a nodal (non-PTDF) network model, so the balance target is
+    # the per-bus ACBus expression, not a system-wide one (see
+    # `_balance_expression_targets`'s `<:AbstractNetworkModel` fallback method).
+    nodal_reactive_balance = IOM.get_expression(container, ReactivePowerBalance, PSY.ACBus)
+    @test !isnothing(nodal_reactive_balance)
+    @test solve!(model) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
+end
+
+@testset "Forced outage drives device output to zero" begin
+    device_model = DeviceModel(PSY.ThermalStandard, ThermalBasicUnitCommitment)
+    sys = PSB.build_system(PSITestSystems, "c_sys5_uc")
+    model = DecisionModel(MockOperationProblem, DCPNetworkModel, sys)
+    mock_construct_device!(
+        model,
+        device_model;
+        add_event_model = true,
+        built_for_recurrent_solves = true,
+    )
+    container = IOM.get_optimization_container(model)
+    param_array = IOM.get_parameter_array(
+        container,
+        AvailableStatusParameter(),
+        PSY.ThermalStandard,
+    )
+    outaged_name = axes(param_array)[1][1]
+    for t in axes(param_array)[2]
+        JuMP.fix(param_array[outaged_name, t], 0.0; force = true)
+    end
+    jm = IOM.get_jump_model(container)
+    JuMP.set_optimizer(jm, HiGHS.Optimizer)
+    JuMP.set_silent(jm)
+    JuMP.optimize!(jm)
+    @test JuMP.termination_status(jm) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED)
+    p = IOM.get_variable(container, ActivePowerVariable, PSY.ThermalStandard)
+    @test all(
+        abs(JuMP.value(p[outaged_name, t])) <= 1e-6 for t in axes(p)[2]
     )
 end
