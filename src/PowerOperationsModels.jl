@@ -272,6 +272,7 @@ include("common_models/converter_control.jl")
 include("common_models/market_bid_plumbing.jl")
 
 include("event_models/event_arguments.jl")
+include("event_models/event_constraints.jl")
 
 # Initial Conditions
 include("initial_conditions/add_initial_condition.jl")
@@ -430,6 +431,8 @@ export AvailableStatusParameter
 export ActivePowerOffsetParameter
 export ReactivePowerOffsetParameter
 export AvailableStatusChangeCountdownParameter
+export ActivePowerOutageConstraint
+export ReactivePowerOutageConstraint
 
 # Initial Conditions Quantities
 export DevicePower
