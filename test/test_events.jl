@@ -491,9 +491,52 @@ end
     # ACPNetworkModel is a nodal (non-PTDF) network model, so the balance target is
     # the per-bus ACBus expression, not a system-wide one (see
     # `_balance_expression_targets`'s `<:AbstractNetworkModel` fallback method).
+    # NOTE: existence of the parameter and existence of the expression container
+    # together do not prove the offset term is actually wired INTO the balance --
+    # `ReactivePowerBalance__ACBus` is allocated for every ACP build regardless of
+    # events. The next testset verifies that linkage directly via a coefficient
+    # check (this full E2E build can't do that itself: in a non-recurrent build,
+    # event parameters are baked Float64 constants -- see `get_param_eltype` --
+    # so their contribution is folded into the expression's constant and isn't
+    # structurally inspectable).
     nodal_reactive_balance = IOM.get_expression(container, ReactivePowerBalance, PSY.ACBus)
     @test !isnothing(nodal_reactive_balance)
     @test solve!(model) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
+end
+
+@testset "Event arguments for loads: reactive offset parameter has a nonzero coefficient in ReactivePowerBalance" begin
+    # Recurrent-solve mode makes event parameters real JuMP variables (see
+    # `get_param_eltype`), so we can check the offset's coefficient in the balance
+    # expression directly with `JuMP.coefficient` -- a structural check that fails
+    # if `add_to_expression!(container, ReactivePowerBalance,
+    # ReactivePowerOffsetParameter, ...)` is ever removed from the reactive-load
+    # `add_event_arguments!` method, unlike merely checking that the parameter and
+    # the balance expression both exist (see the previous testset's note).
+    device_model = DeviceModel(PSY.PowerLoad, StaticPowerLoad)
+    sys = PSB.build_system(PSITestSystems, "c_sys5_uc")
+    model = DecisionModel(MockOperationProblem, ACPNetworkModel, sys)
+    mock_construct_device!(
+        model,
+        device_model;
+        add_event_model = true,
+        built_for_recurrent_solves = true,
+    )
+    container = IOM.get_optimization_container(model)
+    load = first(PSY.get_components(PSY.PowerLoad, sys))
+    network_model = IOM.get_network_model(IOM.get_template(model))
+    bus_no =
+        PNM.get_mapped_bus_number(get_network_reduction(network_model), PSY.get_bus(load))
+    t = first(IOM.get_time_steps(container))
+    balance_row = IOM.get_expression(container, ReactivePowerBalance, PSY.ACBus)[bus_no, t]
+    param_ref = IOM.get_parameter_array(
+        container,
+        ReactivePowerOffsetParameter(),
+        PSY.PowerLoad,
+    )[
+        PSY.get_name(load),
+        t,
+    ]
+    @test JuMP.coefficient(balance_row, param_ref) != 0.0
 end
 
 @testset "Forced outage drives device output to zero" begin
