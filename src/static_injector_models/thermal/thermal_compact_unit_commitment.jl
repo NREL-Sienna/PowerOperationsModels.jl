@@ -1,3 +1,8 @@
+"""
+Formulation type to enable thermal compact commitment
+"""
+struct ThermalCompactUnitCommitment <: AbstractCompactUnitCommitment end
+
 function construct_device!(
     container::OptimizationContainer,
     sys::PSY.System,

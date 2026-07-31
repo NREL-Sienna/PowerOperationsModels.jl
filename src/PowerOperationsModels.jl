@@ -273,10 +273,10 @@ include("initial_conditions/add_initial_condition.jl")
 include("initial_conditions/update_initial_conditions.jl")
 
 # Device Models - Static Injectors
-# Thermal: `family.jl` holds everything shared across the family; each remaining file
-# holds one formulation's behavior. Order is arbitrary — the structs are declared in
-# `core/formulations.jl`, so no file here depends on another.
-include("static_injector_models/thermal/family.jl")
+# Thermal: each file below holds one formulation, declaring its struct at the top; the
+# `common/` files hold everything shared across the family, grouped by builder like
+# `common_models/`. The formulations come first because some shared signatures dispatch
+# on a concrete formulation.
 include("static_injector_models/thermal/thermal_basic_compact_unit_commitment.jl")
 include("static_injector_models/thermal/thermal_basic_dispatch.jl")
 include("static_injector_models/thermal/thermal_basic_unit_commitment.jl")
@@ -286,6 +286,16 @@ include("static_injector_models/thermal/thermal_dispatch_no_min.jl")
 include("static_injector_models/thermal/thermal_multi_start_unit_commitment.jl")
 include("static_injector_models/thermal/thermal_standard_dispatch.jl")
 include("static_injector_models/thermal/thermal_standard_unit_commitment.jl")
+include("static_injector_models/thermal/common/interface_methods.jl")
+include("static_injector_models/thermal/common/add_variables.jl")
+include("static_injector_models/thermal/common/add_parameters.jl")
+include("static_injector_models/thermal/common/add_expressions.jl")
+include("static_injector_models/thermal/common/add_to_expression.jl")
+include("static_injector_models/thermal/common/add_constraints.jl")
+include("static_injector_models/thermal/common/initial_conditions.jl")
+include("static_injector_models/thermal/common/auxiliary_variables.jl")
+include("static_injector_models/thermal/common/objective_function.jl")
+include("static_injector_models/thermal/common/construct_device.jl")
 include("static_injector_models/renewable_generation.jl")
 include("static_injector_models/renewablegeneration_constructor.jl")
 include("static_injector_models/electric_loads.jl")

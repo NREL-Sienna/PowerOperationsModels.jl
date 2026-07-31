@@ -13,47 +13,11 @@ struct MyCustomDeviceFormulation <: IOM.AbstractDeviceFormulation end
 ########################### Thermal Generation Formulations ################################
 # AbstractThermalFormulation: in IS
 # AbstractThermalDispatchFormuation, UnitCommentment: in IOM
+# The concrete formulations are declared at the top of their own file in
+# static_injector_models/thermal/.
 
 abstract type AbstractStandardUnitCommitment <: AbstractThermalUnitCommitment end
 abstract type AbstractCompactUnitCommitment <: AbstractThermalUnitCommitment end
-
-"""
-Formulation type to enable basic unit commitment representation without any intertemporal (ramp, min on/off time) constraints
-"""
-struct ThermalBasicUnitCommitment <: AbstractStandardUnitCommitment end
-"""
-Formulation type to enable standard unit commitment with intertemporal constraints and simplified startup profiles
-"""
-struct ThermalStandardUnitCommitment <: AbstractStandardUnitCommitment end
-
-"""
-Formulation type to enable basic dispatch without any intertemporal (ramp) constraints
-"""
-struct ThermalBasicDispatch <: AbstractThermalDispatchFormulation end
-"""
-Formulation type to enable standard dispatch with a range and enforce intertemporal ramp constraints
-"""
-struct ThermalStandardDispatch <: AbstractThermalDispatchFormulation end
-"""
-Formulation type to enable basic dispatch without any intertemporal constraints and relaxed minimum generation. *May not work with non-convex PWL cost definitions*
-"""
-struct ThermalDispatchNoMin <: AbstractThermalDispatchFormulation end
-"""
-Formulation type to enable pg-lib commitment formulation with startup/shutdown profiles
-"""
-struct ThermalMultiStartUnitCommitment <: AbstractCompactUnitCommitment end
-"""
-Formulation type to enable thermal compact commitment
-"""
-struct ThermalCompactUnitCommitment <: AbstractCompactUnitCommitment end
-"""
-Formulation type to enable thermal compact commitment without intertemporal (ramp, min on/off time) constraints
-"""
-struct ThermalBasicCompactUnitCommitment <: AbstractCompactUnitCommitment end
-"""
-Formulation type to enable thermal compact dispatch
-"""
-struct ThermalCompactDispatch <: AbstractThermalDispatchFormulation end
 
 ############################# Electric Load Formulations ###################################
 # AbstractLoadFormulation is imported from IS.Optimization via IOM

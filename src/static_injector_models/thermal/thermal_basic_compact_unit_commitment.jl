@@ -1,3 +1,8 @@
+"""
+Formulation type to enable thermal compact commitment without intertemporal (ramp, min on/off time) constraints
+"""
+struct ThermalBasicCompactUnitCommitment <: AbstractCompactUnitCommitment end
+
 #! format: off
 requires_initialization(::ThermalBasicCompactUnitCommitment) = false
 #! format: on

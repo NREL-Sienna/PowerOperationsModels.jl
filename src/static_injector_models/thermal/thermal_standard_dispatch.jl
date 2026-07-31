@@ -1,3 +1,8 @@
+"""
+Formulation type to enable standard dispatch with a range and enforce intertemporal ramp constraints
+"""
+struct ThermalStandardDispatch <: AbstractThermalDispatchFormulation end
+
 #! format: off
 requires_initialization(::ThermalStandardDispatch) = true
 #! format: on

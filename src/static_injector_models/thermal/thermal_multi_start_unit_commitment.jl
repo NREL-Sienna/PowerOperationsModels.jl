@@ -1,3 +1,8 @@
+"""
+Formulation type to enable pg-lib commitment formulation with startup/shutdown profiles
+"""
+struct ThermalMultiStartUnitCommitment <: AbstractCompactUnitCommitment end
+
 #! format: off
 has_multistart_variables(::PSY.ThermalMultiStart, ::ThermalMultiStartUnitCommitment)=true
 start_up_cost(cost, ::Type{<:PSY.ThermalMultiStart}, ::Type{T}, ::Type{ThermalMultiStartUnitCommitment} = ThermalMultiStartUnitCommitment) where {T <: MultiStartVariable} =

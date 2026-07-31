@@ -1,3 +1,8 @@
+"""
+Formulation type to enable basic dispatch without any intertemporal constraints and relaxed minimum generation. *May not work with non-convex PWL cost definitions*
+"""
+struct ThermalDispatchNoMin <: AbstractThermalDispatchFormulation end
+
 #! format: off
 get_variable_lower_bound(::Type{ActivePowerVariable}, d::PSY.ThermalGen, ::Type{ThermalDispatchNoMin}) = 0.0
 #! format: on
