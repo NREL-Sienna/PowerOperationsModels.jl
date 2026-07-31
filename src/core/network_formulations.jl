@@ -1,6 +1,6 @@
 ############################## Network Model Formulations ##################################
 # AbstractPTDFNetworkModel must subtype AbstractDCPNetworkModel so that dispatch on
-# AbstractDCPNetworkModel (e.g. _flow_variable_types) catches PTDF models.
+# AbstractDCPNetworkModel catches PTDF models.
 # This can't live in IS because IS is domain-agnostic and doesn't know about power-system networks.
 abstract type AbstractPTDFNetworkModel <: AbstractDCPNetworkModel end
 

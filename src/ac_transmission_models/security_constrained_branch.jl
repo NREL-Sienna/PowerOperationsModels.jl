@@ -893,16 +893,16 @@ function construct_device!(
         add_variables!(
             container,
             FlowActivePowerSlackUpperBound,
-            network_model,
             devices,
-            F,
+            device_model,
+            network_model,
         )
         add_variables!(
             container,
             FlowActivePowerSlackLowerBound,
-            network_model,
             devices,
-            F,
+            device_model,
+            network_model,
         )
     end
 
@@ -991,21 +991,21 @@ function construct_device!(
     network_model::NetworkModel{DCPNetworkModel},
 ) where {T <: PSY.ACTransmission, F <: AbstractSecurityConstrainedStaticBranch}
     devices = get_available_components(device_model, sys)
-    add_variables!(container, FlowActivePowerVariable, network_model, devices, F)
+    add_variables!(container, FlowActivePowerVariable, devices, device_model, network_model)
     if get_use_slacks(device_model)
         add_variables!(
             container,
             FlowActivePowerSlackUpperBound,
-            network_model,
             devices,
-            F,
+            device_model,
+            network_model,
         )
         add_variables!(
             container,
             FlowActivePowerSlackLowerBound,
-            network_model,
             devices,
-            F,
+            device_model,
+            network_model,
         )
     end
     add_to_expression!(
