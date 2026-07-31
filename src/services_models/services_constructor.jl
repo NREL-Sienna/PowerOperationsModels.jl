@@ -238,7 +238,7 @@ function construct_service!(
     )
     # Merged dense `(service, time)` cost-expression container, built once over all services.
     add_expressions!(container, ProductionCostExpression, services, model)
-    # Merged slope/breakpoint PWL cost params (empty meta), built once over all services.
+    # Merged slope/breakpoint PWL cost params, built once over all services.
     _maybe_process_stepwise(container, model, services)
     for service in services
         contributing_devices = get_contributing_devices(model, PSY.get_name(service))
@@ -887,7 +887,7 @@ function construct_service!(
                 )
             end
         end
-        # Merged per-type parameter containers over all interfaces (empty meta), filled per
+        # Merged per-type parameter containers over all interfaces, filled per
         # interface by the vector `_add_parameters!` path.
         add_parameters!(container, MinInterfaceFlowLimitParameter, interfaces, model)
         add_parameters!(container, MaxInterfaceFlowLimitParameter, interfaces, model)

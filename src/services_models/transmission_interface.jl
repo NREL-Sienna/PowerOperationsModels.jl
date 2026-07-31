@@ -101,10 +101,8 @@ function add_constraints!(
         meta = "lb",
     )
     int_name = PSY.get_name(interface)
-    # DELETE-AFTER-REVIEW: reviewer context on the container change; remove once the PR is approved.
-    # Merged per-type parameter containers keyed by interface name (empty meta); fetch the whole
-    # container/multiplier array and index this interface's column/row (was a per-service
-    # `meta = int_name` container).
+    # Merged per-type parameter containers keyed by interface name; fetch the whole
+    # container/multiplier array and index this interface's column/row.
     param_container_min =
         get_parameter(container, MinInterfaceFlowLimitParameter, PSY.TransmissionInterface)
     param_multiplier_min = get_parameter_multiplier_array(

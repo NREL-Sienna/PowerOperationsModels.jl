@@ -1,4 +1,4 @@
-# Time-varying ORDC. Adapted from PowerSimulations.jl PR #1629 to the psy6 data model,
+# Time-varying ORDC. Adapted from PowerSimulations.jl PR #1629 to the current PowerSystems data model,
 # where a time-varying ORDC is a `ReserveDemandTimeSeriesCurve` whose `variable` is a
 # `CostCurve{TimeSeriesPiecewiseIncrementalCurve}` (rather than a `ReserveDemandCurve`
 # carrying a bare `TimeSeriesKey`). The multi-step Simulation scenario from that PR is
@@ -100,9 +100,8 @@ end
           IOM.ModelBuildStatus.BUILT
 
     container = get_optimization_container(model)
-    # DELETE-AFTER-REVIEW: reviewer context on the container change; remove once the PR is approved.
-    # ReserveRequirementSlack is now one dense container per service type keyed
-    # `[service_name, time]` (empty meta), built once over all the type's services.
+    # ReserveRequirementSlack is one dense container per service type keyed
+    # `[service_name, time]`, built once over all the type's services.
     slack_var = IOM.get_variable(
         container,
         ReserveRequirementSlack,
@@ -400,10 +399,10 @@ end
           IOM.ModelBuildStatus.BUILT
     @test solve!(model) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
 
-    # C1: the ORDC slope/breakpoint PWL cost params are now ONE merged container per service type
-    # (names axis + batch-wide tranche axis, empty meta), not per-service `meta = name`. A 3-arg
-    # fetch succeeds only for the merged container; the two ORDCs above have different tranche
-    # counts, so the successful build+solve also exercises the batch-wide tranche padding.
+    # C1: the ORDC slope/breakpoint PWL cost params are ONE merged container per service type
+    # (names axis + batch-wide tranche axis). A 3-arg fetch succeeds only for the merged
+    # container; the two ORDCs above have different tranche counts, so the successful build+solve
+    # also exercises the batch-wide tranche padding.
     container = get_optimization_container(model)
     dir = POM._reserve_offer_direction(
         first(get_components(ReserveDemandTimeSeriesCurve, c_sys5_uc)),
@@ -742,12 +741,9 @@ end
 
 @testset "Interface slacks are one merged container per type (use_slacks)" begin
     # `use_slacks = true` on the interface ServiceModel builds InterfaceFlowSlackUp/Down as one
-    # dense container per (variable type, TransmissionInterface) keyed by interface name (empty
-    # meta), each wired to the interface's violation penalty. `deepcopy` so the added interface
-    # does not leak into the PSB cache.
-    # DELETE-AFTER-REVIEW: reviewer context on the container change; remove once the PR is approved.
-    # Ports the previously-blocked ServiceModel use_slacks case (the old per-name + meta build had
-    # no working container-builder method).
+    # dense container per (variable type, TransmissionInterface) keyed by interface name, each
+    # wired to the interface's violation penalty. `deepcopy` so the added interface does not leak
+    # into the PSB cache.
     sys = deepcopy(PSB.build_system(PSITestSystems, "c_sys5_uc"; add_reserves = true))
     interface = TransmissionInterface(;
         name = "west_east",
@@ -769,7 +765,7 @@ end
     container = get_optimization_container(model)
     time_steps = get_time_steps(container)
     for V in (POM.InterfaceFlowSlackUp, POM.InterfaceFlowSlackDown)
-        # 3-arg fetch (no meta) proves the merged, empty-meta container.
+        # 3-arg fetch proves the merged container.
         slack = IOM.get_variable(container, V, TransmissionInterface)
         @test axes(slack) == (["west_east"], time_steps)
         @test all(JuMP.lower_bound(slack["west_east", t]) == 0.0 for t in time_steps)
@@ -782,9 +778,7 @@ end
 
 @testset "Interface flow-limit params are one merged container per type" begin
     # VariableMaxInterfaceFlow builds Min/MaxInterfaceFlowLimitParameter as one container per type
-    # over all interface names (empty meta).
-    # DELETE-AFTER-REVIEW: reviewer context on the container change; remove once the PR is approved.
-    # The 3-arg fetch below would throw if the container were still per-service `meta = name`.
+    # over all interface names; the 3-arg fetch below proves the merged container.
     sys = deepcopy(PSB.build_system(PSITestSystems, "c_sys5_uc"; add_reserves = true))
     interface = TransmissionInterface(;
         name = "west_east",
@@ -1404,5 +1398,5 @@ end
 #    only the feedforward constraint types and the abstract construct hooks exist.
 # Also not ported (feature/framework not in POM): AGC (no `template_agc_reserve_deployment`),
 # Hydro reserves (`HydroTurbineEnergyDispatch` absent), the old bare-`TimeSeriesKey` ORDC
-# tests (psy6 uses `ReserveDemandTimeSeriesCurve`; covered by the two ORDC testsets above),
+# tests (the current PowerSystems model uses `ReserveDemandTimeSeriesCurve`; covered by the two ORDC testsets above),
 # and all Simulation-orchestration testsets (Simulation framework absent in the IOM/POM split).
