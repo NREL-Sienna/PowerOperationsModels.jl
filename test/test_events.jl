@@ -202,3 +202,29 @@ end
     # Initial availability is 1.0 for every (device, t)
     @test all(IOM.jump_value.(param_array.data) .== 1.0)
 end
+
+@testset "Event arguments for loads add offset parameters" begin
+    device_model = DeviceModel(PSY.PowerLoad, StaticPowerLoad)
+    sys = PSB.build_system(PSITestSystems, "c_sys5_uc")
+    model = DecisionModel(MockOperationProblem, CopperPlateNetworkModel, sys)
+    mock_construct_device!(model, device_model; add_event_model = true)
+    container = IOM.get_optimization_container(model)
+    @test !isnothing(
+        IOM.get_parameter(container, ActivePowerOffsetParameter, PSY.PowerLoad),
+    )
+    # AvailableStatus/Countdown params exist too.
+    @test !isnothing(
+        IOM.get_parameter(container, AvailableStatusParameter, PSY.PowerLoad),
+    )
+    @test !isnothing(
+        IOM.get_parameter(
+            container,
+            AvailableStatusChangeCountdownParameter,
+            PSY.PowerLoad,
+        ),
+    )
+    # CopperPlate mock network -> the offset parameter's term lands in the system-level
+    # active power balance expression (single target: the reference-bus row).
+    system_balance = IOM.get_expression(container, ActivePowerBalance, PSY.System)
+    @test !isnothing(system_balance)
+end
