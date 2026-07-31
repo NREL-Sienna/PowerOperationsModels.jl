@@ -2594,8 +2594,6 @@ function _get_area_from_to(reduction_entry::PSY.ACBranch)
     return area_from, area_to
 end
 
-# Separate from the `PSY.ACBranch` method above: the winding wrapper is `PSY.ACTransmission`
-# but not `PSY.ACBranch`. It carries its circuit's arc directly.
 function _get_area_from_to(reduction_entry::PNM.ThreeWindingTransformerCircuit)
     arc = PSY.get_arc(reduction_entry)
     return PSY.get_area(PSY.get_from(arc)), PSY.get_area(PSY.get_to(arc))

@@ -116,9 +116,7 @@ function _check_branch_rating_ts(
         return
     end
 
-    rating = _branch_rating(device)
-    # A branch rating time series scales a static base rating, so there is nothing to scale
-    # (and nothing to compare against) when the device has none.
+    rating = branch_rating(device)
     if isnothing(rating)
         throw(
             IS.ConflictingInputsError(

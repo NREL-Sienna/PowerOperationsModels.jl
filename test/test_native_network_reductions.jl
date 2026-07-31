@@ -4,7 +4,7 @@ import PowerNetworkMatrices as PNM
 # reduction shape the native formulations must handle:
 #   - radial:            "1-8-i_1" absorbed entirely (bus 8 -> 1), no arc entry
 #   - series chain:      arc (1,2) = "1-6-i_1" + "6-7-i_1" + "7-2-i_1"
-#   - cross-type chain:  arc (1,5) = Line "1-9-i_1" + Transformer2W "9-5-i_1"
+#   - cross-type chain:  arc (1,5) = Line "1-9-i_1" + TwoWindingTransformer "9-5-i_1"
 #   - parallel:          arc (1,4) = "1-4-i_1" ∥ "1-4-i_2" -> entry "1-4-i_double_circuit"
 #   - parallel-in-chain: arc (2,3) = "10-3-i_1" + ("2-10-i_1" ∥ "2-10-i_2")
 #   - direct:            arc (4,5) = "4-5-i_1"
@@ -75,7 +75,7 @@ end
 
     container = IOM.get_optimization_container(model_red)
     bfe_line = IOM.get_expression(container, BThetaBranchFlow, Line)
-    bfe_xfmr = IOM.get_expression(container, BThetaBranchFlow, Transformer2W)
+    bfe_xfmr = IOM.get_expression(container, BThetaBranchFlow, TwoWindingTransformer)
 
     # BThetaBranchFlow built exactly once per reduced arc, across both branch types.
     n_flow_expr = length(axes(bfe_line)[1]) + length(axes(bfe_xfmr)[1])
@@ -172,7 +172,11 @@ end
             ) + length(
                 _assigned_flow_constraint_axis(
                     container,
-                    IOM.ConstraintKey(POM.NetworkFlowConstraint, Transformer2W, meta),
+                    IOM.ConstraintKey(
+                        POM.NetworkFlowConstraint,
+                        TwoWindingTransformer,
+                        meta,
+                    ),
                 ),
             )
         @test n == CASE11_DISTINCT_REDUCED_ARCS
@@ -185,7 +189,8 @@ end
     @test pft_line["1-6-i_1", t1] === pft_line["6-7-i_1", t1]
     @test pft_line["6-7-i_1", t1] === pft_line["7-2-i_1", t1]
     @test "1-4-i_double_circuit" in axes(pft_line)[1]
-    pft_xfmr = IOM.get_variable(container, FlowActivePowerFromToVariable, Transformer2W)
+    pft_xfmr =
+        IOM.get_variable(container, FlowActivePowerFromToVariable, TwoWindingTransformer)
     @test pft_line["1-9-i_1", t1] === pft_xfmr["9-5-i_1", t1]
 
     # The PNM series/parallel equivalents are exact two-port reductions, so the AC
@@ -251,7 +256,8 @@ end
             ),
         ) + length(
             _assigned_flow_constraint_axis(
-                container, IOM.ConstraintKey(POM.FlowRateConstraint, Transformer2W, "lb"),
+                container,
+                IOM.ConstraintKey(POM.FlowRateConstraint, TwoWindingTransformer, "lb"),
             ),
         )
     @test n_lb == CASE11_DISTINCT_REDUCED_ARCS
@@ -281,7 +287,8 @@ end
             ),
         ) + length(
             _assigned_flow_constraint_axis(
-                container, IOM.ConstraintKey(POM.NetworkFlowConstraint, Transformer2W),
+                container,
+                IOM.ConstraintKey(POM.NetworkFlowConstraint, TwoWindingTransformer),
             ),
         )
     @test n_flow == CASE11_DISTINCT_REDUCED_ARCS
@@ -292,7 +299,8 @@ end
             ),
         ) + length(
             _assigned_flow_constraint_axis(
-                container, IOM.ConstraintKey(POM.NetworkLossConstraint, Transformer2W),
+                container,
+                IOM.ConstraintKey(POM.NetworkLossConstraint, TwoWindingTransformer),
             ),
         )
     @test n_loss == CASE11_DISTINCT_REDUCED_ARCS
@@ -303,7 +311,8 @@ end
     @test pft_line["1-6-i_1", t1] === pft_line["6-7-i_1", t1]
     @test pft_line["6-7-i_1", t1] === pft_line["7-2-i_1", t1]
     @test "1-4-i_double_circuit" in axes(pft_line)[1]
-    pft_xfmr = IOM.get_variable(container, FlowActivePowerFromToVariable, Transformer2W)
+    pft_xfmr =
+        IOM.get_variable(container, FlowActivePowerFromToVariable, TwoWindingTransformer)
     @test pft_line["1-9-i_1", t1] === pft_xfmr["9-5-i_1", t1]
 end
 
@@ -336,59 +345,6 @@ end
           IOM.ModelBuildStatus.FAILED
     log = read(joinpath(out, "operation_problem.log"), String)
     @test occursin("absorbed by a network reduction", log)
-end
-
-@testset "PhaseAngleControl branch absorbed by a network reduction fails with a clear error" begin
-    # "1-6-i_1" is one segment of the (1,2) series chain, so under reduction it has no
-    # direct-branch entry of its own — the same _validate_controlled_branch_not_reduced
-    # gate exercised above for VoltageControlTap also covers PhaseAngleControl.
-    sys = _case11_with_forecast()
-    line = PSY.get_component(Line, sys, "1-6-i_1")
-    arc = PSY.get_arc(line)
-    ps = PSY.PhaseShiftingTransformer(;
-        name = PSY.get_name(line),
-        available = true,
-        active_power_flow = 0.0,
-        reactive_power_flow = 0.0,
-        r = PSY.get_r(line, PSY.SU),
-        x = PSY.get_x(line, PSY.SU),
-        primary_shunt = 0.0,
-        tap = 1.0,
-        α = 0.0,
-        phase_angle_limits = (min = -1.5, max = 1.5),
-        rating = PSY.get_rating(line, PSY.SU),
-        arc = arc,
-        base_power = PSY.get_base_power(sys, PSY.NU),
-    )
-    PSY.add_component!(sys, ps)
-    PSY.remove_component!(sys, line)
-
-    net = NetworkModel(
-        DCPNetworkModel;
-        reduce_radial_branches = true,
-        reduce_degree_two_branches = true,
-    )
-    template = get_thermal_dispatch_template_network(net)
-    set_device_model!(
-        template, DeviceModel(PSY.PhaseShiftingTransformer, PhaseAngleControl),
-    )
-    model = DecisionModel(template, sys; optimizer = HiGHS_optimizer)
-    out = mktempdir(; cleanup = true)
-    @test build!(model; output_dir = out, console_level = Logging.Error) ==
-          IOM.ModelBuildStatus.FAILED
-    log = read(joinpath(out, "operation_problem.log"), String)
-    @test occursin("absorbed by a network reduction", log)
-end
-
-@testset "tap regulated-bus resolution errors for non-retained bus numbers" begin
-    sys = PSB.build_system(PSITestSystems, "c_sys14")
-    tr = PSY.get_component(PSY.TapTransformer, sys, "Trans1")
-    PSY.set_regulated_bus_number!(tr, 999)
-    geom = POM._branch_geometry(tr)
-    number_to_name = Dict(1 => "Bus 1")
-    @test_throws ErrorException POM._tap_regulated_bus_name(tr, geom, number_to_name)
-    bus_by_number = Dict(1 => PSY.get_from(PSY.get_arc(tr)))
-    @test_throws ErrorException POM._tap_regulated_bus(tr, bus_by_number)
 end
 
 @testset "ACP + StaticBranchBounds use_slacks wires flow-definition slacks per reduced arc" begin

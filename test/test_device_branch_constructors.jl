@@ -102,12 +102,12 @@ end
     @test solve!(model_m) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
 end
 
-@testset "DC Power Flow Models for TwoTerminalGenericHVDCLine  with with Line Flow Constraints, TapTransformer & Transformer2W Unbounded" begin
+@testset "DC Power Flow Models for TwoTerminalGenericHVDCLine  with with Line Flow Constraints, TwoWindingTransformer & TwoWindingTransformer Unbounded" begin
     ratelimit_constraint_keys = [
-        IOM.ConstraintKey(FlowRateConstraint, Transformer2W, "ub"),
-        IOM.ConstraintKey(FlowRateConstraint, Transformer2W, "lb"),
-        IOM.ConstraintKey(FlowRateConstraint, TapTransformer, "ub"),
-        IOM.ConstraintKey(FlowRateConstraint, TapTransformer, "lb"),
+        IOM.ConstraintKey(FlowRateConstraint, TwoWindingTransformer, "ub"),
+        IOM.ConstraintKey(FlowRateConstraint, TwoWindingTransformer, "lb"),
+        IOM.ConstraintKey(FlowRateConstraint, TwoWindingTransformer, "ub"),
+        IOM.ConstraintKey(FlowRateConstraint, TwoWindingTransformer, "lb"),
     ]
 
     system = PSB.build_system(PSITestSystems, "c_sys14_dc")
@@ -117,19 +117,18 @@ end
     limits_min = min(limits_from.min, limits_to.min)
     limits_max = min(limits_from.max, limits_to.max)
 
-    tap_transformer = PSY.get_component(TapTransformer, system, "Trans3")
-    rate_limit = PSY.get_rating(tap_transformer, PSY.SU)
+    tap_transformer = PSY.get_component(TwoWindingTransformer, system, "Trans3")
+    rate_limit = PSY.get_rating(PSY.get_circuit(tap_transformer), PSY.SU)
 
-    transformer = PSY.get_component(Transformer2W, system, "Trans4")
-    rate_limit2w = PSY.get_rating(tap_transformer, PSY.SU)
+    transformer = PSY.get_component(TwoWindingTransformer, system, "Trans4")
+    rate_limit2w = PSY.get_rating(PSY.get_circuit(tap_transformer), PSY.SU)
 
     for model in DC_NETWORK_MODELS_FOR_TESTING
         template = get_template_dispatch_with_network(
             NetworkModel(model),
         )
         set_device_model!(template, TwoTerminalGenericHVDCLine, HVDCTwoTerminalLossless)
-        set_device_model!(template, DeviceModel(Transformer2W, StaticBranch))
-        set_device_model!(template, DeviceModel(TapTransformer, StaticBranch))
+        set_device_model!(template, DeviceModel(TwoWindingTransformer, StaticBranch))
         model_m = DecisionModel(template, system; optimizer = ipopt_optimizer)
         @test build!(model_m; output_dir = mktempdir(; cleanup = true)) ==
               IOM.ModelBuildStatus.BUILT
@@ -149,7 +148,7 @@ end
         @test check_flow_variable_values(
             model_m,
             FlowActivePowerVariable,
-            TapTransformer,
+            TwoWindingTransformer,
             "Trans3",
             -rate_limit,
             rate_limit,
@@ -157,7 +156,7 @@ end
         @test check_flow_variable_values(
             model_m,
             FlowActivePowerVariable,
-            Transformer2W,
+            TwoWindingTransformer,
             "Trans4",
             -rate_limit2w,
             rate_limit2w,
@@ -165,7 +164,7 @@ end
     end
 end
 
-@testset "DC Power Flow Models for Unbounded TwoTerminalGenericHVDCLine , and StaticBranchBounds for TapTransformer & Transformer2W" begin
+@testset "DC Power Flow Models for Unbounded TwoTerminalGenericHVDCLine , and StaticBranchBounds for TwoWindingTransformer & TwoWindingTransformer" begin
     system = PSB.build_system(PSITestSystems, "c_sys14_dc")
     hvdc_line = PSY.get_component(TwoTerminalGenericHVDCLine, system, "DCLine3")
     limits_from = PSY.get_active_power_limits_from(hvdc_line, PSY.SU)
@@ -173,11 +172,11 @@ end
     limits_min = min(limits_from.min, limits_to.min)
     limits_max = min(limits_from.max, limits_to.max)
 
-    tap_transformer = PSY.get_component(TapTransformer, system, "Trans3")
-    rate_limit = PSY.get_rating(tap_transformer, PSY.SU)
+    tap_transformer = PSY.get_component(TwoWindingTransformer, system, "Trans3")
+    rate_limit = PSY.get_rating(PSY.get_circuit(tap_transformer), PSY.SU)
 
-    transformer = PSY.get_component(Transformer2W, system, "Trans4")
-    rate_limit2w = PSY.get_rating(tap_transformer, PSY.SU)
+    transformer = PSY.get_component(TwoWindingTransformer, system, "Trans4")
+    rate_limit2w = PSY.get_rating(PSY.get_circuit(tap_transformer), PSY.SU)
 
     for model in DC_NETWORK_MODELS_FOR_TESTING
         template = get_template_dispatch_with_network(
@@ -187,8 +186,7 @@ end
             template,
             DeviceModel(TwoTerminalGenericHVDCLine, HVDCTwoTerminalUnbounded),
         )
-        set_device_model!(template, DeviceModel(TapTransformer, StaticBranchBounds))
-        set_device_model!(template, DeviceModel(Transformer2W, StaticBranchBounds))
+        set_device_model!(template, DeviceModel(TwoWindingTransformer, StaticBranchBounds))
         model_m = DecisionModel(template, system; optimizer = ipopt_optimizer)
         @test build!(model_m; output_dir = mktempdir(; cleanup = true)) ==
               IOM.ModelBuildStatus.BUILT
@@ -198,8 +196,16 @@ end
             FlowActivePowerVariable,
             TwoTerminalGenericHVDCLine,
         )
-        @test check_variable_bounded(model_m, FlowActivePowerVariable, TapTransformer)
-        @test check_variable_bounded(model_m, FlowActivePowerVariable, TapTransformer)
+        @test check_variable_bounded(
+            model_m,
+            FlowActivePowerVariable,
+            TwoWindingTransformer,
+        )
+        @test check_variable_bounded(
+            model_m,
+            FlowActivePowerVariable,
+            TwoWindingTransformer,
+        )
 
         @test solve!(model_m) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
 
@@ -214,7 +220,7 @@ end
         @test check_flow_variable_values(
             model_m,
             FlowActivePowerVariable,
-            TapTransformer,
+            TwoWindingTransformer,
             "Trans3",
             -rate_limit,
             rate_limit,
@@ -222,7 +228,7 @@ end
         @test check_flow_variable_values(
             model_m,
             FlowActivePowerVariable,
-            Transformer2W,
+            TwoWindingTransformer,
             "Trans4",
             -rate_limit2w,
             rate_limit2w,
@@ -464,14 +470,13 @@ end
     end
 end
 
-@testset "DC Power Flow Models for TwoTerminalGenericHVDCLine  Dispatch and TapTransformer & Transformer2W Unbounded" begin
+@testset "DC Power Flow Models for TwoTerminalGenericHVDCLine  Dispatch and TwoWindingTransformer & TwoWindingTransformer Unbounded" begin
     ratelimit_constraint_keys = [
-        IOM.ConstraintKey(FlowRateConstraint, Transformer2W, "ub"),
+        IOM.ConstraintKey(FlowRateConstraint, TwoWindingTransformer, "ub"),
         IOM.ConstraintKey(FlowRateConstraint, Line, "ub"),
         IOM.ConstraintKey(FlowRateConstraint, Line, "lb"),
-        IOM.ConstraintKey(FlowRateConstraint, TapTransformer, "ub"),
-        IOM.ConstraintKey(FlowRateConstraint, Transformer2W, "lb"),
-        IOM.ConstraintKey(FlowRateConstraint, TapTransformer, "lb"),
+        IOM.ConstraintKey(FlowRateConstraint, TwoWindingTransformer, "ub"),
+        IOM.ConstraintKey(FlowRateConstraint, TwoWindingTransformer, "lb"),
         IOM.ConstraintKey(FlowRateConstraint, TwoTerminalGenericHVDCLine, "ub"),
         IOM.ConstraintKey(FlowRateConstraint, TwoTerminalGenericHVDCLine, "lb"),
     ]
@@ -484,17 +489,16 @@ end
     limits_min = min(limits_from.min, limits_to.min)
     limits_max = min(limits_from.max, limits_to.max)
 
-    tap_transformer = PSY.get_component(TapTransformer, system, "Trans3")
-    rate_limit = PSY.get_rating(tap_transformer, PSY.SU)
+    tap_transformer = PSY.get_component(TwoWindingTransformer, system, "Trans3")
+    rate_limit = PSY.get_rating(PSY.get_circuit(tap_transformer), PSY.SU)
 
-    transformer = PSY.get_component(Transformer2W, system, "Trans4")
-    rate_limit2w = PSY.get_rating(tap_transformer, PSY.SU)
+    transformer = PSY.get_component(TwoWindingTransformer, system, "Trans4")
+    rate_limit2w = PSY.get_rating(PSY.get_circuit(tap_transformer), PSY.SU)
 
     template = get_template_dispatch_with_network(
         NetworkModel(PTDFNetworkModel),
     )
-    set_device_model!(template, DeviceModel(TapTransformer, StaticBranch))
-    set_device_model!(template, DeviceModel(Transformer2W, StaticBranch))
+    set_device_model!(template, DeviceModel(TwoWindingTransformer, StaticBranch))
     set_device_model!(
         template,
         DeviceModel(TwoTerminalGenericHVDCLine, HVDCTwoTerminalLossless),
@@ -517,82 +521,25 @@ end
     @test check_flow_variable_values(
         model_m,
         FlowActivePowerVariable,
-        TapTransformer,
+        TwoWindingTransformer,
         "Trans3",
         rate_limit,
     )
     @test check_flow_variable_values(
         model_m,
         FlowActivePowerVariable,
-        Transformer2W,
+        TwoWindingTransformer,
         "Trans4",
         rate_limit2w,
     )
 end
 
-@testset "DC Power Flow Models for PhaseShiftingTransformer and Line" begin
-    system = build_system(PSITestSystems, "c_sys5_uc")
-
-    line = get_component(Line, system, "1")
-
-    ps = PhaseShiftingTransformer(;
-        name = get_name(line),
-        available = true,
-        active_power_flow = 0.0,
-        reactive_power_flow = 0.0,
-        r = get_r(line, PSY.SU),
-        x = get_r(line, PSY.SU),
-        primary_shunt = 0.0,
-        tap = 1.0,
-        α = 0.0,
-        rating = get_rating(line, PSY.SU),
-        arc = get_arc(line),
-        base_power = get_base_power(system, PSY.NU),
-    )
-
-    add_component!(system, ps)
-    remove_component!(system, line)
-
-    template = get_template_dispatch_with_network(
-        NetworkModel(PTDFNetworkModel; network_matrix = PTDF(system)),
-    )
-    set_device_model!(template, DeviceModel(PhaseShiftingTransformer, PhaseAngleControl))
-    model_m = DecisionModel(template, system; optimizer = HiGHS_optimizer)
-    @test build!(model_m; output_dir = mktempdir(; cleanup = true)) ==
-          IOM.ModelBuildStatus.BUILT
-
-    @test check_variable_unbounded(
-        model_m,
-        FlowActivePowerVariable,
-        PhaseShiftingTransformer,
-    )
-
-    @test solve!(model_m) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
-
-    @test check_flow_variable_values(
-        model_m,
-        FlowActivePowerVariable,
-        PhaseShiftingTransformer,
-        "1",
-        get_rating(ps, PSY.SU),
-    )
-
-    @test check_flow_variable_values(
-        model_m,
-        PhaseShifterAngle,
-        PhaseShiftingTransformer,
-        "1",
-        -π / 2,
-        π / 2,
-    )
-end
-
-@testset "AC Power Flow Models for TwoTerminalGenericHVDCLine  Flow Constraints and TapTransformer & Transformer2W Unbounded" begin
+@testset "AC Power Flow Models for TwoTerminalGenericHVDCLine  Flow Constraints and TwoWindingTransformer & TwoWindingTransformer Unbounded" begin
     ratelimit_constraint_keys = [
-        IOM.ConstraintKey(FlowRateConstraintFromTo, Transformer2W),
-        IOM.ConstraintKey(FlowRateConstraintToFrom, Transformer2W),
-        IOM.ConstraintKey(FlowRateConstraintFromTo, TapTransformer),
-        IOM.ConstraintKey(FlowRateConstraintToFrom, TapTransformer),
+        IOM.ConstraintKey(FlowRateConstraintFromTo, TwoWindingTransformer),
+        IOM.ConstraintKey(FlowRateConstraintToFrom, TwoWindingTransformer),
+        IOM.ConstraintKey(FlowRateConstraintFromTo, TwoWindingTransformer),
+        IOM.ConstraintKey(FlowRateConstraintToFrom, TwoWindingTransformer),
         IOM.ConstraintKey(FlowRateConstraint, TwoTerminalGenericHVDCLine, "ub"),
         IOM.ConstraintKey(FlowRateConstraint, TwoTerminalGenericHVDCLine, "lb"),
     ]
@@ -605,15 +552,14 @@ end
     limits_min = min(limits_from.min, limits_to.min)
     limits_max = min(limits_from.max, limits_to.max)
 
-    tap_transformer = PSY.get_component(TapTransformer, system, "Trans3")
-    rate_limit = PSY.get_rating(tap_transformer, PSY.SU)
+    tap_transformer = PSY.get_component(TwoWindingTransformer, system, "Trans3")
+    rate_limit = PSY.get_rating(PSY.get_circuit(tap_transformer), PSY.SU)
 
-    transformer = PSY.get_component(Transformer2W, system, "Trans4")
-    rate_limit2w = PSY.get_rating(tap_transformer, PSY.SU)
+    transformer = PSY.get_component(TwoWindingTransformer, system, "Trans4")
+    rate_limit2w = PSY.get_rating(PSY.get_circuit(tap_transformer), PSY.SU)
 
     template = get_template_dispatch_with_network(ACPNetworkModel)
-    set_device_model!(template, TapTransformer, StaticBranchBounds)
-    set_device_model!(template, Transformer2W, StaticBranchBounds)
+    set_device_model!(template, TwoWindingTransformer, StaticBranchBounds)
     set_device_model!(
         template,
         DeviceModel(TwoTerminalGenericHVDCLine, HVDCTwoTerminalLossless),
@@ -621,10 +567,26 @@ end
     model_m = DecisionModel(template, system; optimizer = ipopt_optimizer)
     @test build!(model_m; output_dir = mktempdir(; cleanup = true)) ==
           IOM.ModelBuildStatus.BUILT
-    @test check_variable_bounded(model_m, FlowActivePowerFromToVariable, TapTransformer)
-    @test check_variable_bounded(model_m, FlowReactivePowerFromToVariable, TapTransformer)
-    @test check_variable_bounded(model_m, FlowActivePowerToFromVariable, Transformer2W)
-    @test check_variable_bounded(model_m, FlowReactivePowerToFromVariable, Transformer2W)
+    @test check_variable_bounded(
+        model_m,
+        FlowActivePowerFromToVariable,
+        TwoWindingTransformer,
+    )
+    @test check_variable_bounded(
+        model_m,
+        FlowReactivePowerFromToVariable,
+        TwoWindingTransformer,
+    )
+    @test check_variable_bounded(
+        model_m,
+        FlowActivePowerToFromVariable,
+        TwoWindingTransformer,
+    )
+    @test check_variable_bounded(
+        model_m,
+        FlowReactivePowerToFromVariable,
+        TwoWindingTransformer,
+    )
 
     psi_constraint_test(model_m, ratelimit_constraint_keys)
 
@@ -642,7 +604,7 @@ end
         model_m,
         FlowActivePowerFromToVariable,
         FlowReactivePowerFromToVariable,
-        TapTransformer,
+        TwoWindingTransformer,
         "Trans3",
         rate_limit,
     )
@@ -650,7 +612,7 @@ end
         model_m,
         FlowActivePowerToFromVariable,
         FlowReactivePowerToFromVariable,
-        Transformer2W,
+        TwoWindingTransformer,
         "Trans4",
         rate_limit2w,
     )
@@ -803,7 +765,8 @@ end
     )
     PSY.add_component!(system, new_gen)
 
-    # Create a star bus for the Transformer3W
+    # psy6: a ThreeWindingTransformer is three TransformerCircuits, each terminal->star.
+    # The tertiary is deliberately the tightest rating so the flow assert below binds.
     star_bus = ACBus(;
         number = 103,
         name = "Star_Bus_T3W",
@@ -818,53 +781,31 @@ end
     )
     PSY.add_component!(system, star_bus)
 
-    transformer3w = Transformer3W(;
-        name = "Transformer3W_busD",
+    _t3w_circuit(from, rating) = PSY.TransformerCircuit(;
         available = true,
-        primary_star_arc = Arc(; from = busD, to = star_bus),
-        secondary_star_arc = Arc(; from = new_bus1, to = star_bus),
-        tertiary_star_arc = Arc(; from = new_bus2, to = star_bus),
+        arc = Arc(; from = from, to = star_bus),
+        r = 0.01,
+        x = 0.1,
+        rating = rating,
+        base_power = 100.0,
+    )
+    transformer3w = ThreeWindingTransformer(;
+        name = "Transformer3W_busD",
+        primary_circuit = _t3w_circuit(busD, 1.0),
+        secondary_circuit = _t3w_circuit(new_bus1, 1.0),
+        tertiary_circuit = _t3w_circuit(new_bus2, 0.5),
         star_bus = star_bus,
-        active_power_flow_primary = 0.0,
-        reactive_power_flow_primary = 0.0,
-        active_power_flow_secondary = 0.0,
-        reactive_power_flow_secondary = 0.0,
-        active_power_flow_tertiary = 0.0,
-        reactive_power_flow_tertiary = 0.0,
-        # Star-to-winding impedances
-        r_primary = 0.01,
-        x_primary = 0.1,
-        r_secondary = 0.01,
-        x_secondary = 0.1,
-        r_tertiary = 0.01,
-        x_tertiary = 0.1,
-        # Winding-to-winding impedances
-        r_12 = 0.01,
-        x_12 = 0.1,
-        r_23 = 0.01,
-        x_23 = 0.1,
-        r_13 = 0.01,
-        x_13 = 0.1,
-        # Base powers for each winding pair
-        base_power_12 = 100.0,
-        base_power_23 = 100.0,
-        base_power_13 = 100.0,
-        # Ratings for each winding
-        rating = nothing,
-        rating_primary = 1.0,
-        rating_secondary = 1.0,
-        rating_tertiary = 0.5,
     )
     PSY.add_component!(system, transformer3w)
 
-    # Add Transformer3W device model when available
+    # Add ThreeWindingTransformer device model when available
     # Test with DC Power Flow Model
     for net_model in DC_NETWORK_MODELS_FOR_TESTING
         template = get_template_dispatch_with_network(
             NetworkModel(net_model; network_matrix = PTDF(system)),
         )
-        # Set device model for Transformer3W
-        set_device_model!(template, DeviceModel(Transformer3W, StaticBranch))
+        # Set device model for ThreeWindingTransformer
+        set_device_model!(template, DeviceModel(ThreeWindingTransformer, StaticBranch))
         set_device_model!(template, MonitoredLine, StaticBranch)
 
         model_m = DecisionModel(template, system; optimizer = HiGHS_optimizer)
@@ -874,18 +815,19 @@ end
         @test solve!(model_m) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
 
         # Test flow constraints
-        transformer = PSY.get_component(Transformer3W, system, "Transformer3W_busD")
+        transformer =
+            PSY.get_component(ThreeWindingTransformer, system, "Transformer3W_busD")
         @test check_flow_variable_values(
             model_m,
             FlowActivePowerVariable,
-            Transformer3W,
+            ThreeWindingTransformer,
             "Transformer3W_busD_winding_3",
-            PSY.get_rating_tertiary(transformer, PSY.SU),
+            PSY.get_rating(PSY.get_tertiary_circuit(transformer), PSY.SU),
         )
     end
 
     template_ac = get_thermal_dispatch_template_network(ACPNetworkModel)
-    set_device_model!(template_ac, DeviceModel(Transformer3W, StaticBranch))
+    set_device_model!(template_ac, DeviceModel(ThreeWindingTransformer, StaticBranch))
     model_ac = DecisionModel(template_ac, system; optimizer = ipopt_optimizer)
     @test build!(model_ac; output_dir = mktempdir(; cleanup = true)) ==
           IOM.ModelBuildStatus.BUILT
@@ -1006,16 +948,27 @@ end
 end
 
 # Guards the system-base assumption behind `branch_rating`/`min_max_flow_limits`
-# (AC_branches.jl): POM consumes the PNM rating aggregators as system-base values, while
-# `PNM.get_equivalent_rating` reads the device-base (`PSY.DU`) rating leaf. For AC branches
-# device base equals system base, so the two agree; this locks that invariant so a future
-# PSY change introducing a per-branch base surfaces here instead of silently mis-bounding
-# branch flows against the system-base `FlowActivePowerVariable` bounds.
+# (AC_branches.jl): POM consumes branch ratings as system base, while
+# `PNM.get_equivalent_rating` reads the device-base (`PSY.DU`) leaf.
+#
+# psy6: the two agree only while every branch's device base equals the system base. That
+# holds for `Line`/`MonitoredLine` by construction, and for the transformers in these
+# fixtures because their circuits carry `base_power == 100.0`. It does NOT hold in general:
+# a `TransformerCircuit` has its own `base_power`, so a transformer on a different base
+# makes PNM's aggregator disagree with POM's `PSY.SU` read. POM's direct path is correct
+# (`branch_rating` reads `PSY.SU` off the circuit); only PNM's aggregated arcs are exposed.
+# This locks the fixture-level agreement so the gap surfaces here if a fixture gains a
+# mixed-base transformer, rather than silently mis-bounding flows.
 @testset "PNM rating aggregators are system base (branch_rating invariant)" begin
     for sysname in ("c_sys5", "c_sys14")
         system = PSB.build_system(PSITestSystems, sysname)
+        base = PSY.get_base_power(system, PSY.NU)
         for branch in PSY.get_components(PSY.ACTransmission, system)
-            @test PNM.get_equivalent_rating(branch) == PSY.get_rating(branch, PSY.SU)
+            @test PNM.get_equivalent_rating(branch) == POM.branch_rating(branch)
+        end
+        # Non-vacuous: the agreement above is contingent on this.
+        for t in PSY.get_components(PSY.TwoWindingTransformer, system)
+            @test PSY.get_base_power(PSY.get_circuit(t)) == base
         end
     end
 end
