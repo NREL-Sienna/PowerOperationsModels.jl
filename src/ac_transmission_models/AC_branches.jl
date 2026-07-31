@@ -1120,11 +1120,12 @@ end
 # and empty axes still yield `String` name comprehensions (an axis can be empty when the
 # other branch type's constructor claimed every shared reduced arc first).
 #
-# `adm` is the full π-model used by the AC families. `b_dc`/`alpha` are the DC-model pair:
-# the susceptance and equivalent phase shift the DC builders (DCP Ohm's law,
-# BThetaBranchFlow, DCPLL) use. They are separate fields because a transformer's tap divides
-# the DC susceptance while the AC π-model applies it per-term, and because a reduced arc's
-# equivalent shift is not always recoverable from `adm.shift`.
+# `adm` is the full π-model used by the AC families, which keep the r-corrected series
+# admittance. `b_dc`/`alpha` are the DC-model pair PNM derives separately: `b_dc` is the
+# phase-independent `(1/x)/tap` that `BA_Matrix` also assembles — so native DCP and PTDF
+# agree — and `alpha` is the equivalent shift PNM deliberately excludes from it. The DC
+# builders (DCP Ohm's law, BThetaBranchFlow, DCPLL) must use those two, never
+# `adm.b`/`adm.tap`.
 const BranchGeometry = @NamedTuple{
     name::String,
     from_name::String,
@@ -1156,17 +1157,11 @@ function _branch_geometry(e)
         from_number = PSY.get_number(from_bus),
         to_number = PSY.get_number(to_bus),
         adm = adm,
-        b_dc = _dc_susceptance(adm),
-        alpha = adm.shift,
+        b_dc = PNM.get_series_susceptance(e, PSY.SU),
+        alpha = PNM.get_series_phase_shift(e),
         direct = true,
     )
 end
-
-# DC susceptance of a branch, from its π-model. The tap divides it: PNM's Ybus places the
-# ideal ratio on the from side, so the DC linearization is `p = -(b/tap)·(Δθ - α)`. A line
-# has `tap == 1`, and a reduced arc reports `tap == 1` with the tap already folded into `b`,
-# so the division is safe everywhere.
-_dc_susceptance(adm) = -adm.b / adm.tap
 
 # A direct entry is the physical branch itself; series/parallel entries are PNM's
 # equivalent wrappers. Drives per-device data lookups (angle limits, monitored-line
@@ -1204,7 +1199,7 @@ function _entry_geometry(
         from_number = from_no,
         to_number = to_no,
         adm = adm,
-        b_dc = _dc_susceptance(adm),
+        b_dc = PNM.get_series_susceptance(entry, PSY.SU),
         # Orientation-aware and total across every reduction map, unlike `adm.shift`,
         # which a merged equivalent recovers only when a single π exists.
         alpha = PNM.arc_dc_phase_shift(nr, arc_tuple),
@@ -2563,8 +2558,12 @@ Add branch Ohm's law (DC power flow) constraint for ACBranch under DCPNetworkMod
 
     p_fr == b_dc * (va_fr - va_to - α)
 
-`b_dc` is the tap-divided DC susceptance (see `_dc_susceptance`) and `α` the equivalent
-phase-shift angle (0 for non-shifting branches).
+`b_dc` is PNM's phase-independent DC susceptance `(1/x)/tap` — the same value `BA_Matrix`
+assembles, so native DCP and PTDF agree — and `α` is the equivalent phase shift PNM
+deliberately excludes from it (0 for non-shifting branches). Deriving `b_dc` from Ybus's
+r-corrected `adm.b` instead disagrees with PTDF on every branch with `r != 0`, and dividing
+that by `adm.tap` would be a silent no-op on reduced arcs, which report `tap == 1` with the
+tap already folded into `b`.
 """
 function add_constraints!(
     container::OptimizationContainer,
