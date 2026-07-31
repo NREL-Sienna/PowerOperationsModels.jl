@@ -128,3 +128,171 @@ function add_event_arguments!(
     end
     return
 end
+
+#################################################################################
+# Load and FixedOutput argument variants: on top of the generic status/countdown
+# parameters above, these devices also get an offset parameter injected directly
+# into the system balance expression(s), so an outage event can remove/restore
+# a device's contribution without touching its dispatch variables.
+#################################################################################
+
+const _EventLoadFormulations =
+    Union{StaticPowerLoad, PowerLoadDispatch, PowerLoadInterruption}
+
+function _add_event_offset_arguments!(
+    container::OptimizationContainer,
+    devices_with_attributes::Vector{U},
+    device_model::DeviceModel,
+    network_model::NetworkModel,
+    event_model::EventModel,
+    with_reactive::Bool,
+) where {U <: PSY.StaticInjection}
+    for p_type in [AvailableStatusChangeCountdownParameter, AvailableStatusParameter]
+        add_parameters!(
+            container,
+            p_type,
+            devices_with_attributes,
+            device_model,
+            event_model,
+        )
+    end
+    add_parameters!(
+        container,
+        ActivePowerOffsetParameter,
+        devices_with_attributes,
+        device_model,
+        event_model,
+    )
+    add_to_expression!(
+        container,
+        ActivePowerBalance,
+        ActivePowerOffsetParameter,
+        devices_with_attributes,
+        device_model,
+        network_model,
+    )
+    if with_reactive
+        add_parameters!(
+            container,
+            ReactivePowerOffsetParameter,
+            devices_with_attributes,
+            device_model,
+            event_model,
+        )
+        add_to_expression!(
+            container,
+            ReactivePowerBalance,
+            ReactivePowerOffsetParameter,
+            devices_with_attributes,
+            device_model,
+            network_model,
+        )
+    end
+    return
+end
+
+function add_event_arguments!(
+    container::OptimizationContainer,
+    devices::T,
+    device_model::DeviceModel{U, V},
+    network_model::NetworkModel{<:AbstractActivePowerModel},
+) where {
+    T <: Union{Vector{U}, IS.FlattenIteratorWrapper{U}},
+    V <: _EventLoadFormulations,
+} where {U <: PSY.PowerLoad}
+    for (key, event_model) in get_events(device_model)
+        event_type = get_entry_type(key)
+        devices_with_attributes =
+            [d for d in devices if PSY.has_supplemental_attributes(d, event_type)]
+        isempty(devices_with_attributes) &&
+            error("no devices found with a supplemental attribute for event $event_type")
+        _add_event_offset_arguments!(
+            container,
+            devices_with_attributes,
+            device_model,
+            network_model,
+            event_model,
+            false,
+        )
+    end
+    return
+end
+
+function add_event_arguments!(
+    container::OptimizationContainer,
+    devices::T,
+    device_model::DeviceModel{U, V},
+    network_model::NetworkModel{<:AbstractReactivePowerNetworkModel},
+) where {
+    T <: Union{Vector{U}, IS.FlattenIteratorWrapper{U}},
+    V <: _EventLoadFormulations,
+} where {U <: PSY.PowerLoad}
+    for (key, event_model) in get_events(device_model)
+        event_type = get_entry_type(key)
+        devices_with_attributes =
+            [d for d in devices if PSY.has_supplemental_attributes(d, event_type)]
+        isempty(devices_with_attributes) &&
+            error("no devices found with a supplemental attribute for event $event_type")
+        _add_event_offset_arguments!(
+            container,
+            devices_with_attributes,
+            device_model,
+            network_model,
+            event_model,
+            true,
+        )
+    end
+    return
+end
+
+function add_event_arguments!(
+    container::OptimizationContainer,
+    devices::T,
+    device_model::DeviceModel{U, FixedOutput},
+    network_model::NetworkModel{<:AbstractActivePowerModel},
+) where {
+    T <: Union{Vector{U}, IS.FlattenIteratorWrapper{U}},
+} where {U <: PSY.StaticInjection}
+    for (key, event_model) in get_events(device_model)
+        event_type = get_entry_type(key)
+        devices_with_attributes =
+            [d for d in devices if PSY.has_supplemental_attributes(d, event_type)]
+        isempty(devices_with_attributes) &&
+            error("no devices found with a supplemental attribute for event $event_type")
+        _add_event_offset_arguments!(
+            container,
+            devices_with_attributes,
+            device_model,
+            network_model,
+            event_model,
+            false,
+        )
+    end
+    return
+end
+
+function add_event_arguments!(
+    container::OptimizationContainer,
+    devices::T,
+    device_model::DeviceModel{U, FixedOutput},
+    network_model::NetworkModel{<:AbstractReactivePowerNetworkModel},
+) where {
+    T <: Union{Vector{U}, IS.FlattenIteratorWrapper{U}},
+} where {U <: PSY.StaticInjection}
+    for (key, event_model) in get_events(device_model)
+        event_type = get_entry_type(key)
+        devices_with_attributes =
+            [d for d in devices if PSY.has_supplemental_attributes(d, event_type)]
+        isempty(devices_with_attributes) &&
+            error("no devices found with a supplemental attribute for event $event_type")
+        _add_event_offset_arguments!(
+            container,
+            devices_with_attributes,
+            device_model,
+            network_model,
+            event_model,
+            true,
+        )
+    end
+    return
+end
