@@ -50,17 +50,8 @@ _branch_elements(d::PSY.ThreeWindingTransformer) = Iterators.filter(
 _element_name(d::PSY.ACTransmission) = PSY.get_name(d)
 _element_name(w::PNM.ThreeWindingTransformerCircuit) = PNM.get_name(w)
 
-_branch_rating(d::PSY.ACTransmission) = PSY.get_rating(d, PSY.SU)
-_branch_rating(d::PSY.TwoWindingTransformer) =
-    PSY.get_rating(PSY.get_circuit(d), PSY.SU)
-_branch_rating(w::PNM.ThreeWindingTransformerCircuit) =
-    PSY.get_rating(PSY.get_circuit(w), PSY.SU)
-
 _branch_rating_b(d::PSY.ACTransmission) = PSY.get_rating_b(d, PSY.SU)
 _branch_rating_b(d::PSY.TwoWindingTransformer) =
     PSY.get_rating_b(PSY.get_circuit(d), PSY.SU)
 _branch_rating_b(w::PNM.ThreeWindingTransformerCircuit) =
     PSY.get_rating_b(PSY.get_circuit(w), PSY.SU)
-
-_negated_rating(rating::Float64) = -rating
-_negated_rating(::Nothing) = nothing

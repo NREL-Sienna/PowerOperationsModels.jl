@@ -45,19 +45,13 @@ end
 
 @testset "LPACCNetworkModel rejects reactive control devices at validation" begin
     # LPACC is reactive-capable at the network level (network_has_reactive_power is
-    # true), but VoltageControlTap/ShuntSusceptanceDispatch have no LPACC construct
-    # path. The validation gate must reject the pairing with a
-    # ConflictingInputsError. (build! swallows build/validation exceptions into a
-    # FAILED status, so assert against validate_template directly — same pattern as
+    # true), but ShuntSusceptanceDispatch has no LPACC construct path. The validation
+    # gate must reject the pairing with a ConflictingInputsError. (build! swallows
+    # build/validation exceptions into a FAILED status, so assert against
+    # validate_template directly — same pattern as
     # test_network_constructors_with_branch_rating_time_series.jl.)
-    sys = PSB.build_system(PSITestSystems, "c_sys14")
-    template = get_thermal_dispatch_template_network(NetworkModel(LPACCNetworkModel))
-    set_device_model!(template, PSY.TapTransformer, VoltageControlTap)
-
-    model = DecisionModel(template, sys; optimizer = ipopt_optimizer)
-    @test_throws IS.ConflictingInputsError POM.validate_template(model)
-
-    # Same gate for the shunt controller.
+    # psy6: the transformer half of this gate is gone with VoltageControlTap; a
+    # TwoWindingTransformer is a plain static branch under LPACC now.
     sys_shunt = PSB.build_system(PSITestSystems, "c_sys5")
     bus = PSY.get_component(PSY.ACBus, sys_shunt, "nodeA")
     PSY.add_component!(

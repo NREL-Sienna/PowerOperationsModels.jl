@@ -1,15 +1,3 @@
-
-# Note: Any future concrete formulation requires the definition of
-
-# construct_device!(
-#     ::OptimizationContainer,
-#     ::PSY.System,
-#     ::DeviceModel{<:PSY.ACTransmission, MyNewFormulation},
-#     ::Union{Type{CopperPlateNetworkModel}, Type{AreaBalanceNetworkModel}},
-# ) = nothing
-
-#
-
 #################################### Branch Variables ##################################################
 # Branch flow variables are created by POM's per-formulation `construct_device!` methods.
 # The AC formulations (ACP/ACR/LPACC/IVR) each add directional from-to and to-from
@@ -25,7 +13,7 @@ get_parameter_multiplier(::Type{FixValueParameter}, ::PSY.ACTransmission, ::Type
 get_parameter_multiplier(::Type{LowerBoundValueParameter}, ::PSY.ACTransmission, ::Type{<:AbstractBranchFormulation}) = 1.0
 get_parameter_multiplier(::Type{UpperBoundValueParameter}, ::PSY.ACTransmission, ::Type{<:AbstractBranchFormulation}) = 1.0
 
-get_multiplier_value(::Type{<:AbstractBranchRatingTimeSeriesParameter}, d::PSY.ACTransmission, ::Type{StaticBranch}) = _branch_rating(d)
+get_multiplier_value(::Type{<:AbstractBranchRatingTimeSeriesParameter}, d::PSY.ACTransmission, ::Type{StaticBranch}) = branch_rating(d)
 
 
 get_initial_conditions_device_model(::IOM.AbstractOptimizationModel, ::DeviceModel{T, U}) where {T <: PSY.ACTransmission, U <: AbstractBranchFormulation} = DeviceModel(T, U)
@@ -45,6 +33,9 @@ get_variable_lower_bound(::Type{FlowActivePowerVariable}, ::PNM.BranchesParallel
 get_variable_upper_bound(::Type{FlowActivePowerVariable}, ::PNM.ThreeWindingTransformerCircuit, ::Type{<:AbstractBranchFormulation}) = nothing
 get_variable_lower_bound(::Type{FlowActivePowerVariable}, ::PNM.ThreeWindingTransformerCircuit, ::Type{<:AbstractBranchFormulation}) = nothing
 
+_negated_rating(rating::Float64) = -rating
+_negated_rating(::Nothing) = nothing
+
 # Active-flow variable creation bounds: matches the bridge convention so
 # `check_variable_bounded(...)` in test_device_branch_constructors.jl finds box bounds on
 # directional flow variables. Reactive-flow variables have no creation default; under
@@ -53,10 +44,10 @@ get_variable_upper_bound(::Type{FlowActivePowerFromToVariable}, d::PSY.Monitored
 get_variable_lower_bound(::Type{FlowActivePowerFromToVariable}, d::PSY.MonitoredLine, ::Type{<:AbstractBranchFormulation}) = -1 * PSY.get_flow_limits(d, PSY.SU).from_to
 get_variable_upper_bound(::Type{FlowActivePowerToFromVariable}, d::PSY.MonitoredLine, ::Type{<:AbstractBranchFormulation}) = PSY.get_flow_limits(d, PSY.SU).to_from
 get_variable_lower_bound(::Type{FlowActivePowerToFromVariable}, d::PSY.MonitoredLine, ::Type{<:AbstractBranchFormulation}) = -1 * PSY.get_flow_limits(d, PSY.SU).to_from
-get_variable_upper_bound(::Type{FlowActivePowerFromToVariable}, d::PSY.TwoWindingTransformer, ::Type{<:AbstractBranchFormulation}) = _branch_rating(d)
-get_variable_lower_bound(::Type{FlowActivePowerFromToVariable}, d::PSY.TwoWindingTransformer, ::Type{<:AbstractBranchFormulation}) = _negated_rating(_branch_rating(d))
-get_variable_upper_bound(::Type{FlowActivePowerToFromVariable}, d::PSY.TwoWindingTransformer, ::Type{<:AbstractBranchFormulation}) = _branch_rating(d)
-get_variable_lower_bound(::Type{FlowActivePowerToFromVariable}, d::PSY.TwoWindingTransformer, ::Type{<:AbstractBranchFormulation}) = _negated_rating(_branch_rating(d))
+get_variable_upper_bound(::Type{FlowActivePowerFromToVariable}, d::PSY.TwoWindingTransformer, ::Type{<:AbstractBranchFormulation}) = branch_rating(d)
+get_variable_lower_bound(::Type{FlowActivePowerFromToVariable}, d::PSY.TwoWindingTransformer, ::Type{<:AbstractBranchFormulation}) = _negated_rating(branch_rating(d))
+get_variable_upper_bound(::Type{FlowActivePowerToFromVariable}, d::PSY.TwoWindingTransformer, ::Type{<:AbstractBranchFormulation}) = branch_rating(d)
+get_variable_lower_bound(::Type{FlowActivePowerToFromVariable}, d::PSY.TwoWindingTransformer, ::Type{<:AbstractBranchFormulation}) = _negated_rating(branch_rating(d))
 
 #! format: on
 function get_default_time_series_names(
@@ -128,11 +119,6 @@ function get_default_attributes(
     )
 end
 
-# Resolve the per-DeviceModel attribute to one of the explicit PNM rating functions.
-# `MixedBranchesParallel` ignores the attribute and always uses the plain sum, since
-# the constituent branches may carry different DeviceModel preferences and there is
-# no defensible way to pick one. The PNM aggregators return system-base values
-# (no `PSY.SU`).
 function _get_parallel_branch_max_rating(model::DeviceModel, bp::PNM.BranchesParallel)
     method = get_attribute(model, PARALLEL_BRANCH_MAX_RATING_KEY)
     if method == "single_element_contingency"
@@ -374,32 +360,21 @@ end
 ################################## Rate Limits constraint_infos ############################
 
 """
-Scalar branch rating for a reduction entry — the single source of truth for
-branch flow ratings. Parallel groups use the `PARALLEL_BRANCH_MAX_RATING_KEY`
-attribute; every other entry uses `PNM.get_equivalent_rating`. Extend that (not
-this) for new types.
-
 Returns `nothing` when the entry has no rating: a transformer circuit's rating is
 `Union{Nothing, Float64}` and PSS/E `RATE = 0` parses to `nothing`, meaning genuinely
 unlimited. Callers must handle it — a rate constraint is skipped, a bounds formulation
 errors. A concrete `0.0` is a data error and stays loud.
-
-Units: PNM's aggregators read `PSY.get_rating(x, PSY.DU)`. That is a no-op for
-`Line`/`MonitoredLine`, whose device base is the system base, but wrong for a transformer
-circuit, which carries its own `base_power` — so the transformer entries below read
-`PSY.SU` off the circuit instead. Aggregates (series chains, parallel groups) still combine
-member ratings on device base inside PNM and cannot be corrected from here.
 """
-function branch_rating(double_circuit::PNM.AbstractBranchesParallel, model::DeviceModel)
-    return _get_parallel_branch_max_rating(model, double_circuit)
-end
+branch_rating(double_circuit::PNM.AbstractBranchesParallel, model::DeviceModel) =
+    _get_parallel_branch_max_rating(model, double_circuit)
+branch_rating(d::PSY.ACTransmission) = PSY.get_rating(d, PSY.SU)
+branch_rating(d::PSY.TwoWindingTransformer) = PSY.get_rating(PSY.get_circuit(d), PSY.SU)
+branch_rating(w::PNM.ThreeWindingTransformerCircuit) =
+    PSY.get_rating(PSY.get_circuit(w), PSY.SU)
 
-function branch_rating(entry, ::DeviceModel)
-    return PNM.get_equivalent_rating(entry)
-end
-
-branch_rating(t::PSY.TwoWindingTransformer, ::DeviceModel) = _branch_rating(t)
-branch_rating(w::PNM.ThreeWindingTransformerCircuit, ::DeviceModel) = _branch_rating(w)
+branch_rating(entry, ::DeviceModel) = PNM.get_equivalent_rating(entry)
+branch_rating(t::PSY.TwoWindingTransformer, ::DeviceModel) = branch_rating(t)
+branch_rating(w::PNM.ThreeWindingTransformerCircuit, ::DeviceModel) = branch_rating(w)
 
 """
 Symmetric `(min, max)` flow limits from [`branch_rating`](@ref), or `nothing` for an
@@ -1456,7 +1431,7 @@ end
 # zero flow, deleting it from the network — MATPOWER-style data uses rating 0 to mean
 # "unlimited", which must be resolved in the data, not by the model.
 function _directional_flow_rating(d::PSY.ACTransmission, ::DeviceModel)
-    rating = _branch_rating(d)
+    rating = branch_rating(d)
     _error_on_zero_rating(rating, _element_name(d))
     return rating
 end
@@ -2133,7 +2108,7 @@ end
 # c_rating_a = rate_a / vmin  (system-base power / per-unit voltage → per-unit current).
 # `nothing` for an unrated branch (PSS/E RATE=0): the current variable stays unbounded.
 function _ivr_current_rating(branch::PSY.ACTransmission)
-    rate_a = _branch_rating(branch)
+    rate_a = branch_rating(branch)
     name = _element_name(branch)
     _error_on_zero_rating(rate_a, "IVR: branch $(name)")
     isnothing(rate_a) && return nothing
@@ -3038,7 +3013,7 @@ function _set_dcpll_flow_bounds!(
     if isempty(network_reduction)
         for d in devices, e in _branch_elements(d)
             name = _element_name(e)
-            rate = _branch_rating(e)
+            rate = branch_rating(e)
             _error_on_zero_rating(rate, name)
             # Unrated (PSS/E RATE=0) is unlimited: leave the flow variables unbounded.
             isnothing(rate) && continue

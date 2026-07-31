@@ -47,8 +47,11 @@ end
         ),
     )
     set_device_model!(template, PSY.Line, POM.SecurityConstrainedStaticBranch)
-    set_device_model!(template, PSY.Transformer2W, POM.SecurityConstrainedStaticBranch)
-    set_device_model!(template, PSY.TapTransformer, POM.SecurityConstrainedStaticBranch)
+    set_device_model!(
+        template,
+        PSY.TwoWindingTransformer,
+        POM.SecurityConstrainedStaticBranch,
+    )
 
     ps_model = DecisionModel(template, c_sys5; optimizer = HiGHS_optimizer)
     @test build!(ps_model; output_dir = mktempdir(; cleanup = true)) ==
@@ -76,7 +79,7 @@ end
 
     n_checked = 0
     n_constraints_checked = 0
-    for V in (PSY.Line, PSY.Transformer2W, PSY.TapTransformer)
+    for V in (PSY.Line, PSY.TwoWindingTransformer)
         IOM.has_container_key(container, POM.PostContingencyBranchFlow, V) || continue
         pcbf = IOM.get_expression(container, POM.PostContingencyBranchFlow, V)
         n_checked += 1
@@ -171,8 +174,11 @@ end
         ),
     )
     set_device_model!(template, PSY.Line, POM.SecurityConstrainedStaticBranch)
-    set_device_model!(template, PSY.Transformer2W, POM.SecurityConstrainedStaticBranch)
-    set_device_model!(template, PSY.TapTransformer, POM.SecurityConstrainedStaticBranch)
+    set_device_model!(
+        template,
+        PSY.TwoWindingTransformer,
+        POM.SecurityConstrainedStaticBranch,
+    )
 
     ps_model = DecisionModel(template, c_sys5; optimizer = HiGHS_optimizer)
     @test build!(ps_model; output_dir = mktempdir(; cleanup = true)) ==
@@ -198,8 +204,7 @@ end
         NetworkModel(PTDFNetworkModel; network_matrix = PNM.VirtualPTDF(c_sys14)),
     )
     set_device_model!(template, PSY.Line, POM.StaticBranch)
-    set_device_model!(template, PSY.Transformer2W, POM.StaticBranch)
-    set_device_model!(template, PSY.TapTransformer, POM.StaticBranch)
+    set_device_model!(template, PSY.TwoWindingTransformer, POM.StaticBranch)
 
     ps_model = DecisionModel(template, c_sys14; optimizer = HiGHS_optimizer)
     @test build!(ps_model; output_dir = mktempdir(; cleanup = true)) ==
@@ -247,15 +252,16 @@ end
     # SC branch formulations are not implemented for ThreeWindingTransformer.
     # Configuring one must raise at template validation.
     branch_models = IOM.BranchModelContainer()
-    branch_models[nameof(PSY.Transformer3W)] =
-        DeviceModel(PSY.Transformer3W, POM.SecurityConstrainedStaticBranch)
+    branch_models[nameof(PSY.ThreeWindingTransformer)] =
+        DeviceModel(PSY.ThreeWindingTransformer, POM.SecurityConstrainedStaticBranch)
     @test_throws IS.ConflictingInputsError POM._check_security_constrained_three_winding_transformer!(
         branch_models,
     )
 
     # Allowed combinations must pass.
     ok_models = IOM.BranchModelContainer()
-    ok_models[nameof(PSY.Transformer3W)] = DeviceModel(PSY.Transformer3W, POM.StaticBranch)
+    ok_models[nameof(PSY.ThreeWindingTransformer)] =
+        DeviceModel(PSY.ThreeWindingTransformer, POM.StaticBranch)
     ok_models[nameof(PSY.Line)] =
         DeviceModel(PSY.Line, POM.SecurityConstrainedStaticBranch)
     @test isnothing(
@@ -288,8 +294,11 @@ end
         ),
     )
     set_device_model!(template, PSY.Line, POM.SecurityConstrainedStaticBranch)
-    set_device_model!(template, PSY.Transformer2W, POM.SecurityConstrainedStaticBranch)
-    set_device_model!(template, PSY.TapTransformer, POM.SecurityConstrainedStaticBranch)
+    set_device_model!(
+        template,
+        PSY.TwoWindingTransformer,
+        POM.SecurityConstrainedStaticBranch,
+    )
 
     ps_model = DecisionModel(template, c_sys14; optimizer = HiGHS_optimizer)
     @test build!(ps_model; output_dir = mktempdir(; cleanup = true)) ==
@@ -375,10 +384,9 @@ end
         ),
     )
     set_device_model!(auto_template, PSY.Line, POM.SecurityConstrainedStaticBranch)
-    set_device_model!(auto_template, PSY.Transformer2W, POM.SecurityConstrainedStaticBranch)
     set_device_model!(
         auto_template,
-        PSY.TapTransformer,
+        PSY.TwoWindingTransformer,
         POM.SecurityConstrainedStaticBranch,
     )
     auto_model = DecisionModel(auto_template, c_sys5; optimizer = HiGHS_optimizer)
@@ -416,12 +424,12 @@ end
 end
 
 @testset "Multi-component outage: dual-claim + dedup at build" begin
-    # An outage attached to BOTH a Line and a Transformer2W is owned by both
+    # An outage attached to BOTH a Line and a TwoWindingTransformer is owned by both
     # SC DeviceModels. The build dedups: the second DeviceModel's expression and
     # constraint containers reference the first claimer's objects.
     sys = PSB.build_system(PSITestSystems, "c_sys14")
     line = first(get_components(PSY.Line, sys))
-    transformer = first(get_components(PSY.Transformer2W, sys))
+    transformer = first(get_components(PSY.TwoWindingTransformer, sys))
     @test !isnothing(line)
     @test !isnothing(transformer)
 
@@ -439,14 +447,18 @@ end
         NetworkModel(PTDFNetworkModel; contingency_matrix = PNM.VirtualMODF(sys)),
     )
     set_device_model!(template, PSY.Line, POM.SecurityConstrainedStaticBranch)
-    set_device_model!(template, PSY.Transformer2W, POM.SecurityConstrainedStaticBranch)
+    set_device_model!(
+        template,
+        PSY.TwoWindingTransformer,
+        POM.SecurityConstrainedStaticBranch,
+    )
     ps_model = DecisionModel(template, sys; optimizer = HiGHS_optimizer)
     @test build!(ps_model; output_dir = mktempdir(; cleanup = true)) ==
           IOM.ModelBuildStatus.BUILT
 
     template_under_test = IOM.get_template(ps_model)
     line_dm = IOM.get_model(template_under_test, PSY.Line)
-    transformer_dm = IOM.get_model(template_under_test, PSY.Transformer2W)
+    transformer_dm = IOM.get_model(template_under_test, PSY.TwoWindingTransformer)
 
     @test haskey(IOM.get_outages(line_dm), outage_uuid)
     @test haskey(IOM.get_outages(transformer_dm), outage_uuid)
@@ -454,7 +466,11 @@ end
     container = IOM.get_optimization_container(ps_model)
     line_pcbf = IOM.get_expression(container, POM.PostContingencyBranchFlow, PSY.Line)
     transformer_pcbf =
-        IOM.get_expression(container, POM.PostContingencyBranchFlow, PSY.Transformer2W)
+        IOM.get_expression(
+            container,
+            POM.PostContingencyBranchFlow,
+            PSY.TwoWindingTransformer,
+        )
 
     line_name = PSY.get_name(line)
     transformer_name = PSY.get_name(transformer)
@@ -478,7 +494,7 @@ end
             container,
             IOM.ConstraintKey(
                 POM.PostContingencyFlowRateConstraint,
-                PSY.Transformer2W,
+                PSY.TwoWindingTransformer,
                 meta,
             ),
         )
@@ -595,12 +611,7 @@ end
             set_device_model!(template, PSY.Line, POM.SecurityConstrainedStaticBranch)
             set_device_model!(
                 template,
-                PSY.Transformer2W,
-                POM.SecurityConstrainedStaticBranch,
-            )
-            set_device_model!(
-                template,
-                PSY.TapTransformer,
+                PSY.TwoWindingTransformer,
                 POM.SecurityConstrainedStaticBranch,
             )
 
@@ -927,8 +938,11 @@ end
             ),
         )
         set_device_model!(template, PSY.Line, POM.SecurityConstrainedStaticBranch)
-        set_device_model!(template, PSY.Transformer2W, POM.SecurityConstrainedStaticBranch)
-        set_device_model!(template, PSY.TapTransformer, POM.SecurityConstrainedStaticBranch)
+        set_device_model!(
+            template,
+            PSY.TwoWindingTransformer,
+            POM.SecurityConstrainedStaticBranch,
+        )
 
         ps_model = DecisionModel(template, sys; optimizer = HiGHS_optimizer)
         @test build!(ps_model; output_dir = mktempdir(; cleanup = true)) ==
@@ -998,8 +1012,11 @@ end
             ),
         )
         set_device_model!(template, PSY.Line, POM.SecurityConstrainedStaticBranch)
-        set_device_model!(template, PSY.Transformer2W, POM.SecurityConstrainedStaticBranch)
-        set_device_model!(template, PSY.TapTransformer, POM.SecurityConstrainedStaticBranch)
+        set_device_model!(
+            template,
+            PSY.TwoWindingTransformer,
+            POM.SecurityConstrainedStaticBranch,
+        )
 
         ps_model = DecisionModel(template, sys; optimizer = HiGHS_optimizer)
         @test build!(ps_model; output_dir = mktempdir(; cleanup = true)) ==
@@ -1073,8 +1090,11 @@ end
             ),
         )
         set_device_model!(template, PSY.Line, POM.SecurityConstrainedStaticBranch)
-        set_device_model!(template, PSY.Transformer2W, POM.SecurityConstrainedStaticBranch)
-        set_device_model!(template, PSY.TapTransformer, POM.SecurityConstrainedStaticBranch)
+        set_device_model!(
+            template,
+            PSY.TwoWindingTransformer,
+            POM.SecurityConstrainedStaticBranch,
+        )
 
         ps_model = DecisionModel(template, sys; optimizer = HiGHS_optimizer)
         @test build!(ps_model; output_dir = mktempdir(; cleanup = true)) ==
@@ -1186,8 +1206,11 @@ end
             ),
         )
         set_device_model!(template, PSY.Line, POM.SecurityConstrainedStaticBranch)
-        set_device_model!(template, PSY.Transformer2W, POM.SecurityConstrainedStaticBranch)
-        set_device_model!(template, PSY.TapTransformer, POM.SecurityConstrainedStaticBranch)
+        set_device_model!(
+            template,
+            PSY.TwoWindingTransformer,
+            POM.SecurityConstrainedStaticBranch,
+        )
 
         ps_model = DecisionModel(template, sys; optimizer = HiGHS_optimizer)
         @test build!(ps_model; output_dir = mktempdir(; cleanup = true)) ==
@@ -1306,8 +1329,11 @@ end
             duals = [POM.PostContingencyFlowRateConstraint],
         ),
     )
-    set_device_model!(template, PSY.Transformer2W, POM.SecurityConstrainedStaticBranch)
-    set_device_model!(template, PSY.TapTransformer, POM.SecurityConstrainedStaticBranch)
+    set_device_model!(
+        template,
+        PSY.TwoWindingTransformer,
+        POM.SecurityConstrainedStaticBranch,
+    )
 
     ps_model = DecisionModel(template, c_sys5; optimizer = HiGHS_optimizer)
     @test build!(ps_model; output_dir = mktempdir(; cleanup = true)) ==
@@ -1336,8 +1362,11 @@ end
             duals = [POM.PostContingencyFlowRateConstraint],
         ),
     )
-    set_device_model!(template, PSY.Transformer2W, POM.SecurityConstrainedStaticBranch)
-    set_device_model!(template, PSY.TapTransformer, POM.SecurityConstrainedStaticBranch)
+    set_device_model!(
+        template,
+        PSY.TwoWindingTransformer,
+        POM.SecurityConstrainedStaticBranch,
+    )
 
     ps_model = DecisionModel(template, c_sys5; optimizer = HiGHS_optimizer)
     @test build!(ps_model; output_dir = mktempdir(; cleanup = true)) ==
@@ -1431,10 +1460,10 @@ end
             ),
         )
         set_device_model!(
-            template, PSY.Transformer2W, POM.SecurityConstrainedStaticBranch,
+            template, PSY.TwoWindingTransformer, POM.SecurityConstrainedStaticBranch,
         )
         set_device_model!(
-            template, PSY.TapTransformer, POM.SecurityConstrainedStaticBranch,
+            template, PSY.TwoWindingTransformer, POM.SecurityConstrainedStaticBranch,
         )
         ps_model = DecisionModel(template, c_sys5; optimizer = HiGHS_optimizer)
         @test build!(ps_model; output_dir = mktempdir(; cleanup = true)) ==
@@ -1562,7 +1591,7 @@ end
         set_device_model!(
             template,
             DeviceModel(
-                PSY.Transformer2W,
+                PSY.TwoWindingTransformer,
                 POM.SecurityConstrainedStaticBranch;
                 use_slacks = use_slacks,
             ),
@@ -1570,7 +1599,7 @@ end
         set_device_model!(
             template,
             DeviceModel(
-                PSY.TapTransformer,
+                PSY.TwoWindingTransformer,
                 POM.SecurityConstrainedStaticBranch;
                 use_slacks = use_slacks,
             ),
@@ -1641,8 +1670,8 @@ end
     c_sys14 = PSB.build_system(PSITestSystems, "c_sys14")
     all_branches = collect(PSY.get_components(PSY.ACTransmission, c_sys14))
     line = PSY.get_component(PSY.Line, c_sys14, "Line1")
-    transformer = first(PSY.get_components(PSY.Transformer2W, c_sys14))
-    # One outage attached to both a Line and a Transformer2W: a multi-type outage.
+    transformer = first(PSY.get_components(PSY.TwoWindingTransformer, c_sys14))
+    # One outage attached to both a Line and a TwoWindingTransformer: a multi-type outage.
     outage = PSY.GeometricDistributionForcedOutage(;
         mean_time_to_recovery = 10,
         outage_transition_probability = 0.9999,
@@ -1665,7 +1694,7 @@ end
     set_device_model!(
         template,
         DeviceModel(
-            PSY.Transformer2W,
+            PSY.TwoWindingTransformer,
             POM.SecurityConstrainedStaticBranch;
             use_slacks = true,
         ),
@@ -1673,7 +1702,7 @@ end
     set_device_model!(
         template,
         DeviceModel(
-            PSY.TapTransformer,
+            PSY.TwoWindingTransformer,
             POM.SecurityConstrainedStaticBranch;
             use_slacks = true,
         ),
@@ -1686,7 +1715,7 @@ end
     # Both reusing branch types own non-empty slack containers: the second to build
     # aliases the first's refs instead of registering an empty container.
     slack_refs = Set{JuMP.VariableRef}()
-    for V in (PSY.Line, PSY.Transformer2W),
+    for V in (PSY.Line, PSY.TwoWindingTransformer),
         S in (
             POM.PostContingencyFlowActivePowerSlackUpperBound,
             POM.PostContingencyFlowActivePowerSlackLowerBound,
@@ -1707,7 +1736,7 @@ end
     transformer_ub = IOM.get_variable(
         container,
         POM.PostContingencyFlowActivePowerSlackUpperBound,
-        PSY.Transformer2W,
+        PSY.TwoWindingTransformer,
     )
     @test !isempty(intersect(Set(values(line_ub.data)), Set(values(transformer_ub.data))))
 
@@ -1717,7 +1746,7 @@ end
         any(haskey(JuMP.constraint_object(ref).func.terms, v) for v in slack_refs)
     n = 0
     all_have = true
-    for V in (PSY.Line, PSY.Transformer2W), meta in ("lb", "ub")
+    for V in (PSY.Line, PSY.TwoWindingTransformer), meta in ("lb", "ub")
         cons = IOM.get_constraints(container)[IOM.ConstraintKey(
             POM.PostContingencyFlowRateConstraint, V, meta,
         )]

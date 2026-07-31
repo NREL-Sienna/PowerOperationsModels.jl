@@ -81,7 +81,6 @@ function _push_component_buses!(buses::Set{Int64}, branch::PSY.Branch)
     return
 end
 
-# Each circuit arc runs terminal bus -> star bus, so walking them covers the star bus too.
 function _push_component_buses!(buses::Set{Int64}, branch::PSY.ThreeWindingTransformer)
     for circuit in PSY.get_circuits(branch)
         arc = PSY.get_arc(circuit)
