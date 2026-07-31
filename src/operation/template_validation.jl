@@ -254,8 +254,6 @@ network_support(::Type{<:AbstractDeviceFormulation}) = AllNetworks()
 # the coarse reactive-power gate admits these devices even though their control layer has no
 # LPACC construct path.
 network_support(::Type{ShuntSusceptanceDispatch}) = AllNetworksExceptLPACC()
-# psy6: disabled pending transformer refactor
-# network_support(::Type{VoltageControlTap}) = AllNetworksExceptLPACC()
 
 # An LCC's reactive consumption is the reason to model it as HVDCTwoTerminalLCC; on a
 # network without a reactive balance use HVDCTwoTerminalDispatch/Lossless instead.
@@ -369,21 +367,6 @@ _voltage_regulation_can_collide(::NetworkModel{LPACCNetworkModel}) = true
 # specialization per regulating formulation, reusing each family's regulated-bus
 # resolver.
 _voltage_regulated_buses(::IOM.DeviceModel, ::PSY.System) = Tuple{String, PSY.ACBus}[]
-
-# psy6: disabled pending transformer refactor
-# function _voltage_regulated_buses(
-#     device_model::IOM.DeviceModelForBranches{T, VoltageControlTap},
-#     sys::PSY.System,
-# ) where {T <: PSY.TapTransformer}
-#     bus_by_number = _bus_by_number(sys)
-#     pairs = Tuple{String, PSY.ACBus}[]
-#     for d in get_available_components(device_model, sys)
-#         if PSY.get_control_objective(d) == PSY.TransformerControlObjective.VOLTAGE
-#             push!(pairs, (PSY.get_name(d), _tap_regulated_bus(d, bus_by_number)))
-#         end
-#     end
-#     return pairs
-# end
 
 function _voltage_regulated_buses(
     device_model::IOM.DeviceModel{T, ShuntSusceptanceDispatch},

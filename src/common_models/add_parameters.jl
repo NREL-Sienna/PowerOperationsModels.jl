@@ -117,6 +117,16 @@ function _check_branch_rating_ts(
     end
 
     rating = _branch_rating(device)
+    # A branch rating time series scales a static base rating, so there is nothing to scale
+    # (and nothing to compare against) when the device has none.
+    if isnothing(rating)
+        throw(
+            IS.ConflictingInputsError(
+                "$(typeof(device)) '$(PSY.get_name(device))' has a $T time series but no \
+                 static rating. Assign a rating or remove the time-series parameter.",
+            ),
+        )
+    end
     if (T <: PostContingencyBranchRatingTimeSeriesParameter)
         if !(_branch_rating_b(device) === nothing)
             rating = _branch_rating_b(device)

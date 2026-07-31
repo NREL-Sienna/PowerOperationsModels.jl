@@ -1909,46 +1909,6 @@ function add_to_expression!(
     return
 end
 
-# psy6: disabled pending transformer refactor
-# """
-# Implementation of add_to_expression! for lossless branch/network models
-# """
-# function add_to_expression!(
-#     container::OptimizationContainer,
-#     ::Type{T},
-#     ::Type{U},
-#     devices::IS.FlattenIteratorWrapper{PSY.PhaseShiftingTransformer},
-#     ::DeviceModel{PSY.PhaseShiftingTransformer, V},
-#     network_model::NetworkModel{<:AbstractPTDFNetworkModel},
-# ) where {T <: ActivePowerBalance, U <: PhaseShifterAngle, V <: PhaseAngleControl}
-#     var = get_variable(container, U, PSY.PhaseShiftingTransformer)
-#     expression = get_expression(container, T, PSY.ACBus)
-#     network_reduction = get_network_reduction(network_model)
-#     time_steps = get_time_steps(container)
-#     for d in devices
-#         name = PSY.get_name(d)
-#         bus_no_from =
-#             PNM.get_mapped_bus_number(network_reduction, PSY.get_from(PSY.get_arc(d)))
-#         bus_no_to = PNM.get_mapped_bus_number(network_reduction, PSY.get_to(PSY.get_arc(d)))
-#         # Per-device reactance multiplier for phase shifter
-#         x_mult = 1.0 / PSY.get_x(d, PSY.SU)
-#         for t in time_steps
-#             flow_variable = var[name, t]
-#             add_proportional_to_jump_expression!(
-#                 expression[bus_no_from, t],
-#                 flow_variable,
-#                 -x_mult * get_variable_multiplier(U, PSY.PhaseShiftingTransformer, V),
-#             )
-#             add_proportional_to_jump_expression!(
-#                 expression[bus_no_to, t],
-#                 flow_variable,
-#                 x_mult * get_variable_multiplier(U, PSY.PhaseShiftingTransformer, V),
-#             )
-#         end
-#     end
-#     return
-# end
-
 function add_to_expression!(
     container::OptimizationContainer,
     ::Type{T},
@@ -2252,9 +2212,7 @@ function get_ptdf_orientation_sign(
     name::AbstractString,
 ) where {T <: PSY.ACTransmission}
     arc, reduction = PNM.get_name_to_arc_maps(net_reduction_data)[T][name]
-    if reduction == "direct_branch_map" ||
-       reduction == "parallel_branch_map" ||
-       reduction == "transformer3W_map"
+    if reduction == "direct_branch_map" || reduction == "parallel_branch_map"
         return 1.0
     elseif reduction == "series_branch_map"
         series = PNM.get_all_branch_maps_by_type(net_reduction_data)[reduction][T][arc]
