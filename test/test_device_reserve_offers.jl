@@ -125,3 +125,170 @@ end
         @test JuMP.normalized_coefficient(lc, award[(sname, gname, 1)]) ≈ -1.0
     end
 end
+
+@testset "StepwiseCostReserve prices per-device reserve offers (demand curve + offer supply)" begin
+    sys = deepcopy(PSB.build_system(PSITestSystems, "c_sys5_uc"; add_reserves = true))
+    ordc = first(get_components(PSY.ReserveDemandCurve, sys))
+    # Ensure thermal devices contribute to the ORDC so they can carry per-device offers.
+    for g in get_components(ThermalStandard, sys)
+        ordc in PSY.get_services(g) || PSY.add_service!(g, ordc, sys)
+    end
+    contributors, base_slope = add_device_reserve_offers!(sys, ordc)
+
+    template = get_thermal_standard_uc_template()
+    set_service_model!(
+        template, ServiceModel(ReserveDemandCurve{ReserveUp}, StepwiseCostReserve))
+    model = DecisionModel(template, sys; optimizer = HiGHS_optimizer)
+    @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
+          IOM.ModelBuildStatus.BUILT
+    @test solve!(model) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
+
+    container = get_optimization_container(model)
+    # Supply offers are now consumed UNDER StepwiseCostReserve: the 4D block variable and the
+    # award-linking constraint exist for the contributing device type. Before this change they
+    # do NOT (StepwiseCostReserve priced only the demand curve).
+    @test IOM.has_container_key(
+        container, POM.PiecewiseLinearBlockReserveOffer, ThermalStandard)
+    @test IOM.has_container_key(
+        container, POM.ReserveOfferLinkingConstraint, ThermalStandard)
+    blk = IOM.get_variable(
+        container, POM.PiecewiseLinearBlockReserveOffer, ThermalStandard)
+    @test !isempty(blk)
+
+    # The device's offer slope is a POSITIVE supply-cost coefficient on its block variable
+    # (the ORDC demand curve prices the ServiceRequirementVariable separately, as a benefit).
+    sname = PSY.get_name(ordc)
+    obj = JuMP.objective_function(IOM.get_jump_model(container))
+    base_p = IOM.get_model_base_power(container)
+    for g in contributors
+        gname = PSY.get_name(g)
+        seg1 = blk[(sname, gname, 1, 1)]
+        @test JuMP.coefficient(obj, seg1) ≈ base_slope[gname] * base_p * 1.0
+    end
+end
+
+# Attach to device `g` a per-hour offer: hour 1 is a real cheap curve; every other hour is the
+# inert dummy (0.01 MW at a high price) that the parser uses for non-participating hours.
+function add_per_hour_reserve_offer!(
+    sys, reserve, g;
+    init_times = [DateTime("2024-01-01T00:00:00"), DateTime("2024-01-02T00:00:00")],
+    horizon = 24, resolution = Hour(1),
+)
+    pmax = PSY.get_max_active_power(g, PSY.NU)
+    energy_slope = PSY.get_proportional_term(
+        PSY.get_value_curve(PSY.get_variable(get_operation_cost(g))))
+    set_operation_cost!(
+        g,
+        MarketBidCost(;
+            no_load_cost = LinearCurve(0.0),
+            start_up = (hot = 0.0, warm = 0.0, cold = 0.0),
+            shut_down = LinearCurve(0.0),
+            incremental_offer_curves = make_market_bid_curve(
+                [0.0, pmax], [energy_slope], 0.0; power_units = IS.NaturalUnit()),
+        ),
+    )
+    real_curve = IS.PiecewiseStepData([0.0, 50.0], [5.0])       # hour 1: cheap, 50 MW at $5
+    dummy_curve = IS.PiecewiseStepData([0.0, 0.01], [9000.0])   # else: 0.01 MW at high price
+    per_hour = [h == 1 ? real_curve : dummy_curve for h in 1:horizon]
+    ts = Deterministic(
+        PSY.get_name(reserve),
+        Dict(it => per_hour for it in init_times),
+        resolution,
+    )
+    PSY.set_service_bid!(sys, g, reserve, ts, IS.NaturalUnit())
+    return g
+end
+
+@testset "StepwiseCostReserve: per-hour offer participation (dummy hours not awarded)" begin
+    sys = deepcopy(PSB.build_system(PSITestSystems, "c_sys5_uc"; add_reserves = true))
+    ordc = first(get_components(PSY.ReserveDemandCurve, sys))
+    for g in get_components(ThermalStandard, sys)
+        ordc in PSY.get_services(g) || PSY.add_service!(g, ordc, sys)
+    end
+    # Attach the per-hour offer to ONE device only (avoids re-attaching a service-named time
+    # series). The other contributors carry no offer, so only g1 gets the offer cap; g1's dummy
+    # hours are capped at 0.01 MW regardless of what the other (free) devices do.
+    g1 = first(get_components(ThermalStandard, sys))
+    add_per_hour_reserve_offer!(sys, ordc, g1)
+
+    template = get_thermal_standard_uc_template()
+    set_service_model!(
+        template, ServiceModel(ReserveDemandCurve{ReserveUp}, StepwiseCostReserve))
+    model = DecisionModel(template, sys; optimizer = HiGHS_optimizer)
+    @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
+          IOM.ModelBuildStatus.BUILT
+    @test solve!(model) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
+
+    res = IOM.OptimizationProblemOutputs(model)
+    awards = read_variable(
+        res, "ActivePowerReserveVariable__ReserveDemandCurve__ReserveUp";
+        table_format = TableFormat.WIDE)
+    # WIDE columns are "<service>__<device>"; values are per-hour reserve awards in MW.
+    col = "$(PSY.get_name(ordc))__$(PSY.get_name(g1))"
+    # The linking constraint caps g1's award at the offered MW each hour; in a dummy hour that cap
+    # is 0.01 MW, so the award there is negligible regardless of the demand.
+    for t in 2:24
+        @test awards[t, col] <= 0.05
+    end
+end
+
+@testset "StepwiseCostReserve: no device offers -> no offer containers (ORDC unchanged)" begin
+    sys = deepcopy(PSB.build_system(PSITestSystems, "c_sys5_uc"; add_reserves = true))
+    ordc = first(get_components(PSY.ReserveDemandCurve, sys))
+    for g in get_components(ThermalStandard, sys)
+        ordc in PSY.get_services(g) || PSY.add_service!(g, ordc, sys)
+    end
+    # No add_device_reserve_offers! call: no device carries an AS offer.
+
+    template = get_thermal_standard_uc_template()
+    set_service_model!(
+        template, ServiceModel(ReserveDemandCurve{ReserveUp}, StepwiseCostReserve))
+    model = DecisionModel(template, sys; optimizer = HiGHS_optimizer)
+    @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
+          IOM.ModelBuildStatus.BUILT
+    @test solve!(model) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
+
+    container = get_optimization_container(model)
+    # add_reserve_offer_costs! is a no-op with no offers: the block var / linking constraint are
+    # never created, so supply stays free exactly as in the pre-change ORDC formulation.
+    @test !IOM.has_container_key(
+        container, POM.PiecewiseLinearBlockReserveOffer, ThermalStandard)
+    @test !IOM.has_container_key(
+        container, POM.ReserveOfferLinkingConstraint, ThermalStandard)
+end
+
+@testset "StepwiseCostReserve: merit order (cheaper offer clears, pricier does not)" begin
+    sys = deepcopy(PSB.build_system(PSITestSystems, "c_sys5_uc"; add_reserves = true))
+    ordc = first(get_components(PSY.ReserveDemandCurve, sys))
+    for g in get_components(ThermalStandard, sys)
+        ordc in PSY.get_services(g) || PSY.add_service!(g, ordc, sys)
+    end
+    # Every contributor offers, priced cheap -> pricey by index; `base_slope` maps device name to
+    # its first-segment offer price ($/MWh).
+    _, base_slope = add_device_reserve_offers!(sys, ordc)
+
+    template = get_thermal_standard_uc_template()
+    set_service_model!(
+        template, ServiceModel(ReserveDemandCurve{ReserveUp}, StepwiseCostReserve))
+    model = DecisionModel(template, sys; optimizer = HiGHS_optimizer)
+    @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
+          IOM.ModelBuildStatus.BUILT
+    @test solve!(model) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
+
+    res = IOM.OptimizationProblemOutputs(model)
+    awards = read_variable(
+        res, "ActivePowerReserveVariable__ReserveDemandCurve__ReserveUp";
+        table_format = TableFormat.WIDE)
+    sname = PSY.get_name(ordc)
+    order = sort(collect(keys(base_slope)); by = n -> base_slope[n])
+    cheapest, priciest = first(order), last(order)
+    # WIDE columns are "<service>__<device>"; values are per-hour reserve awards in MW.
+    a_cheap = awards[1, "$(sname)__$(cheapest)"]
+    a_pricey = awards[1, "$(sname)__$(priciest)"]
+    # The elastic demand is met by the cheapest offers first: the cheapest device clears a
+    # meaningful reserve award (MW), while the priciest device clears nothing even though it is not
+    # the smallest-capacity unit -- price, not capacity, sets the reserve merit order.
+    @test a_cheap > 1.0
+    @test a_pricey <= 1e-2
+    @test a_cheap > a_pricey
+end

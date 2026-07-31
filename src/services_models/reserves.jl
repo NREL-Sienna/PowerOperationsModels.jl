@@ -547,12 +547,19 @@ end
 function add_to_objective_function!(
     container::OptimizationContainer,
     service::S,
-    ::ServiceModel{S, SR},
+    model::ServiceModel{S, SR},
 ) where {
     S <: Union{PSY.ReserveDemandCurve, PSY.ReserveDemandTimeSeriesCurve},
     SR <: StepwiseCostReserve,
 }
+    # Demand side: price the endogenous ServiceRequirementVariable by the (decremental) ORDC/ASDC
+    # demand curve. `objective_function_multiplier(ServiceRequirementVariable, StepwiseCostReserve)`
+    # is -1, so this enters the objective as a benefit.
     add_reserves_variable_cost!(container, ServiceRequirementVariable, service, SR)
+    # Supply side: price each contributing device's reserve award by its own AS offer curve
+    # (`set_service_bid!` path). No-op for devices that submitted no offer; deliberately NO flat
+    # `DEFAULT_RESERVE_COST` fallback, so a pure-ORDC service (no device offers) is unchanged.
+    add_reserve_offer_costs!(container, service, model)
     return
 end
 
