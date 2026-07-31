@@ -401,10 +401,9 @@ end
     @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
           IOM.ModelBuildStatus.BUILT
     @test solve!(model) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
-    res = IOM.OptimizationProblemOutputs(model)
+    res = OptimizationProblemOutputs(model)
     # Event parameters are written to results (should_write_resulting_value = true)
-    @test "AvailableStatusParameter__ThermalStandard" in
-          IOM.list_parameter_names(res)
+    @test "AvailableStatusParameter__ThermalStandard" in list_parameter_names(res)
 end
 
 @testset "E2E: thermal UC with FixedForcedOutage event - ACPNetworkModel (reactive)" begin
