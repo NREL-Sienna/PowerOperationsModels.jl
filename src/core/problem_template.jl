@@ -255,12 +255,15 @@ function _populate_contributing_devices!(
                     )
                 end
             end
-            # Exempt ConstantReserveGroup: a GroupReserve aggregates other services, so its
-            # contributing-device map is empty by design, and this check would otherwise reject
-            # every group reserve. Reserves and transmission interfaces DO draw on
-            # devices/branches, so an empty map there is a real misconfiguration. AGC is not
-            # modeled in POM, so it never reaches here.
-            if !(service_type <: PSY.ConstantReserveGroup) &&
+            # Exempt the group services (`ConstantReserveGroup`, `ReserveDemandCurveGroup`): a
+            # group formulation aggregates other services, so its contributing-device map is empty
+            # by design, and this check would otherwise reject every group reserve. Reserves and
+            # transmission interfaces DO draw on devices/branches, so an empty map there is a real
+            # misconfiguration. AGC is not modeled in POM, so it never reaches here.
+            if !(
+                service_type <:
+                Union{PSY.ConstantReserveGroup, PSY.ReserveDemandCurveGroup}
+            ) &&
                isempty(get_contributing_devices_map(service_model, service_name))
                 error(
                     "Service \"$(service_name)\" of type $(typeof(service)) has no available contributing devices/branches. Assign available contributing devices/branches to it in the system data, or remove its service model from the template.",

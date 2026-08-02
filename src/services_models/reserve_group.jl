@@ -68,6 +68,44 @@ function add_constraints!(
     return
 end
 
+################################ Group Stepwise (elastic) balance ##########################
+"""
+The elastic group-stepwise balance: the sum of the contributing sub-services'
+`ActivePowerReserveVariable` awards must meet the group's endogenous `ServiceRequirementVariable`
+(priced by the ASDC in the objective). Same aggregation as [`GroupReserve`](@ref)
+(`_group_member_variables`), but the RHS is the demand variable rather than a fixed requirement,
+so the market clears the group demand where the ASDC value meets the marginal sub-service supply.
+The constraint's dual is the single group MCPC.
+"""
+function add_constraints!(
+    container::OptimizationContainer,
+    ::Type{RequirementConstraint},
+    service::SR,
+    contributing_services::Vector{<:PSY.Service},
+    model::ServiceModel{SR, GroupStepwiseReserveCurve},
+) where {SR <: PSY.ReserveDemandCurveGroup}
+    time_steps = get_time_steps(container)
+    service_name = PSY.get_name(service)
+    constraint = get_constraint(container, RequirementConstraint, SR)
+    requirement_variable = get_variable(container, ServiceRequirementVariable, SR)
+    member_vars = _group_member_variables(container, contributing_services)
+
+    for t in time_steps
+        resource_expression = JuMP.GenericAffExpr{Float64, JuMP.VariableRef}()
+        for r in contributing_services
+            for var in get(member_vars, (PSY.get_name(r), t), JuMP.VariableRef[])
+                JuMP.add_to_expression!(resource_expression, var)
+            end
+        end
+        constraint[service_name, t] = JuMP.@constraint(
+            container.JuMPmodel,
+            resource_expression >= requirement_variable[service_name, t],
+        )
+    end
+
+    return
+end
+
 # Bucket the group's contributing reserve variables by `(service_name, time)` in one pass over
 # each contributing service's merged `(service_name, device_name, time)` container, so the
 # constraint loop above does keyed lookups instead of re-scanning the whole container per

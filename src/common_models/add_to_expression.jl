@@ -2656,7 +2656,8 @@ function add_cost_to_expression!(
     time_period::Int,
 ) where {
     S <: CostExpressions,
-    T <: Union{PSY.ReserveDemandCurve, PSY.ReserveDemandTimeSeriesCurve},
+    T <: Union{PSY.ReserveDemandCurve, PSY.ReserveDemandTimeSeriesCurve,
+        PSY.ReserveDemandCurveGroup},
 }
     if has_container_key(container, S, T, PSY.get_name(component))
         device_cost_expression = get_expression(container, S, T, PSY.get_name(component))
@@ -2985,7 +2986,8 @@ function add_to_expression!(
     time_period::Int,
 ) where {
     S <: CostExpressions,
-    T <: Union{PSY.ReserveDemandCurve, PSY.ReserveDemandTimeSeriesCurve},
+    T <: Union{PSY.ReserveDemandCurve, PSY.ReserveDemandTimeSeriesCurve,
+        PSY.ReserveDemandCurveGroup},
 }
     if has_container_key(container, S, T)
         device_cost_expression = get_expression(container, S, T)

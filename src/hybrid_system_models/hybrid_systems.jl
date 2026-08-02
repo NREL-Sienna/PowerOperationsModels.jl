@@ -757,7 +757,10 @@ function add_to_expression!(
     variable = get_variable(container, U, V)
     for d in devices
         name = PSY.get_name(d)
-        expression = get_expression(container, T, UV, "$(V)_$(s_name)")
+        # Key on the concrete `typeof(service)` (as the creation site and every sibling lookup do):
+        # for ReserveDemandCurve the ServiceModel type param `V` drops the unit-system parameter,
+        # so keying on `V` would miss the stored expression.
+        expression = get_expression(container, T, UV, "$(typeof(service))_$(s_name)")
         for t in get_time_steps(container)
             add_proportional_to_jump_expression!(
                 expression[name, t],

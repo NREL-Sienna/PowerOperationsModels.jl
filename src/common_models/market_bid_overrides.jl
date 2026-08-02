@@ -348,7 +348,8 @@ function add_pwl_term_delta!(
     ::Type{U},
     ::Type{V},
 ) where {
-    T <: Union{PSY.ReserveDemandCurve, PSY.ReserveDemandTimeSeriesCurve},
+    T <: Union{PSY.ReserveDemandCurve, PSY.ReserveDemandTimeSeriesCurve,
+        PSY.ReserveDemandCurveGroup},
     U <: VariableType,
     V <: AbstractServiceFormulation,
 }

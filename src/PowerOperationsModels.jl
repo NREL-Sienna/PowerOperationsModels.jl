@@ -918,6 +918,7 @@ export PIDSmoothACE
 export GroupReserve
 export RangeReserve
 export StepwiseCostReserve
+export GroupStepwiseReserveCurve
 export RampReserve
 export NonSpinningReserve
 export ConstantMaxInterfaceFlow

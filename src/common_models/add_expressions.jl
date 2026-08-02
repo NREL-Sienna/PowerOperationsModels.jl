@@ -244,3 +244,29 @@ function add_expressions!(
     )
     return
 end
+
+# `ReserveDemandCurveGroup` is `<: Service`, not `<: Reserve`, so it needs its own merged
+# cost-expression container method. Kept separate from the `PSY.Reserve` method above to avoid
+# a dispatch ambiguity with the generic `ExpressionType`/`PSY.Reserve` method (widening the
+# union there would make neither method most-specific).
+function add_expressions!(
+    container::OptimizationContainer,
+    ::Type{T},
+    services::U,
+    model::ServiceModel{V, W},
+) where {
+    T <: CostExpressions,
+    U <: Union{Vector{D}, IS.FlattenIteratorWrapper{D}},
+    V <: PSY.ReserveDemandCurveGroup,
+    W <: AbstractReservesFormulation,
+} where {D <: PSY.Component}
+    time_steps = get_time_steps(container)
+    add_expression_container!(
+        container,
+        T,
+        D,
+        [PSY.get_name(s) for s in services],
+        time_steps,
+    )
+    return
+end

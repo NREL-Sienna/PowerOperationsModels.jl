@@ -53,7 +53,11 @@ function get_variable_upper_bound(::Type{ActivePowerReserveVariable}, r::PSY.Res
     return PSY.get_max_output_fraction(r) * (PSY.get_output_active_power_limits(d, PSY.SU).max + PSY.get_input_active_power_limits(d, PSY.SU).max)
 end
 function get_variable_upper_bound(::Type{ActivePowerReserveVariable}, r::Union{PSY.ReserveDemandCurve, PSY.ReserveDemandTimeSeriesCurve}, d::PSY.Storage, ::Type{<:AbstractReservesFormulation})
-    return PSY.get_max_output_fraction(r) * (PSY.get_output_active_power_limits(d, PSY.SU).max + PSY.get_input_active_power_limits(d, PSY.SU).max)
+    # ReserveDemandCurve has no `max_output_fraction` field (unlike VariableReserve/ConstantReserve),
+    # so the full charge+discharge range is available - matching the AncillaryServiceVariableCharge/
+    # Discharge ReserveDemandCurve methods above.
+    return PSY.get_output_active_power_limits(d, PSY.SU).max +
+           PSY.get_input_active_power_limits(d, PSY.SU).max
 end
 
 get_expression_type_for_reserve(::Type{ActivePowerReserveVariable}, ::Type{<:PSY.Storage}, ::Type{<:PSY.Reserve}) = TotalReserveOffering
@@ -735,7 +739,11 @@ function add_to_expression!(
     variable = get_variable(container, U, V)
     for d in devices
         name = PSY.get_name(d)
-        expression = get_expression(container, T, UV, "$(V)_$(s_name)")
+        # Meta must match the creation site (line ~363) and every sibling lookup, which key on the
+        # concrete `typeof(service)`. For ReserveDemandCurve the ServiceModel type param `V` drops
+        # the unit-system parameter (`{ReserveDown}` vs `{ReserveDown, NaturalUnit}`), so keying on
+        # `V` here would miss the stored expression; key on the concrete service type.
+        expression = get_expression(container, T, UV, "$(typeof(service))_$(s_name)")
         for t in get_time_steps(container)
             add_proportional_to_jump_expression!(
                 expression[name, t],

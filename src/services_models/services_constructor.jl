@@ -30,10 +30,12 @@ function construct_services!(
     isempty(services_template) && return
     incompatible_device_types = get_incompatible_devices(devices_template)
 
-    groupservice = nothing
+    # Group formulations aggregate other services, so they must be constructed after the
+    # services they reference. Defer every group key to the end of the loop.
+    deferred_groups = Symbol[]
     for (key, service_model) in services_template
-        if get_formulation(service_model) === GroupReserve  # constructed last
-            groupservice = key
+        if _is_deferred_group_formulation(get_formulation(service_model))
+            push!(deferred_groups, key)
             continue
         end
         isempty(get_contributing_devices_map(service_model)) && continue
@@ -47,15 +49,17 @@ function construct_services!(
             network_model,
         )
     end
-    groupservice === nothing || construct_service!(
-        container,
-        sys,
-        stage,
-        services_template[groupservice],
-        devices_template,
-        incompatible_device_types,
-        network_model,
-    )
+    for key in deferred_groups
+        construct_service!(
+            container,
+            sys,
+            stage,
+            services_template[key],
+            devices_template,
+            incompatible_device_types,
+            network_model,
+        )
+    end
     return
 end
 
@@ -70,10 +74,10 @@ function construct_services!(
     isempty(services_template) && return
     incompatible_device_types = get_incompatible_devices(devices_template)
 
-    groupservice = nothing
+    deferred_groups = Symbol[]
     for (key, service_model) in services_template
-        if get_formulation(service_model) === GroupReserve  # constructed last
-            groupservice = key
+        if _is_deferred_group_formulation(get_formulation(service_model))
+            push!(deferred_groups, key)
             continue
         end
         isempty(get_contributing_devices_map(service_model)) && continue
@@ -87,17 +91,26 @@ function construct_services!(
             network_model,
         )
     end
-    groupservice === nothing || construct_service!(
-        container,
-        sys,
-        stage,
-        services_template[groupservice],
-        devices_template,
-        incompatible_device_types,
-        network_model,
-    )
+    for key in deferred_groups
+        construct_service!(
+            container,
+            sys,
+            stage,
+            services_template[key],
+            devices_template,
+            incompatible_device_types,
+            network_model,
+        )
+    end
     return
 end
+
+# Group formulations (`GroupReserve`, `GroupStepwiseReserveCurve`) aggregate the awards of
+# other contributing services, so they are constructed after every non-group service.
+_is_deferred_group_formulation(::Type{GroupReserve}) = true
+_is_deferred_group_formulation(::Type{GroupStepwiseReserveCurve}) = true
+# Catch-all for every other service formulation (reserves, transmission interfaces, ...).
+_is_deferred_group_formulation(::Type) = false
 
 function construct_service!(
     container::OptimizationContainer,
@@ -437,6 +450,83 @@ function construct_service!(
             contributing_services,
             model,
         )
+    end
+    add_constraint_dual!(container, sys, model)
+    return
+end
+
+# Collect the type's available groups that reference at least one contributing service.
+# The group is device-less, so `_services_with_contributors` (device-map filter) excludes it.
+function _groups_with_subservices(model::ServiceModel, sys::PSY.System)
+    return [
+        s for s in get_available_components(model, sys) if
+        !isempty(PSY.get_contributing_services(s))
+    ]
+end
+
+"""
+    Constructs the elastic (ASDC-priced) group service `GroupStepwiseReserveCurve`.
+
+The group adds its own endogenous demand variable priced by the group ASDC, then binds the
+sum of the contributing sub-services' awards to that demand. It has no direct devices; the
+contributing services (and their `ActivePowerReserveVariable`) are constructed first because
+group formulations are deferred to the end of each stage.
+"""
+function construct_service!(
+    container::OptimizationContainer,
+    sys::PSY.System,
+    ::ArgumentConstructStage,
+    model::ServiceModel{SR, GroupStepwiseReserveCurve},
+    ::Dict{Symbol, DeviceModel},
+    ::Set{<:DataType},
+    ::NetworkModel{<:AbstractNetworkModel},
+) where {SR <: PSY.ReserveDemandCurveGroup}
+    groups = _groups_with_subservices(model, sys)
+    isempty(groups) && return
+    add_reserve_variables!(
+        container,
+        ServiceRequirementVariable,
+        groups,
+        GroupStepwiseReserveCurve(),
+    )
+    # Merged dense `(group, time)` cost-expression container, built once over all groups.
+    add_expressions!(container, ProductionCostExpression, groups, model)
+    for group in groups
+        # The group's supply is the sum of the contributing services' awards, which must
+        # already exist (groups are constructed last).
+        check_activeservice_variables(container, PSY.get_contributing_services(group))
+    end
+    return
+end
+
+function construct_service!(
+    container::OptimizationContainer,
+    sys::PSY.System,
+    ::ModelConstructStage,
+    model::ServiceModel{SR, GroupStepwiseReserveCurve},
+    ::Dict{Symbol, DeviceModel},
+    ::Set{<:DataType},
+    ::NetworkModel{<:AbstractNetworkModel},
+) where {SR <: PSY.ReserveDemandCurveGroup}
+    groups = _groups_with_subservices(model, sys)
+    isempty(groups) && return
+    # Dense group-indexed requirement container, built once over all groups of the type.
+    add_constraints_container!(
+        container,
+        RequirementConstraint,
+        SR,
+        PSY.get_name.(groups),
+        get_time_steps(container),
+    )
+    for group in groups
+        add_constraints!(
+            container,
+            RequirementConstraint,
+            group,
+            PSY.get_contributing_services(group),
+            model,
+        )
+        add_to_objective_function!(container, group, model)
     end
     add_constraint_dual!(container, sys, model)
     return

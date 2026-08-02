@@ -19,9 +19,9 @@ get_variable_lower_bound(::Type{ActivePowerReserveVariable}, ::PSY.ReserveNonSpi
 
 ############################### ServiceRequirementVariable, ReserveDemandCurve ################################
 
-get_variable_binary(::Type{ServiceRequirementVariable}, ::Type{<:Union{PSY.ReserveDemandCurve, PSY.ReserveDemandTimeSeriesCurve}}, ::Type{<:AbstractReservesFormulation}) = false
-get_variable_upper_bound(::Type{ServiceRequirementVariable}, ::Union{PSY.ReserveDemandCurve, PSY.ReserveDemandTimeSeriesCurve}, d::PSY.Component, ::Type{<:AbstractReservesFormulation}) = PSY.get_max_active_power(d, PSY.SU)
-get_variable_lower_bound(::Type{ServiceRequirementVariable}, ::Union{PSY.ReserveDemandCurve, PSY.ReserveDemandTimeSeriesCurve}, ::PSY.Component, ::Type{<:AbstractReservesFormulation}) = 0.0
+get_variable_binary(::Type{ServiceRequirementVariable}, ::Type{<:Union{PSY.ReserveDemandCurve, PSY.ReserveDemandTimeSeriesCurve, PSY.ReserveDemandCurveGroup}}, ::Type{<:AbstractReservesFormulation}) = false
+get_variable_upper_bound(::Type{ServiceRequirementVariable}, ::Union{PSY.ReserveDemandCurve, PSY.ReserveDemandTimeSeriesCurve, PSY.ReserveDemandCurveGroup}, d::PSY.Component, ::Type{<:AbstractReservesFormulation}) = PSY.get_max_active_power(d, PSY.SU)
+get_variable_lower_bound(::Type{ServiceRequirementVariable}, ::Union{PSY.ReserveDemandCurve, PSY.ReserveDemandTimeSeriesCurve, PSY.ReserveDemandCurveGroup}, ::PSY.Component, ::Type{<:AbstractReservesFormulation}) = 0.0
 
 # `VariableReserve` stores `requirement` as a dimensionless factor that scales its
 # requirement and needs an explicit unit system (PS6 made the reserve requirement
@@ -35,14 +35,17 @@ get_parameter_multiplier(::Type{<:VariableValueParameter}, d::Type{<:PSY.Abstrac
 get_initial_parameter_value(::Type{<:VariableValueParameter}, d::Type{<:PSY.AbstractReserve}, ::Type{<:AbstractReservesFormulation}) = 0.0
 
 objective_function_multiplier(::Type{ServiceRequirementVariable}, ::Type{StepwiseCostReserve}) = -1.0
+objective_function_multiplier(::Type{ServiceRequirementVariable}, ::Type{GroupStepwiseReserveCurve}) = -1.0
 uses_compact_power(::Union{PSY.ReserveDemandCurve, PSY.ReserveDemandTimeSeriesCurve}, ::StepwiseCostReserve)=false
-get_multiplier_value(::Type{<:AbstractPiecewiseLinearBreakpointParameter}, ::Union{PSY.ReserveDemandCurve, PSY.ReserveDemandTimeSeriesCurve}, ::Type{<:AbstractReservesFormulation}) = 1.0
-get_multiplier_value(::Type{<:AbstractPiecewiseLinearSlopeParameter}, ::Union{PSY.ReserveDemandCurve, PSY.ReserveDemandTimeSeriesCurve}, ::Type{<:AbstractReservesFormulation}) = 1.0
+uses_compact_power(::PSY.ReserveDemandCurveGroup, ::GroupStepwiseReserveCurve)=false
+get_multiplier_value(::Type{<:AbstractPiecewiseLinearBreakpointParameter}, ::Union{PSY.ReserveDemandCurve, PSY.ReserveDemandTimeSeriesCurve, PSY.ReserveDemandCurveGroup}, ::Type{<:AbstractReservesFormulation}) = 1.0
+get_multiplier_value(::Type{<:AbstractPiecewiseLinearSlopeParameter}, ::Union{PSY.ReserveDemandCurve, PSY.ReserveDemandTimeSeriesCurve, PSY.ReserveDemandCurveGroup}, ::Type{<:AbstractReservesFormulation}) = 1.0
 # ORDC demand curves are willingness-to-pay (concave), i.e. a decremental offer.
 # Routes the reserve PWL cost path through IOM's OfferDirection dispatch; making
 # this incremental is a one-line change here. Mirrors `_onvar_offer_direction` /
-# `_vom_offer_direction` in market_bid_overrides.jl.
-_reserve_offer_direction(::Union{PSY.ReserveDemandCurve, PSY.ReserveDemandTimeSeriesCurve}) = IOM.DecrementalOffer()
+# `_vom_offer_direction` in market_bid_overrides.jl. ReserveDemandCurveGroup shares the same
+# decremental demand-curve pricing.
+_reserve_offer_direction(::Union{PSY.ReserveDemandCurve, PSY.ReserveDemandTimeSeriesCurve, PSY.ReserveDemandCurveGroup}) = IOM.DecrementalOffer()
 #! format: on
 
 function get_initial_conditions_service_model(
@@ -56,6 +59,15 @@ function get_initial_conditions_service_model(
     ::IOM.AbstractOptimizationModel,
     ::ServiceModel{T, D},
 ) where {T <: PSY.VariableReserveNonSpinning, D <: AbstractReservesFormulation}
+    return ServiceModel(T, D)
+end
+
+# The group services (`<: Service`, not `<: PSY.Reserve`) carry no initial conditions, so the IC
+# service model is just a copy of themselves.
+function get_initial_conditions_service_model(
+    ::IOM.AbstractOptimizationModel,
+    ::ServiceModel{T, D},
+) where {T <: PSY.ReserveDemandCurveGroup, D <: AbstractReservesFormulation}
     return ServiceModel(T, D)
 end
 
@@ -98,6 +110,22 @@ function get_default_attributes(
     return Dict{String, Any}()
 end
 
+# ReserveDemandCurveGroup is `<: Service` (a group), not `<: Reserve`, so the generic reserve
+# defaults above do not cover it.
+function get_default_time_series_names(
+    ::Type{<:PSY.ReserveDemandCurveGroup},
+    ::Type{GroupStepwiseReserveCurve},
+)
+    return Dict{Type{<:TimeSeriesParameter}, String}()
+end
+
+function get_default_attributes(
+    ::Type{<:PSY.ReserveDemandCurveGroup},
+    ::Type{GroupStepwiseReserveCurve},
+)
+    return Dict{String, Any}()
+end
+
 """
 Add variables for ServiceRequirementVariable for StepWiseCostReserve
 """
@@ -108,7 +136,8 @@ function add_reserve_variables!(
     formulation,
 ) where {
     T <: ServiceRequirementVariable,
-    D <: Union{PSY.ReserveDemandCurve, PSY.ReserveDemandTimeSeriesCurve},
+    D <: Union{PSY.ReserveDemandCurve, PSY.ReserveDemandTimeSeriesCurve,
+        PSY.ReserveDemandCurveGroup},
 }
     time_steps = get_time_steps(container)
     service_names = [PSY.get_name(s) for s in services]
@@ -563,6 +592,21 @@ function add_to_objective_function!(
     return
 end
 
+function add_to_objective_function!(
+    container::OptimizationContainer,
+    service::S,
+    ::ServiceModel{S, SR},
+) where {
+    S <: PSY.ReserveDemandCurveGroup,
+    SR <: GroupStepwiseReserveCurve,
+}
+    # The group's demand: price its ServiceRequirementVariable by the ASDC (a benefit, multiplier
+    # -1). No offer costs on the group itself - offers live on the contributing sub-services, which
+    # are priced by their own (RangeReserve) objective.
+    add_reserves_variable_cost!(container, ServiceRequirementVariable, service, SR)
+    return
+end
+
 # originally was add_variable_cost!, but I don't see other call sites besides the above.
 function add_reserves_variable_cost!(
     container::OptimizationContainer,
@@ -570,9 +614,10 @@ function add_reserves_variable_cost!(
     service::T,
     ::Type{V},
 ) where {
-    T <: Union{PSY.ReserveDemandCurve, PSY.ReserveDemandTimeSeriesCurve},
+    T <: Union{PSY.ReserveDemandCurve, PSY.ReserveDemandTimeSeriesCurve,
+        PSY.ReserveDemandCurveGroup},
     U <: VariableType,
-    V <: StepwiseCostReserve,
+    V <: Union{StepwiseCostReserve, GroupStepwiseReserveCurve},
 }
     _add_reserves_variable_cost_to_objective!(container, U, service, V)
     return
@@ -581,9 +626,9 @@ end
 function _add_reserves_variable_cost_to_objective!(
     container::OptimizationContainer,
     ::Type{T},
-    component::PSY.Reserve,
+    component::Union{PSY.Reserve, PSY.ReserveDemandCurveGroup},
     ::Type{U},
-) where {T <: VariableType, U <: StepwiseCostReserve}
+) where {T <: VariableType, U <: Union{StepwiseCostReserve, GroupStepwiseReserveCurve}}
     component_name = PSY.get_name(component)
     @debug "PWL Variable Cost" _group = LOG_GROUP_COST_FUNCTIONS component_name
     # If array is full of tuples with zeros return 0.0
