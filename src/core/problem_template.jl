@@ -255,15 +255,12 @@ function _populate_contributing_devices!(
                     )
                 end
             end
-            # Exempt the group services (`ConstantReserveGroup`, `ReserveDemandCurveGroup`): a
-            # group formulation aggregates other services, so its contributing-device map is empty
+            # Exempt every `PSY.ReserveGroup` (`ConstantReserveGroup`, `ReserveDemandCurveGroup`):
+            # a group formulation aggregates other services, so its contributing-device map is empty
             # by design, and this check would otherwise reject every group reserve. Reserves and
             # transmission interfaces DO draw on devices/branches, so an empty map there is a real
             # misconfiguration. AGC is not modeled in POM, so it never reaches here.
-            if !(
-                service_type <:
-                Union{PSY.ConstantReserveGroup, PSY.ReserveDemandCurveGroup}
-            ) &&
+            if !(service_type <: PSY.ReserveGroup) &&
                isempty(get_contributing_devices_map(service_model, service_name))
                 error(
                     "Service \"$(service_name)\" of type $(typeof(service)) has no available contributing devices/branches. Assign available contributing devices/branches to it in the system data, or remove its service model from the template.",
@@ -324,7 +321,9 @@ function _add_services_to_device_model!(template::PowerOperationsProblemTemplate
     devices_template = get_device_models(template)
     for (service_key, service_model) in service_models
         S = get_component_type(service_model)
-        (S <: PSY.AGC || S <: PSY.ConstantReserveGroup) && continue
+        # Groups (`PSY.ReserveGroup`) aggregate services, not devices, so they are never attached
+        # to a device model; skip every group (and AGC, which POM does not model).
+        (S <: PSY.AGC || S <: PSY.ReserveGroup) && continue
         contributing_devices = get_contributing_devices(service_model)
         isempty(contributing_devices) && continue
         _modify_device_model!(devices_template, service_model, contributing_devices)
