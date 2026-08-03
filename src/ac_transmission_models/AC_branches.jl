@@ -1485,7 +1485,11 @@ end
 # π-model coefficients for a fixed tap `tm` and phase shift, shared by the polar (ACP) and
 # rectangular (ACR) Ohm's law. Tap is folded in here so nothing divides inside the time loop.
 #
-# The to-side carries no tap, and the coupling terms scale as 1/tm.
+# `gg_fr`/`bb_fr` follow PNM's Ybus (`_pi_to_ybus`): `Y11 = y/|t|^2 + y_fr`, i.e. the
+# from-side shunt sits OUTSIDE the ideal transformer, so it is NOT divided by tm^2.
+# PowerModels folds it inside — `(g + g_fr)/tm^2` — which agrees only at `tm == 1` and
+# diverges exactly for an off-nominal tap with a magnetizing shunt. The to-side
+# (`Y22 = y + y_to`) carries no tap, and the coupling terms scale as 1/tm.
 # ACR uses `e_sin = -d_sin`.
 function _pi_flow_coefficients(g, b, g_fr, b_fr, g_to, b_to, tm, shift)
     cs = cos(shift)
@@ -1494,8 +1498,8 @@ function _pi_flow_coefficients(g, b, g_fr, b_fr, g_to, b_to, tm, shift)
     return (
         cs = cs,
         sn = sn,
-        gg_fr = (g + g_fr) / tm2,
-        bb_fr = (b + b_fr) / tm2,
+        gg_fr = g / tm2 + g_fr,
+        bb_fr = b / tm2 + b_fr,
         gg_to = g + g_to,
         bb_to = b + b_to,
         a_cos = (-g * cs + b * sn) / tm,
@@ -1997,8 +2001,10 @@ function add_constraints!(
         c_sin_fr = (-b * tr - g * ti) / tm^2
         c_cos_to = (-g * tr - b * ti) / tm^2
         c_sin_to = (-b * tr + g * ti) / tm^2
-        gg_fr = (g + g_fr) / tm^2
-        bb_fr = (b + b_fr) / tm^2
+        # From-side self terms follow PNM's Ybus (`Y11 = y/tm^2 + y_fr`): the shunt sits
+        # outside the ideal transformer. See `_pi_flow_coefficients`.
+        gg_fr = g / tm^2 + g_fr
+        bb_fr = b / tm^2 + b_fr
 
         for t in time_steps
             phi_fr = phi[from_bus, t]
@@ -2304,13 +2310,13 @@ function add_constraints!(
             cons_cr_fr[name, t] = JuMP.@constraint(
                 jump_model,
                 cr_f * tm2 ==
-                tr * csr_b - ti * csi_b + g_fr * vr_f - b_fr * vi_f +
+                tr * csr_b - ti * csi_b + (g_fr * vr_f - b_fr * vi_f) * tm2 +
                 _slack_term(cslacks.cr_fr, name, t),
             )
             cons_ci_fr[name, t] = JuMP.@constraint(
                 jump_model,
                 ci_f * tm2 ==
-                tr * csi_b + ti * csr_b + g_fr * vi_f + b_fr * vr_f +
+                tr * csi_b + ti * csr_b + (g_fr * vi_f + b_fr * vr_f) * tm2 +
                 _slack_term(cslacks.ci_fr, name, t),
             )
 
