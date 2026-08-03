@@ -638,3 +638,57 @@ end
         abs(JuMP.value(p[outaged_name, t])) <= 1e-6 for t in axes(p)[2]
     )
 end
+
+@testset "Two event models of different contingency types on one device type fail loudly" begin
+    sys = PSB.build_system(PSITestSystems, "c_sys5_uc")
+    thermal = first(PSY.get_components(PSY.ThermalStandard, sys))
+    attach_fixed_forced_outage!(sys, thermal)
+    geo_outage = PSY.GeometricDistributionForcedOutage(;
+        mean_time_to_recovery = 2.0,
+        outage_transition_probability = 0.1,
+    )
+    PSY.add_supplemental_attribute!(sys, thermal, geo_outage)
+
+    template = get_thermal_dispatch_template_network(NetworkModel(CopperPlateNetworkModel))
+    em_fixed = EventModel(
+        PSY.FixedForcedOutage,
+        ContinuousCondition();
+        timeseries_mapping = Dict{Symbol, Union{String, Nothing}}(
+            :outage_status => "outage_profile",
+        ),
+    )
+    em_geo = EventModel(PSY.GeometricDistributionForcedOutage, ContinuousCondition())
+    set_event_model!(template, em_fixed)
+    set_event_model!(template, em_geo)
+    model = DecisionModel(template, sys; optimizer = HiGHS_optimizer)
+    # Discovery must reject the second event model with a clear error instead of letting
+    # the two models' parameter containers collide inside the optimization container.
+    @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
+          IOM.ModelBuildStatus.FAILED
+end
+
+@testset "Event constraints stub errors when events are attached, no-ops when empty" begin
+    sys = PSB.build_system(PSITestSystems, "c_sys5_uc")
+    model = DecisionModel(MockOperationProblem, CopperPlateNetworkModel, sys)
+    container = IOM.get_optimization_container(model)
+    network_model = NetworkModel(CopperPlateNetworkModel)
+
+    # Empty events dict: the fallback stays a silent no-op (constructors call it
+    # unconditionally for every device model).
+    clean_model = DeviceModel(PSY.Source, FixedOutput)
+    @test isnothing(
+        POM.add_event_constraints!(container, PSY.Source[], clean_model, network_model),
+    )
+
+    # Events attached to a device model with no constraint implementation: availability
+    # parameters would be enforced by nothing, so the fallback must error.
+    event_model = DeviceModel(PSY.Source, FixedOutput)
+    em = EventModel(PSY.FixedForcedOutage, ContinuousCondition())
+    set_event_model!(event_model, EventKey(PSY.FixedForcedOutage, PSY.Source), em)
+    @test_throws ErrorException POM.add_event_constraints!(
+        container,
+        PSY.Source[],
+        event_model,
+        network_model,
+    )
+end
