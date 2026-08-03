@@ -777,14 +777,15 @@ function _build_device_model_events!(
 )
     for event_model in get_event_models(template)
         event_type = get_event_type(event_model)
-        if isempty(PSY.get_supplemental_attributes(event_type, sys))
+        attributes = PSY.get_supplemental_attributes(event_type, sys)
+        if isempty(attributes)
             error(
                 "There are no supplemental attributes of type $event_type in the system. \
                  Add the outage data to the system or remove the event model from the \
                  template.",
             )
         end
-        for event in PSY.get_supplemental_attributes(event_type, sys)
+        for event in attributes
             _validate_event_timeseries_data(sys, event, event_model)
             event_uuid = IS.get_uuid(event)
             attribute_device_map = get_attribute_device_map(event_model)
@@ -833,6 +834,24 @@ function _build_device_model_events!(
                          (contingency type, device type) pair is supported. Merge the \
                          event models or remove one from the template.",
                     )
+                elseif !isempty(existing_events)
+                    # A second event model of a *different* contingency type also can't
+                    # coexist on one device model: event parameter containers are keyed
+                    # by (parameter type, device type) only — the contingency type is
+                    # not part of the key — so the two models' parameters would collide
+                    # in the optimization container. Fail here with a clear message
+                    # instead of deep in container construction.
+                    other_types = join(
+                        unique(get_event_type(m) for m in values(existing_events)),
+                        ", ",
+                    )
+                    error(
+                        "Device type $device_type is already targeted by an event model \
+                         of contingency type $other_types; a second event model of \
+                         contingency type $event_type cannot be added because event \
+                         parameters are keyed by device type only and would collide. \
+                         Attach at most one event model per device type.",
+                    )
                 end
                 IOM.set_event_model!(device_model, key, event_model)
             end
@@ -850,7 +869,10 @@ function _validate_event_timeseries_data(
         if !isnothing(v)
             try
                 PSY.get_time_series(IS.SingleTimeSeries, event, v)
-            catch
+            catch e
+                # A missing series surfaces as ArgumentError; anything else is a real
+                # failure that must not be masked as missing data.
+                e isa ArgumentError || rethrow()
                 device_names =
                     PSY.get_name.(PSY.get_associated_components(sys, event))
                 error(
