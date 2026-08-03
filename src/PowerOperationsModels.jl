@@ -247,6 +247,9 @@ include("core/problem_template.jl")
 include("core/feedforward_interface.jl")
 include("core/initial_conditions.jl")
 
+include("event_models/event_model.jl")
+include("event_models/event_traits.jl")
+
 # Common models - expression infrastructure
 # Expression container creation (add_expressions!) and helpers
 include("common_models/add_expressions.jl")
@@ -267,6 +270,9 @@ include("common_models/converter_control.jl")
 # Market bid cost plumbing (PSY orchestration moved out of IOM). Must be included
 # before device-specific files that reference MBC_TYPES / IEC_TYPES.
 include("common_models/market_bid_plumbing.jl")
+
+include("event_models/event_arguments.jl")
+include("event_models/event_constraints.jl")
 
 # Initial Conditions
 include("initial_conditions/add_initial_condition.jl")
@@ -404,6 +410,30 @@ export NetworkModel
 export DeviceModel
 export ServiceModel
 export OptimizationContainer
+
+# Event Model Container Types
+export EventModel
+export EventKey
+export AbstractEventCondition
+export ContinuousCondition
+export PresetTimeCondition
+export StateVariableValueCondition
+export DiscreteEventCondition
+export get_time_stamps
+export get_empty_timeseries_mapping
+export get_event_type
+export get_event_condition
+export get_attribute_device_map
+export set_event_model!
+export get_event_models
+export supports_events
+export AvailableStatusParameter
+export ActivePowerOffsetParameter
+export ReactivePowerOffsetParameter
+export AvailableStatusChangeCountdownParameter
+export ActivePowerOutageConstraint
+export ReactivePowerOutageConstraint
+export ActivePowerPumpOutageConstraint
 
 # Initial Conditions Quantities
 export DevicePower

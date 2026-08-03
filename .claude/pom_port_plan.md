@@ -141,10 +141,17 @@ per file. Annotated where a test is **code-blocked** by a Workstream M/C item.
 ---
 
 ## Workstream C — Tier-0 code blockers in POM (port code, then test)
-- **Event framework** — POM has **no `core/event_model.jl`**, no `EventModel`/`FixedForcedOutage`
-  machinery (only the `AvailableStatusParameter` type exists). Port the event framework
-  (`AbstractEventCondition` family, FixedForcedOutage time-series application, event extension hooks,
-  outage projection into decision models), **then** port `test_events.jl` (all 13 testsets).
+- **Event framework — ported.** `src/event_models/` (`event_model.jl`, `event_traits.jl`,
+  `event_arguments.jl`, `event_constraints.jl`) provides the `EventModel`/`AbstractEventCondition`
+  family, template-level `set_event_model!` attachment, build-time discovery and time-series
+  validation, and event parameters/constraints for thermal, renewable, load, hydro, pump-turbine,
+  and storage devices. `test/test_events.jl` (21 testsets) covers construction, traits, template
+  attachment, discovery/validation errors, exclusion from the initialization problem, per-device
+  constraint coefficients, and E2E build/solve including forced-zero output under a
+  `FixedForcedOutage` event. This required one IOM-side fix (a `SupplementalAttribute` type-bound
+  correction) — see the IOM-merge-dependency note below. The remaining gap versus PSI is
+  simulation-runtime only: condition evaluation, sampling, and state projection across simulation
+  steps, all out of scope for POM (no simulation orchestration here).
 - **MBC variable-tranche-count** and **MBC concavity/convexity validation** — absent; small code adds
   that unblock the remaining time-varying-tranche and validation MBC tests.
 
@@ -165,5 +172,7 @@ is tracked in POM as the `branches_modeled` trait (already present).
 3. **Workstream M small features** (#1549, #1573, #1538, #1614, #1605, #1622, #1566, #1612) — then
    port the PF-Source / MBC / curtailment tests they unblock.
 4. **Workstream G1** (#1617) — track upstream merge; port reserve/service SC layer + its test file.
-5. **Workstream C** — event framework → test_events.jl; MBC tranche/concavity → remaining MBC tests.
+5. **Workstream C** — event framework and test_events.jl: **done**, pending the IOM `SupplementalAttribute`
+   bound-fix merge to IOM `main` (local overrides in `test/Project.toml`/`docs/Project.toml` stay until
+   then); MBC tranche/concavity → remaining MBC tests still open.
 6. **DLR (#1559/#1561)** and the **verify** items — scope separately.
