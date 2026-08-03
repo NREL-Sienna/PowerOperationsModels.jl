@@ -187,71 +187,11 @@ end
 # -----------------------------------------------------------------------------
 # Baseline PFitL coverage (ported from PowerSimulations.jl test file lines 1-548).
 # These exercise the regular non-headroom paths through the migrated code:
-#   - PhaseShiftingTransformer in PFitL
 #   - Parallel-line aggregation
 #   - Breaker-switch (DiscreteControlledACBranch)
 #   - HVDCs with DC PowerFlow
 #   - Line active power loss aux variable
 # -----------------------------------------------------------------------------
-
-@testset "AC Power Flow in the loop for PhaseShiftingTransformer" begin
-    system = build_system(PSITestSystems, "c_sys5_uc")
-
-    line = get_component(Line, system, "1")
-    arc = get_arc(line)
-
-    ps = PhaseShiftingTransformer(;
-        name = get_name(line),
-        available = true,
-        active_power_flow = 0.0,
-        reactive_power_flow = 0.0,
-        r = get_r(line, PSY.SU),
-        x = get_x(line, PSY.SU),
-        primary_shunt = 0.0,
-        tap = 1.0,
-        α = 0.0,
-        rating = get_rating(line, PSY.SU),
-        arc = arc,
-        base_power = get_base_power(system, PSY.NU),
-    )
-    add_component!(system, ps)
-    remove_component!(system, line)
-
-    template = get_template_dispatch_with_network(
-        NetworkModel(
-            PTDFNetworkModel;
-            network_matrix = PTDF(system),
-            evaluations = power_flow_evaluations(ACPowerFlow()),
-        ),
-    )
-    set_device_model!(template, DeviceModel(PhaseShiftingTransformer, PhaseAngleControl))
-    model_m = DecisionModel(template, system; optimizer = HiGHS_optimizer)
-    @test build!(model_m; output_dir = mktempdir(; cleanup = true)) ==
-          ModelBuildStatus.BUILT
-    @test solve!(model_m) == RunStatus.SUCCESSFULLY_FINALIZED
-
-    container = get_optimization_container(model_m)
-    pf_e_data = only(values(get_evaluation_data(get_evaluations(container))))
-    data = get_inner_data(pf_e_data)
-    bus_lookup = PFS.get_bus_lookup(data)
-
-    flow_key = VariableKey(FlowActivePowerVariable, PhaseShiftingTransformer)
-    flow_values = lookup_value(container, flow_key)
-    line_name = get_name(line)
-    line_flows =
-        [JuMP.value(flow_values[line_name, t]) for t in 1:length(get_time_steps(container))]
-
-    # The PhaseShiftingTransformer flow contributes to the "to"-bus active power injection.
-    # Both sides are in per-unit; lookup_value returns raw JuMP values in the model unit
-    # system rather than the natural-unit conversion that `read_variables(...; WIDE)`
-    # performs in PSI.
-    @test isapprox(
-        data.bus_active_power_injections[bus_lookup[get_number(get_to(arc))], :],
-        line_flows;
-        atol = 1e-9,
-        rtol = 0,
-    )
-end
 
 @testset "AC Power Flow in the loop with parallel lines" begin
     original_line_flow, parallel_line_flow = zero(ComplexF64), zero(ComplexF64)

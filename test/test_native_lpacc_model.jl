@@ -50,8 +50,8 @@ end
     # build/validation exceptions into a FAILED status, so assert against
     # validate_template directly — same pattern as
     # test_network_constructors_with_branch_rating_time_series.jl.)
-    # psy6: the transformer half of this gate is gone with VoltageControlTap; a
-    # TwoWindingTransformer is a plain static branch under LPACC now.
+    # ShuntSusceptanceDispatch is the only reactive control formulation the gate rejects;
+    # a TwoWindingTransformer is a plain static branch under LPACC.
     sys_shunt = PSB.build_system(PSITestSystems, "c_sys5")
     bus = PSY.get_component(PSY.ACBus, sys_shunt, "nodeA")
     PSY.add_component!(

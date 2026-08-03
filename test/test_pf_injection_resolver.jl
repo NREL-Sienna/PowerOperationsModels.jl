@@ -75,16 +75,4 @@
         FAPV,
         PSY.TwoTerminalGenericHVDCLine,
     ) == P(ACT, HVDC, -1.0, false)
-
-    # --- PhaseShiftingTransformer: from_to -1, to_from +1 ---
-    @test pf_contribution(
-        Val(:active_power_hvdc_pst_to_from),
-        FAPV,
-        PSY.PhaseShiftingTransformer,
-    ) == P(ACT, INJ, 1.0, false)
-    @test pf_contribution(
-        Val(:active_power_hvdc_pst_from_to),
-        FAPV,
-        PSY.PhaseShiftingTransformer,
-    ) == P(ACT, INJ, -1.0, false)
 end

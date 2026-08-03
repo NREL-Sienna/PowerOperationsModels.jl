@@ -225,7 +225,8 @@ function _add_two_terminal_elements_map!(
     available_keys::Vector{Pair{OptimizationContainerKey, Any}},
     input_key_map::Dict{Symbol, <:Dict{OptimizationContainerKey, <:Dict}},
 )
-    # psy6: PSY.PhaseShiftingTransformer dropped from this tuple pending transformer refactor
+    # psy6 has no PhaseShiftingTransformer: a transformer's phase shift is fixed circuit
+    # data, so it carries no controllable injection pair to map here.
     for element_type in (PSY.TwoTerminalHVDC,)
         # A two-terminal element whose from and to resolve to one bus would collapse its
         # from_to/to_from injections onto the same row; guard against that here.

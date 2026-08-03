@@ -20,9 +20,8 @@ const TEST_DIR = @__DIR__
 # helpers, and `test_data/` are shared infrastructure, not standalone testsets — they
 # must not be run as tests (ParallelTestRunner's default discovery would pick them up).
 
-# psy6: disabled pending transformer refactor. Two causes, both upstream of the test body:
-#   - transformer control formulations / Transformer3W are commented out in `src`
-#   - PowerFlows@psy6 does not precompile, so `PFS` is unavailable in the preamble
+# psy6: disabled because PowerFlows@psy6 does not precompile against
+# PowerNetworkMatrices@psy6, so `PFS` is unavailable in the preamble.
 const DISABLED_TESTS = Set([
     "test_pf_injection_resolver",
     "test_power_flow_in_the_loop",

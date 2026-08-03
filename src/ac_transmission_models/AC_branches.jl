@@ -1,3 +1,14 @@
+# Note: Any future concrete formulation requires the definition of
+
+# construct_device!(
+#     ::OptimizationContainer,
+#     ::PSY.System,
+#     ::DeviceModel{<:PSY.ACTransmission, MyNewFormulation},
+#     ::Union{Type{CopperPlateNetworkModel}, Type{AreaBalanceNetworkModel}},
+# ) = nothing
+
+#
+
 #################################### Branch Variables ##################################################
 # Branch flow variables are created by POM's per-formulation `construct_device!` methods.
 # The AC formulations (ACP/ACR/LPACC/IVR) each add directional from-to and to-from
@@ -119,6 +130,11 @@ function get_default_attributes(
     )
 end
 
+# Resolve the per-DeviceModel attribute to one of the explicit PNM rating functions.
+# `MixedBranchesParallel` ignores the attribute and always uses the plain sum, since
+# the constituent branches may carry different DeviceModel preferences and there is
+# no defensible way to pick one. The PNM aggregators return system-base values
+# (no `PSY.SU`).
 function _get_parallel_branch_max_rating(model::DeviceModel, bp::PNM.BranchesParallel)
     method = get_attribute(model, PARALLEL_BRANCH_MAX_RATING_KEY)
     if method == "single_element_contingency"
@@ -360,6 +376,11 @@ end
 ################################## Rate Limits constraint_infos ############################
 
 """
+Scalar branch rating for a reduction entry — the single source of truth for
+branch flow ratings. Parallel groups use the `PARALLEL_BRANCH_MAX_RATING_KEY`
+attribute; every other entry uses `PNM.get_equivalent_rating`. Extend that (not
+this) for new types. The PNM aggregators are system-base (no `PSY.SU`).
+
 Returns `nothing` when the entry has no rating: a transformer circuit's rating is
 `Union{Nothing, Float64}` and PSS/E `RATE = 0` parses to `nothing`, meaning genuinely
 unlimited. Callers must handle it — a rate constraint is skipped, a bounds formulation
@@ -376,14 +397,14 @@ branch_rating(entry, ::DeviceModel) = PNM.get_equivalent_rating(entry)
 branch_rating(t::PSY.TwoWindingTransformer, ::DeviceModel) = branch_rating(t)
 branch_rating(w::PNM.ThreeWindingTransformerCircuit, ::DeviceModel) = branch_rating(w)
 
+_symmetric_limits(rating::Float64) = (min = -rating, max = rating)
+_symmetric_limits(::Nothing) = nothing
+
 """
 Symmetric `(min, max)` flow limits from [`branch_rating`](@ref), or `nothing` for an
 unrated entry. Prefer this over the formulation-only `get_min_max_limits` when the
 `DeviceModel` is in scope.
 """
-_symmetric_limits(rating::Float64) = (min = -rating, max = rating)
-_symmetric_limits(::Nothing) = nothing
-
 min_max_flow_limits(entry, model::DeviceModel) =
     _symmetric_limits(branch_rating(entry, model))
 
@@ -1432,7 +1453,10 @@ end
 # "unlimited", which must be resolved in the data, not by the model.
 function _directional_flow_rating(d::PSY.ACTransmission, ::DeviceModel)
     rating = branch_rating(d)
-    _error_on_zero_rating(rating, _element_name(d))
+    _is_zero_rating(rating) && error(
+        "Branch $(_element_name(d)) has a zero rating; the flow limit would force zero \
+         flow. Assign a non-zero thermal rating or use an unbounded formulation.",
+    )
     return rating
 end
 
@@ -1441,18 +1465,16 @@ function _directional_flow_rating(
     device_model::DeviceModel,
 )
     rating = branch_rating(entry, device_model)
-    _error_on_zero_rating(rating, "reduced arc $(PNM.get_name(entry))")
+    _is_zero_rating(rating) && error(
+        "A reduced arc has a zero equivalent rating; the flow limit would force zero \
+         flow. Assign non-zero thermal ratings to its member branches.",
+    )
     return rating
 end
 
-_error_on_zero_rating(::Nothing, ::AbstractString) = nothing
-function _error_on_zero_rating(rating::Float64, name::AbstractString)
-    iszero(rating) && error(
-        "Branch $(name) has a zero rating; the flow limit would force zero flow. \
-         Assign a non-zero thermal rating or use an unbounded formulation.",
-    )
-    return nothing
-end
+# `nothing` is genuinely unlimited; only a concrete zero is the data error.
+_is_zero_rating(::Nothing) = false
+_is_zero_rating(rating::Float64) = iszero(rating)
 
 ################################## AC-reactive family rate-limit constraints ##################
 
@@ -2110,7 +2132,9 @@ end
 function _ivr_current_rating(branch::PSY.ACTransmission)
     rate_a = branch_rating(branch)
     name = _element_name(branch)
-    _error_on_zero_rating(rate_a, "IVR: branch $(name)")
+    _is_zero_rating(rate_a) && error(
+        "IVR: branch $(name) has zero rating — assign a non-zero thermal rating",
+    )
     isnothing(rate_a) && return nothing
     vmin = _min_endpoint_voltage_limit(branch)
     vmin <= 0.0 && error(
@@ -2140,7 +2164,10 @@ function _ivr_current_rating(
     entry_name::String,
 )
     rate_a = branch_rating(entry, device_model)
-    _error_on_zero_rating(rate_a, "IVR: reduced arc $(entry_name)")
+    _is_zero_rating(rate_a) && error(
+        "IVR: reduced arc $(entry_name) has zero equivalent rating — assign non-zero \
+         thermal ratings to its member branches",
+    )
     isnothing(rate_a) && return nothing
     vmin = _min_endpoint_voltage_limit(entry)
     vmin <= 0.0 && error(
@@ -3014,7 +3041,8 @@ function _set_dcpll_flow_bounds!(
         for d in devices, e in _branch_elements(d)
             name = _element_name(e)
             rate = branch_rating(e)
-            _error_on_zero_rating(rate, name)
+            _is_zero_rating(rate) &&
+                error("Branch $name has a zero rating; cannot bound DCPLL flows.")
             # Unrated (PSS/E RATE=0) is unlimited: leave the flow variables unbounded.
             isnothing(rate) && continue
             for t in time_steps

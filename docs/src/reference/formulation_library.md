@@ -201,9 +201,9 @@ Rating enforcement per network model, `StaticBranch` vs `StaticBranchBounds` sid
 Which pairs have slack machinery is declared once, per (formulation, network) pair, by the
 `slack_spec` trait (`core/branch_slack_specs.jl`); the `supports_flow_slacks` gate derives
 from it, so any pair whose constructors build no slack containers (`StaticBranchBounds` ×
-NFA, `StaticBranchUnbounded` × anything, the control formulations such as
-`VoltageControlTap`) is rejected at template validation with `IS.ConflictingInputsError`
-rather than left to silently ignore the request; a construct-time backstop
+NFA, `StaticBranchUnbounded` × anything) is rejected at template validation with
+`IS.ConflictingInputsError` rather than left to silently ignore the request; a
+construct-time backstop
 (`_check_flow_slack_support`) throws `ArgumentError` for any direct-construct path that
 bypasses template validation. On `CopperPlateNetworkModel`/`AreaBalanceNetworkModel` the
 branch model is a no-op, so `use_slacks` is accepted but inert — validation emits a warning
@@ -259,16 +259,10 @@ N-1 security constraints are built with Modified Outage Distribution Factors (PN
 
 #### Tap and phase-angle control
 
-| Formulation         | Supported on                                                                                                                                                                                                                                                    |
-|:------------------- |:--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `VoltageControlTap` | `ACPNetworkModel`, `ACRNetworkModel`, `IVRNetworkModel`. Gated by `models_reactive_power`, so it is dropped from active-power (DC) templates with an `@info` message rather than being built; explicitly rejected on `LPACCNetworkModel` by template validation |
-| `TapControl`        | `DCPNetworkModel` only                                                                                                                                                                                                                                          |
-| `PhaseAngleControl` | `DCPNetworkModel` and the PTDF models only                                                                                                                                                                                                                      |
-
-Under `ACRNetworkModel` and `IVRNetworkModel`, `VoltageControlTap` additionally creates a
-`RegulatedVoltageMagnitude` variable and a `RegulatedVoltageMagnitudeConstraint` (both with
-`meta = "1"`), because those formulations have no scalar voltage-magnitude primitive to fix. Under
-`ACPNetworkModel` the network's own `VoltageMagnitude` variable is fixed directly instead.
+Under the PowerSystems 6 data model a transformer's tap ratio and phase-shift angle are
+fixed circuit data on `TransformerCircuit`, not controllable quantities, so POM has no tap
+or phase-angle control formulations. The fixed tap and shift are folded into the π-model
+coefficients of every branch formulation instead.
 
 ### HVDC formulations
 
