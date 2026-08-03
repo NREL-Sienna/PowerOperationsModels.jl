@@ -72,10 +72,10 @@ end
 """
 The elastic group-stepwise balance: the sum of the contributing sub-services'
 `ActivePowerReserveVariable` awards must meet the group's endogenous `ServiceRequirementVariable`
-(priced by the ASDC in the objective). Same aggregation as [`GroupReserve`](@ref)
+(priced by the demand curve in the objective). Same aggregation as [`GroupReserve`](@ref)
 (`_group_member_variables`), but the RHS is the demand variable rather than a fixed requirement,
-so the market clears the group demand where the ASDC value meets the marginal sub-service supply.
-The constraint's dual is the single group MCPC.
+so the market clears the group demand where the demand-curve value meets the marginal sub-service
+supply. The constraint's dual is the single group clearing price.
 """
 function add_constraints!(
     container::OptimizationContainer,

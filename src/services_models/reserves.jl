@@ -581,7 +581,7 @@ function add_to_objective_function!(
     S <: Union{PSY.ReserveDemandCurve, PSY.ReserveDemandTimeSeriesCurve},
     SR <: StepwiseCostReserve,
 }
-    # Demand side: price the endogenous ServiceRequirementVariable by the (decremental) ORDC/ASDC
+    # Demand side: price the endogenous ServiceRequirementVariable by the (decremental) ORDC
     # demand curve. `objective_function_multiplier(ServiceRequirementVariable, StepwiseCostReserve)`
     # is -1, so this enters the objective as a benefit.
     add_reserves_variable_cost!(container, ServiceRequirementVariable, service, SR)
@@ -600,8 +600,9 @@ function add_to_objective_function!(
     S <: PSY.ReserveDemandCurveGroup,
     SR <: GroupStepwiseReserveCurve,
 }
-    # The group's demand: price its ServiceRequirementVariable by the ASDC (a benefit, multiplier
-    # -1). No offer costs on the group itself - offers live on the contributing sub-services, which
+    # The group's demand: price its ServiceRequirementVariable by the demand curve (a benefit,
+    # multiplier -1). No offer costs on the group itself - offers live on the contributing
+    # sub-services, which
     # are priced by their own (RangeReserve) objective.
     add_reserves_variable_cost!(container, ServiceRequirementVariable, service, SR)
     return

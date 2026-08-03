@@ -444,10 +444,10 @@ Struct for to add reserves to be larger than a variable requirement depending of
 """
 struct StepwiseCostReserve <: AbstractReservesFormulation end
 """
-Group reserve formulation whose single elastic demand curve (ASDC) is met by the awards of its
+Group reserve formulation whose single elastic demand curve is met by the awards of its
 contributing sub-type services. Combines the demand-curve pricing of [`StepwiseCostReserve`](@ref)
-with the service aggregation of [`GroupReserve`](@ref): one demand, one MCPC, per-sub-type offers and
-caps on the contributing services. Used with `PSY.ReserveDemandCurveGroup`.
+with the service aggregation of [`GroupReserve`](@ref): one demand, one clearing price, per-sub-type
+offers and caps on the contributing services. Used with `PSY.ReserveDemandCurveGroup`.
 """
 struct GroupStepwiseReserveCurve <: AbstractReservesFormulation end
 """

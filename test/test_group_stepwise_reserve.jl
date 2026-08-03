@@ -1,14 +1,13 @@
-# GroupStepwiseReserveCurve: a group Ancillary Service Demand Curve (ASDC) whose single elastic
-# demand is met by the awards of several contributing sub-services. This is the ERCOT RTC+B
-# pattern where one product (e.g. RRS) has one demand curve but several sub-types (PFR, FFR, UFR)
-# that each carry their own per-resource offers and per-resource caps.
+# GroupStepwiseReserveCurve: a group with a single elastic demand curve whose demand is met by the
+# awards of several contributing sub-services - one product with one demand curve but several
+# sub-type services (here PFR/FFR/UFR), each carrying its own per-resource offers and caps.
 #
 # The group (`PSY.ReserveDemandCurveGroup`, `<: Service`) adds ONE `ServiceRequirementVariable`
-# priced by the group ASDC (a decremental benefit), and ONE `RequirementConstraint` binding the
-# sum of the contributing sub-services' `ActivePowerReserveVariable` awards to that demand. The
+# priced by the group demand curve (a decremental benefit), and ONE `RequirementConstraint` binding
+# the sum of the contributing sub-services' `ActivePowerReserveVariable` awards to that demand. The
 # sub-services themselves are ordinary `RangeReserve` reserves with no own demand (requirement 0)
 # whose awards are priced by their per-resource offers. So supply merit order lives on the
-# sub-services and the single clearing (one MCPC) lives on the group.
+# sub-services and the single clearing (one clearing price) lives on the group.
 
 # Add both RRS sub-services to every thermal, then give each thermal a MarketBidCost (keeping its
 # own energy offer) plus a flat per-hour reserve offer into each sub-service: PFR cheap, FFR
@@ -53,7 +52,7 @@ function _setup_group_reserve_offers!(
 end
 
 # Build a self-contained system: c_sys5_uc thermals + two RRS sub-services (ConstantReserve, no
-# own demand) offered by every thermal, plus one group ASDC over both. PFR is cheap ($5/MWh) and
+# own demand) offered by every thermal, plus one group demand curve over both. PFR is cheap ($5/MWh) and
 # FFR is prohibitively pricey, so the elastic group demand clears through PFR, not FFR.
 function build_group_reserve_system(; pfr_price = 5.0, ffr_price = 9.0e5)
     sys = deepcopy(PSB.build_system(PSITestSystems, "c_sys5_uc"; add_reserves = true))
@@ -71,8 +70,8 @@ function build_group_reserve_system(; pfr_price = 5.0, ffr_price = 9.0e5)
         pfr_price = pfr_price,
         ffr_price = ffr_price,
     )
-    # ASDC: first 40 MW valued $80/MWh, next 40 MW $10/MWh; both above the cheap PFR offer, so the
-    # group procures reserve where the ASDC price meets the marginal (PFR) supply.
+    # demand curve: first 40 MW valued $80/MWh, next 40 MW $10/MWh; both above the cheap PFR offer,
+    # so the group procures reserve where the demand-curve price meets the marginal (PFR) supply.
     asdc = make_market_bid_curve(
         [0.0, 40.0, 80.0], [80.0, 10.0], 0.0; power_units = IS.NaturalUnit(),
     )
@@ -109,7 +108,7 @@ _sub_cols(df, prefix) = [c for c in names(df) if startswith(c, prefix)]
 
     container = get_optimization_container(model)
     # The group owns exactly one endogenous demand variable and one clearing constraint (the
-    # single MCPC-bearing balance), keyed by the concrete group service type.
+    # single clearing balance), keyed by the concrete group service type.
     @test IOM.has_container_key(container, ServiceRequirementVariable, typeof(group))
     @test IOM.has_container_key(container, POM.RequirementConstraint, typeof(group))
 
@@ -170,7 +169,7 @@ end
 @testset "GroupStepwiseReserveCurve: no group -> no procurement (group is the demand driver)" begin
     # Same system, but the group is left OUT of the template. The sub-services have requirement 0
     # and costly offers, so with no group demand the model procures no reserve at all - confirming
-    # the group ASDC is what drives sub-service procurement.
+    # the group demand curve is what drives sub-service procurement.
     sys, pfr, ffr, group = build_group_reserve_system()
     model = DecisionModel(
         _group_reserve_template(; include_group = false), sys;

@@ -465,9 +465,9 @@ function _groups_with_subservices(model::ServiceModel, sys::PSY.System)
 end
 
 """
-    Constructs the elastic (ASDC-priced) group service `GroupStepwiseReserveCurve`.
+    Constructs the elastic (demand-curve-priced) group service `GroupStepwiseReserveCurve`.
 
-The group adds its own endogenous demand variable priced by the group ASDC, then binds the
+The group adds its own endogenous demand variable priced by the group demand curve, then binds the
 sum of the contributing sub-services' awards to that demand. It has no direct devices; the
 contributing services (and their `ActivePowerReserveVariable`) are constructed first because
 group formulations are deferred to the end of each stage.
