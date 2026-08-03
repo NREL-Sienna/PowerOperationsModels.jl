@@ -292,3 +292,29 @@ end
     @test a_pricey <= 1e-2
     @test a_cheap > a_pricey
 end
+
+@testset "Reserve-offer predicate excludes ImportExport costs (no get_services_bid MethodError)" begin
+    # `_cost_offers_reserve` decides whether a contributing device offers into a reserve. It must
+    # gate on the MarketBidCost types that `get_services_bid` supports, NOT the abstract
+    # OfferCurveCost: ImportExportCost is also an OfferCurveCost with an `ancillary_service_offers`
+    # field but is not handled by `get_services_bid`, so an ImportExport-cost device (e.g. a Source)
+    # carrying a reserve offer must NOT enter the offering branch - which would MethodError.
+    # Regression for the previously over-broad OfferCurveCost dispatch.
+    reserve = PSY.ConstantReserve{ReserveUp}("iec_regression", true, 10.0, 1.0)
+
+    iec = PSY.ImportExportCost(nothing)
+    @test POM._cost_offers_reserve(iec, reserve) == false
+    # An ImportExport cost resolves to the `OperationalCost` false fallback, not a path that would
+    # reach get_services_bid.
+    @test which(POM._cost_offers_reserve, Tuple{typeof(iec), typeof(reserve)}) ===
+          which(POM._cost_offers_reserve, Tuple{PSY.OperationalCost, typeof(reserve)})
+
+    # A MarketBidCost carrying the reserve in its offers is still recognized as offering.
+    mbc = MarketBidCost(;
+        no_load_cost = LinearCurve(0.0),
+        start_up = (hot = 0.0, warm = 0.0, cold = 0.0),
+        shut_down = LinearCurve(0.0),
+    )
+    push!(PSY.get_ancillary_service_offers(mbc), reserve)
+    @test POM._cost_offers_reserve(mbc, reserve) == true
+end

@@ -11,11 +11,15 @@
 # top of the 3D `(service, device, time)` reserve award. Reuses the device offer PWL machinery
 # (`_get_raw_pwl_data`, `get_piecewise_curve_per_system_unit`, `get_pwl_cost_expression_delta`).
 
-# Does `device` offer into `service`? Dispatch on the operation-cost type: only an
-# `OfferCurveCost` carries ancillary-service offers; every other cost never offers.
+# Does `device` offer into `service`? Dispatch on the operation-cost type. Only a MarketBidCost /
+# MarketBidTimeSeriesCost carries reserve offers readable via `get_services_bid`; the other
+# `OfferCurveCost` subtypes (ImportExportCost / ImportExportTimeSeriesCost) also carry an
+# `ancillary_service_offers` field but are NOT supported by `get_services_bid`, so they must fall
+# through to the `false` fallback here - otherwise a contributing device with an ImportExport cost
+# (e.g. a `Source`) carrying a reserve offer would enter the offering branch and hit a MethodError.
 _has_reserve_offer(device, service) =
     _cost_offers_reserve(PSY.get_operation_cost(device), service)
-_cost_offers_reserve(cost::PSY.OfferCurveCost, service) =
+_cost_offers_reserve(cost::Union{PSY.MarketBidCost, PSY.MarketBidTimeSeriesCost}, service) =
     service in PSY.get_ancillary_service_offers(cost)
 _cost_offers_reserve(::PSY.OperationalCost, service) = false
 

@@ -671,10 +671,9 @@ _calc_additional_axes(
 #################################################################################
 
 # Shared body for ObjectiveFunctionParameter cost params (slope/breakpoint,
-# cost-at-min, startup/shutdown). Devices are batched into one names-axis container
-# (`meta` empty); ORDC services pass a 1-element collection with `meta = name`
-# because services are constructed one `ServiceModel` at a time (one container per
-# service, not a shared names-axis batch). `W` is the device/service formulation.
+# cost-at-min, startup/shutdown). Both devices and ORDC services are batched into one
+# names-axis container with empty `meta`, built once over all the type's members and
+# filled per member. `W` is the device/service formulation.
 function _add_objective_function_parameters!(
     container::OptimizationContainer,
     ::Type{T},
