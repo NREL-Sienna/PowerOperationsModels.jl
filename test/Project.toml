@@ -29,7 +29,6 @@ PowerSystems = "bcd98974-b02a-5e2f-9ee0-a103f5c450dd"
 PrettyTables = "08abe8d2-0d0c-5749-adfa-8a2ac140af0d"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 Revise = "295af30f-e4ad-537b-8983-00126c2a3abe"
-SCS = "c946c3f1-0d1f-5ce8-9dea-7daa1f7e2d13"
 Serialization = "9e88b42a-f829-5b0c-bbe9-9e923198166b"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 TestSetExtensions = "98d24dd4-01ad-11ea-1b02-c9a08f80db04"
@@ -48,5 +47,5 @@ PowerSystemCaseBuilder = {rev = "psy6", url = "https://github.com/Sienna-Platfor
 
 [compat]
 HiGHS = "1"
-Ipopt = "=1.4.0"
+Ipopt = "1"
 julia = "^1.11"
