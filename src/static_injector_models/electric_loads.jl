@@ -49,6 +49,19 @@ proportional_cost(cost::Nothing, ::Type{OnVariable}, ::PSY.ElectricLoad, ::Type{
 proportional_cost(cost::PSY.OperationalCost, ::Type{OnVariable}, ::PSY.ElectricLoad, ::Type{<:AbstractControllablePowerLoadFormulation})=PSY.get_fixed(cost)
 
 objective_function_multiplier(::Type{<:VariableType}, ::Type{<:AbstractControllablePowerLoadFormulation})=OBJECTIVE_FUNCTION_NEGATIVE
+
+########################### Reserve provision, ControllableLoad ####################################
+# A controllable load provides UPWARD reserve by SHEDDING (P - r_up >= P_min) and DOWNWARD reserve
+# by CONSUMING MORE (P + r_down <= forecast) - the inverse of a generator, and the charge side of
+# StorageDispatchWithReserves (storage_models.jl). So ReserveUp -> lower-bound expression and
+# ReserveDown -> upper-bound expression.
+get_expression_type_for_reserve(::Type{ActivePowerReserveVariable}, ::Type{<:PSY.ElectricLoad}, ::Type{<:PSY.Reserve{PSY.ReserveUp}}) = ActivePowerRangeExpressionLB
+get_expression_type_for_reserve(::Type{ActivePowerReserveVariable}, ::Type{<:PSY.ElectricLoad}, ::Type{<:PSY.Reserve{PSY.ReserveDown}}) = ActivePowerRangeExpressionUB
+
+# Shed floor for the lower-bound (up-reserve) constraint: a dispatchable load can shed to zero. The
+# upper bound is the load's time-series forecast (ActivePowerTimeSeriesParameter), applied by the
+# parameterized-upper-bound constraint, not this scalar max.
+get_min_max_limits(d::PSY.ControllableLoad, ::Type{ActivePowerVariableLimitsConstraint}, ::Type{PowerLoadDispatch}) = (min = 0.0, max = PSY.get_max_active_power(d, PSY.SU))
 objective_function_multiplier(::Type{ShiftUpActivePowerVariable}, ::Type{PowerLoadShift})=OBJECTIVE_FUNCTION_NEGATIVE
 objective_function_multiplier(::Type{ShiftDownActivePowerVariable}, ::Type{PowerLoadShift})=OBJECTIVE_FUNCTION_POSITIVE
 
@@ -262,7 +275,7 @@ end
 function add_constraints!(
     container::OptimizationContainer,
     ::Type{ActivePowerVariableLimitsConstraint},
-    U::Type{<:VariableType},
+    U::Type{<:Union{VariableType, ActivePowerRangeExpressionUB}},
     devices::IS.FlattenIteratorWrapper{V},
     model::DeviceModel{V, W},
     ::NetworkModel{X},
@@ -276,6 +289,21 @@ function add_constraints!(
         model,
         X,
     )
+    return
+end
+
+# Lower bound for PowerLoadDispatch: ActivePowerRangeExpressionLB (= P - Σ r_up) >= min (0), so an
+# upward-reserve award cannot exceed the load's consumption. Only reached when the load carries a
+# reserve service (see the has_service_model gate in load_constructor.jl); mirrors renewable.
+function add_constraints!(
+    container::OptimizationContainer,
+    T::Type{ActivePowerVariableLimitsConstraint},
+    U::Type{ActivePowerRangeExpressionLB},
+    devices::IS.FlattenIteratorWrapper{V},
+    model::DeviceModel{V, W},
+    ::NetworkModel{X},
+) where {V <: PSY.ControllableLoad, W <: PowerLoadDispatch, X <: AbstractNetworkModel}
+    add_range_constraints!(container, T, U, devices, model, X)
     return
 end
 

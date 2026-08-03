@@ -2411,6 +2411,75 @@ function add_to_expression!(
     return
 end
 
+# Load UP-reserve subtracts from the LOWER-bound expression (shed room): LB = P - Σ r_up, later
+# constrained LB >= 0. Load-only pairing (generators route ReserveUp to UB via
+# get_expression_type_for_reserve); V <: ElectricLoad keeps it from shadowing the generator path.
+function add_to_expression!(
+    container::OptimizationContainer,
+    ::Type{T},
+    ::Type{U},
+    service::X,
+    devices::Union{Vector{V}, IS.FlattenIteratorWrapper{V}},
+    model::ServiceModel{X, W},
+) where {
+    T <: ActivePowerRangeExpressionLB,
+    U <: VariableType,
+    V <: PSY.ElectricLoad,
+    X <: PSY.Reserve{PSY.ReserveUp},
+    W <: AbstractReservesFormulation,
+}
+    service_name = PSY.get_name(service)
+    variable = get_variable(container, U, X)
+    if !has_container_key(container, T, V)
+        add_expressions!(container, T, devices, model)
+    end
+    expression = get_expression(container, T, V)
+    time_steps = get_time_steps(container)
+    for d in devices, t in time_steps
+        name = PSY.get_name(d)
+        add_proportional_to_jump_expression!(
+            expression[name, t],
+            variable[(service_name, name, t)],
+            -1.0,
+        )
+    end
+    return
+end
+
+# Load DOWN-reserve adds to the UPPER-bound expression (extra consumption): UB = P + Σ r_down, later
+# constrained UB <= forecast. Load-only pairing (generators route ReserveDown to LB).
+function add_to_expression!(
+    container::OptimizationContainer,
+    ::Type{T},
+    ::Type{U},
+    service::X,
+    devices::Union{Vector{V}, IS.FlattenIteratorWrapper{V}},
+    model::ServiceModel{X, W},
+) where {
+    T <: ActivePowerRangeExpressionUB,
+    U <: VariableType,
+    V <: PSY.ElectricLoad,
+    X <: PSY.Reserve{PSY.ReserveDown},
+    W <: AbstractReservesFormulation,
+}
+    service_name = PSY.get_name(service)
+    variable = get_variable(container, U, X)
+    if !has_container_key(container, T, V)
+        add_expressions!(container, T, devices, model)
+    end
+    expression = get_expression(container, T, V)
+    time_steps = get_time_steps(container)
+    for d in devices, t in time_steps
+        name = PSY.get_name(d)
+        add_proportional_to_jump_expression!(
+            expression[name, t],
+            variable[(service_name, name, t)],
+            1.0,
+        )
+    end
+    return
+end
+
 function add_to_expression!(
     container::OptimizationContainer,
     ::Type{T},
