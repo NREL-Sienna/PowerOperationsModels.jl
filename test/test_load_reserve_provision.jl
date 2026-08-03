@@ -5,8 +5,8 @@
 # direction map flipped. See .claude/plans/load-reserve-provision-poc.md.
 #
 # Up and down are exercised in SEPARATE scenarios: with c_sys5_il's weak LoadCost, co-modeling both
-# lets the single load's consumption swing freely (the documented pricing caveat - ERCOT pins it
-# with a VOLL-level value), which would muddy the per-direction assertions.
+# lets the single load's consumption swing freely (the documented pricing caveat - a high,
+# VOLL-level consumption value pins it), which would muddy the per-direction assertions.
 
 @testset "load reserve direction map + folding methods" begin
     # ReserveUp routes to the LOWER-bound expression (shed room), ReserveDown to the UPPER-bound
@@ -121,8 +121,8 @@ end
     # Economics of pinning a must-serve load with a VOLL consumption value while it can provide BOTH
     # reserve directions. Up-reserve (shed) is free - the load consumes at HSL and commits to shed,
     # no consumption sacrifice - so it offers its full consumption. Down-reserve (consume more)
-    # requires curtailing below HSL first, sacrificing VOLL, so it is never provided. This mirrors
-    # ERCOT, where a VOLL-pinned Load Resource supplies up-direction AS only.
+    # requires curtailing below HSL first, sacrificing VOLL, so it is never provided: a VOLL-pinned
+    # must-serve load supplies up-direction reserve only.
     sys = deepcopy(PSB.build_system(PSITestSystems, "c_sys5_il"; add_reserves = true))
     il = first(get_components(PSY.InterruptiblePowerLoad, sys))
     set_operation_cost!(il,
