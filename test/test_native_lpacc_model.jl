@@ -52,7 +52,7 @@ end
     # test_network_constructors_with_branch_rating_time_series.jl.)
     sys = PSB.build_system(PSITestSystems, "c_sys14")
     template = get_thermal_dispatch_template_network(NetworkModel(LPACCNetworkModel))
-    set_device_model!(template, PSY.TapTransformer, VoltageControlTap)
+    set_device_model!(template, PSY.TwoWindingTransformer, VoltageControlTap)
 
     model = DecisionModel(template, sys; optimizer = ipopt_optimizer)
     @test_throws IS.ConflictingInputsError POM.validate_template(model)

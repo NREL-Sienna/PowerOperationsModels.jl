@@ -204,7 +204,7 @@ end
     @test PNM.reduced_arc_admittance(nr, -1, -2) === nothing
 end
 
-@testset "Transformer3W _winding_admittance star-arc decomposition" begin
+@testset "ThreeWindingTransformer _winding_admittance star-arc decomposition" begin
     # Unit test the per-winding admittance helper against a real PNM
     # `ThreeWindingTransformerWinding`: for a winding with series impedance R + jX the
     # helper must return the series admittance 1/(R + jX), the winding's PNM shunt on the
@@ -251,8 +251,8 @@ end
         load_zone = PSY.get_load_zone(busD),
     )
     PSY.add_component!(sys, ter_bus)
-    transformer3w = PSY.Transformer3W(;
-        name = "Transformer3W_busD",
+    transformer3w = PSY.ThreeWindingTransformer(;
+        name = "ThreeWindingTransformer_busD",
         available = true,
         primary_star_arc = PSY.Arc(; from = busD, to = star_bus),
         secondary_star_arc = PSY.Arc(; from = sec_bus, to = star_bus),
@@ -491,7 +491,7 @@ end
     template = get_thermal_dispatch_template_network(NetworkModel(ACPNetworkModel))
     set_device_model!(
         template,
-        DeviceModel(PSY.TapTransformer, VoltageControlTap; use_slacks = true),
+        DeviceModel(PSY.TwoWindingTransformer, VoltageControlTap; use_slacks = true),
     )
     model = DecisionModel(template, sys14; optimizer = ipopt_optimizer)
     @test_throws IS.ConflictingInputsError POM.validate_template(model)

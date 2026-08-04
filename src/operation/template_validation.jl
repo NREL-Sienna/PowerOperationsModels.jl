@@ -374,7 +374,7 @@ _voltage_regulated_buses(::IOM.DeviceModel, ::PSY.System) = Tuple{String, PSY.AC
 # function _voltage_regulated_buses(
 #     device_model::IOM.DeviceModelForBranches{T, VoltageControlTap},
 #     sys::PSY.System,
-# ) where {T <: PSY.TapTransformer}
+# ) where {T <: PSY.TwoWindingTransformer}
 #     bus_by_number = _bus_by_number(sys)
 #     pairs = Tuple{String, PSY.ACBus}[]
 #     for d in get_available_components(device_model, sys)

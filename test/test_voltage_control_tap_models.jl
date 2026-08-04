@@ -1,6 +1,6 @@
 @testset "VoltageControlTap tap bounds are finite (Principle 0)" begin
     sys = PSB.build_system(PSITestSystems, "c_sys14")
-    for tr in PSY.get_components(PSY.TapTransformer, sys)
+    for tr in PSY.get_components(PSY.TwoWindingTransformer, sys)
         lim = POM._tap_ratio_limits(tr)
         @test isfinite(lim.min)
         @test isfinite(lim.max)
@@ -12,7 +12,7 @@ end
 @testset "VoltageControlTap VOLTAGE objective pins regulated bus voltage (c_sys14)" begin
     sys = PSB.build_system(PSITestSystems, "c_sys14")
     # Regulate the to-bus of Trans1 (Bus 9) to 1.0 pu via a local (regbus 0) tap.
-    tr = PSY.get_component(PSY.TapTransformer, sys, "Trans1")
+    tr = PSY.get_component(PSY.TwoWindingTransformer, sys, "Trans1")
     PSY.set_control_objective!(tr, PSY.TransformerControlObjective.VOLTAGE)
     PSY.set_regulated_bus_number!(tr, 0)
     PSY.set_voltage_setpoint!(tr, 1.0)
@@ -20,7 +20,7 @@ end
     setpoint = PSY.get_voltage_setpoint(tr)
 
     template = get_thermal_dispatch_template_network(NetworkModel(ACPNetworkModel))
-    set_device_model!(template, PSY.TapTransformer, VoltageControlTap)
+    set_device_model!(template, PSY.TwoWindingTransformer, VoltageControlTap)
 
     model = DecisionModel(template, sys; optimizer = ipopt_optimizer)
     @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
@@ -35,18 +35,18 @@ end
     end
 
     # The tap floats within its bounds to hold the setpoint.
-    @test check_variable_bounded(model, TapRatioVariable, PSY.TapTransformer)
+    @test check_variable_bounded(model, TapRatioVariable, PSY.TwoWindingTransformer)
 end
 
 @testset "VoltageControlTap is count-invariant across control objectives (c_sys14)" begin
     function _container_for_objective(objective)
         sys = PSB.build_system(PSITestSystems, "c_sys14")
-        tr = PSY.get_component(PSY.TapTransformer, sys, "Trans1")
+        tr = PSY.get_component(PSY.TwoWindingTransformer, sys, "Trans1")
         PSY.set_control_objective!(tr, objective)
         PSY.set_regulated_bus_number!(tr, 0)
         PSY.set_voltage_setpoint!(tr, 1.0)
         template = get_thermal_dispatch_template_network(NetworkModel(ACPNetworkModel))
-        set_device_model!(template, PSY.TapTransformer, VoltageControlTap)
+        set_device_model!(template, PSY.TwoWindingTransformer, VoltageControlTap)
         model = DecisionModel(template, sys; optimizer = ipopt_optimizer)
         @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
               IOM.ModelBuildStatus.BUILT
@@ -73,7 +73,7 @@ end
 
 @testset "VoltageControlTap VOLTAGE objective pins regulated bus (ACR, c_sys14)" begin
     sys = PSB.build_system(PSITestSystems, "c_sys14")
-    tr = PSY.get_component(PSY.TapTransformer, sys, "Trans1")
+    tr = PSY.get_component(PSY.TwoWindingTransformer, sys, "Trans1")
     PSY.set_control_objective!(tr, PSY.TransformerControlObjective.VOLTAGE)
     PSY.set_regulated_bus_number!(tr, 0)
     PSY.set_voltage_setpoint!(tr, 1.0)
@@ -81,7 +81,7 @@ end
     setpoint = PSY.get_voltage_setpoint(tr)
 
     template = get_thermal_dispatch_template_network(NetworkModel(ACRNetworkModel))
-    set_device_model!(template, PSY.TapTransformer, VoltageControlTap)
+    set_device_model!(template, PSY.TwoWindingTransformer, VoltageControlTap)
 
     model = DecisionModel(template, sys; optimizer = ipopt_optimizer)
     @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
@@ -97,18 +97,18 @@ end
         @test isapprox(mag, setpoint; atol = 1e-4)
     end
 
-    @test check_variable_bounded(model, TapRatioVariable, PSY.TapTransformer)
+    @test check_variable_bounded(model, TapRatioVariable, PSY.TwoWindingTransformer)
 end
 
 @testset "VoltageControlTap is count-invariant across control objectives (ACR, c_sys14)" begin
     function _acr_container_for_objective(objective)
         sys = PSB.build_system(PSITestSystems, "c_sys14")
-        tr = PSY.get_component(PSY.TapTransformer, sys, "Trans1")
+        tr = PSY.get_component(PSY.TwoWindingTransformer, sys, "Trans1")
         PSY.set_control_objective!(tr, objective)
         PSY.set_regulated_bus_number!(tr, 0)
         PSY.set_voltage_setpoint!(tr, 1.0)
         template = get_thermal_dispatch_template_network(NetworkModel(ACRNetworkModel))
-        set_device_model!(template, PSY.TapTransformer, VoltageControlTap)
+        set_device_model!(template, PSY.TwoWindingTransformer, VoltageControlTap)
         model = DecisionModel(template, sys; optimizer = ipopt_optimizer)
         @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
               IOM.ModelBuildStatus.BUILT
@@ -137,7 +137,7 @@ end
 
 @testset "VoltageControlTap VOLTAGE objective pins regulated bus (IVR, c_sys14)" begin
     sys = PSB.build_system(PSITestSystems, "c_sys14")
-    tr = PSY.get_component(PSY.TapTransformer, sys, "Trans1")
+    tr = PSY.get_component(PSY.TwoWindingTransformer, sys, "Trans1")
     PSY.set_control_objective!(tr, PSY.TransformerControlObjective.VOLTAGE)
     PSY.set_regulated_bus_number!(tr, 0)
     PSY.set_voltage_setpoint!(tr, 1.0)
@@ -145,7 +145,7 @@ end
     setpoint = PSY.get_voltage_setpoint(tr)
 
     template = get_thermal_dispatch_template_network(NetworkModel(IVRNetworkModel))
-    set_device_model!(template, PSY.TapTransformer, VoltageControlTap)
+    set_device_model!(template, PSY.TwoWindingTransformer, VoltageControlTap)
 
     model = DecisionModel(template, sys; optimizer = ipopt_optimizer)
     @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
@@ -161,7 +161,7 @@ end
         @test isapprox(mag, setpoint; atol = 1e-4)
     end
 
-    @test check_variable_bounded(model, TapRatioVariable, PSY.TapTransformer)
+    @test check_variable_bounded(model, TapRatioVariable, PSY.TwoWindingTransformer)
 end
 
 @testset "VoltageControlTap IVR currents reduce to fixed-tap at t==tap_nominal" begin
@@ -178,15 +178,15 @@ end
     @test solve!(model_fixed) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
 
     template_var = get_thermal_dispatch_template_network(NetworkModel(IVRNetworkModel))
-    set_device_model!(template_var, PSY.TapTransformer, VoltageControlTap)
+    set_device_model!(template_var, PSY.TwoWindingTransformer, VoltageControlTap)
     model_var = DecisionModel(template_var, sys; optimizer = ipopt_optimizer)
     @test build!(model_var; output_dir = mktempdir(; cleanup = true)) ==
           IOM.ModelBuildStatus.BUILT
 
     # Pin every tap variable at its nominal ratio before solving.
     container = IOM.get_optimization_container(model_var)
-    tapvar = IOM.get_variable(container, TapRatioVariable, PSY.TapTransformer)
-    for d in PSY.get_components(PSY.TapTransformer, sys)
+    tapvar = IOM.get_variable(container, TapRatioVariable, PSY.TwoWindingTransformer)
+    for d in PSY.get_components(PSY.TwoWindingTransformer, sys)
         name = PSY.get_name(d)
         for t in axes(tapvar, 2)
             JuMP.fix(tapvar[name, t], PSY.get_tap(d); force = true)
@@ -198,26 +198,26 @@ end
     obj_var = IOM.get_objective_value(IOM.OptimizationProblemOutputs(model_var))
     @test isapprox(obj_var, obj_fixed; rtol = 1e-3)
 
-    # Compare physical terminal flows on the TapTransformers (reference-invariant).
+    # Compare physical terminal flows on the TwoWindingTransformers (reference-invariant).
     res_fixed = IOM.OptimizationProblemOutputs(model_fixed)
     res_var = IOM.OptimizationProblemOutputs(model_var)
     pft_fixed = read_variable(
-        res_fixed, "FlowActivePowerFromToVariable__TapTransformer";
+        res_fixed, "FlowActivePowerFromToVariable__TwoWindingTransformer";
         table_format = TableFormat.WIDE,
     )
     pft_var = read_variable(
-        res_var, "FlowActivePowerFromToVariable__TapTransformer";
+        res_var, "FlowActivePowerFromToVariable__TwoWindingTransformer";
         table_format = TableFormat.WIDE,
     )
     qft_fixed = read_variable(
-        res_fixed, "FlowReactivePowerFromToVariable__TapTransformer";
+        res_fixed, "FlowReactivePowerFromToVariable__TwoWindingTransformer";
         table_format = TableFormat.WIDE,
     )
     qft_var = read_variable(
-        res_var, "FlowReactivePowerFromToVariable__TapTransformer";
+        res_var, "FlowReactivePowerFromToVariable__TwoWindingTransformer";
         table_format = TableFormat.WIDE,
     )
-    for d in PSY.get_components(PSY.TapTransformer, sys)
+    for d in PSY.get_components(PSY.TwoWindingTransformer, sys)
         name = PSY.get_name(d)
         @test isapprox(pft_var[1, name], pft_fixed[1, name]; atol = 1e-3)
         @test isapprox(qft_var[1, name], qft_fixed[1, name]; atol = 1e-3)
@@ -227,12 +227,12 @@ end
 @testset "VoltageControlTap is count-invariant across control objectives (IVR, c_sys14)" begin
     function _ivr_container_for_objective(objective)
         sys = PSB.build_system(PSITestSystems, "c_sys14")
-        tr = PSY.get_component(PSY.TapTransformer, sys, "Trans1")
+        tr = PSY.get_component(PSY.TwoWindingTransformer, sys, "Trans1")
         PSY.set_control_objective!(tr, objective)
         PSY.set_regulated_bus_number!(tr, 0)
         PSY.set_voltage_setpoint!(tr, 1.0)
         template = get_thermal_dispatch_template_network(NetworkModel(IVRNetworkModel))
-        set_device_model!(template, PSY.TapTransformer, VoltageControlTap)
+        set_device_model!(template, PSY.TwoWindingTransformer, VoltageControlTap)
         model = DecisionModel(template, sys; optimizer = ipopt_optimizer)
         @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
               IOM.ModelBuildStatus.BUILT
@@ -265,33 +265,33 @@ end
 @testset "VoltageControlTap @info-drop under DCPNetworkModel (c_sys14)" begin
     sys = PSB.build_system(PSITestSystems, "c_sys14")
     template = get_thermal_dispatch_template_network(NetworkModel(DCPNetworkModel))
-    set_device_model!(template, PSY.TapTransformer, VoltageControlTap)
+    set_device_model!(template, PSY.TwoWindingTransformer, VoltageControlTap)
 
     model = DecisionModel(template, sys; optimizer = HiGHS_optimizer)
     # The voltage-controlling tap formulation is reactive-only, so it is dropped
     # with an @info from the (active-power-only) DC template during validation.
-    # A TapTransformer is a branch the DC network still requires to be modeled, so
+    # A TwoWindingTransformer is a branch the DC network still requires to be modeled, so
     # the build then fails on the now-unmodeled branch (unlike a droppable shunt
     # injection). Both facts are asserted: the drop happened, and the build failed.
     @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
           IOM.ModelBuildStatus.FAILED
-    @test !haskey(get_branch_models(get_template(model)), :TapTransformer)
+    @test !haskey(get_branch_models(get_template(model)), :TwoWindingTransformer)
 end
 
 @testset "ACP rejects two voltage regulators on one bus" begin
-    # Two TapTransformers both set to VOLTAGE control regulating bus 9. Under ACP each
+    # Two TwoWindingTransformers both set to VOLTAGE control regulating bus 9. Under ACP each
     # pins the shared network VoltageMagnitude via JuMP.fix(force=true), so the second
     # silently overrides the first. validate_template! must reject this. (build!
     # swallows the throw into FAILED, so assert against validate_template directly.)
     sys = PSB.build_system(PSITestSystems, "c_sys14")
     for nm in ("Trans1", "Trans2")
-        tr = PSY.get_component(PSY.TapTransformer, sys, nm)
+        tr = PSY.get_component(PSY.TwoWindingTransformer, sys, nm)
         PSY.set_control_objective!(tr, PSY.TransformerControlObjective.VOLTAGE)
         PSY.set_regulated_bus_number!(tr, 9)
         PSY.set_voltage_setpoint!(tr, 1.0)
     end
     template = get_thermal_dispatch_template_network(NetworkModel(ACPNetworkModel))
-    set_device_model!(template, PSY.TapTransformer, VoltageControlTap)
+    set_device_model!(template, PSY.TwoWindingTransformer, VoltageControlTap)
     model = DecisionModel(template, sys; optimizer = ipopt_optimizer)
     @test_throws IS.ConflictingInputsError POM.validate_template(model)
 end
@@ -302,13 +302,13 @@ end
     # not a validation error. validate_template must NOT throw.
     sys = PSB.build_system(PSITestSystems, "c_sys14")
     for nm in ("Trans1", "Trans2")
-        tr = PSY.get_component(PSY.TapTransformer, sys, nm)
+        tr = PSY.get_component(PSY.TwoWindingTransformer, sys, nm)
         PSY.set_control_objective!(tr, PSY.TransformerControlObjective.VOLTAGE)
         PSY.set_regulated_bus_number!(tr, 9)
         PSY.set_voltage_setpoint!(tr, 1.0)
     end
     template = get_thermal_dispatch_template_network(NetworkModel(ACRNetworkModel))
-    set_device_model!(template, PSY.TapTransformer, VoltageControlTap)
+    set_device_model!(template, PSY.TwoWindingTransformer, VoltageControlTap)
     model = DecisionModel(template, sys; optimizer = ipopt_optimizer)
     @test POM.validate_template(model) === nothing
 end
@@ -351,24 +351,24 @@ end
     # values and compare to the hand RHS assembled from _tap_flow_coefficients.
     sys = PSB.build_system(PSITestSystems, "c_sys14")
     template = get_thermal_dispatch_template_network(NetworkModel(ACRNetworkModel))
-    set_device_model!(template, PSY.TapTransformer, VoltageControlTap)
+    set_device_model!(template, PSY.TwoWindingTransformer, VoltageControlTap)
     model = DecisionModel(template, sys; optimizer = ipopt_optimizer)
     @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
           IOM.ModelBuildStatus.BUILT
 
     container = IOM.get_optimization_container(model)
-    ptf = IOM.get_variable(container, FlowActivePowerToFromVariable, PSY.TapTransformer)
-    qft = IOM.get_variable(container, FlowReactivePowerFromToVariable, PSY.TapTransformer)
+    ptf = IOM.get_variable(container, FlowActivePowerToFromVariable, PSY.TwoWindingTransformer)
+    qft = IOM.get_variable(container, FlowReactivePowerFromToVariable, PSY.TwoWindingTransformer)
     vr = IOM.get_variable(container, VoltageReal, PSY.ACBus)
     vi = IOM.get_variable(container, VoltageImaginary, PSY.ACBus)
-    tap = IOM.get_variable(container, TapRatioVariable, PSY.TapTransformer)
+    tap = IOM.get_variable(container, TapRatioVariable, PSY.TwoWindingTransformer)
     con_ptf =
-        IOM.get_constraint(container, POM.NetworkFlowConstraint, PSY.TapTransformer, "p_tf")
+        IOM.get_constraint(container, POM.NetworkFlowConstraint, PSY.TwoWindingTransformer, "p_tf")
     con_qft =
-        IOM.get_constraint(container, POM.NetworkFlowConstraint, PSY.TapTransformer, "q_ft")
+        IOM.get_constraint(container, POM.NetworkFlowConstraint, PSY.TwoWindingTransformer, "q_ft")
 
     t = 1
-    for d in Iterators.take(PSY.get_components(PSY.TapTransformer, sys), 3)
+    for d in Iterators.take(PSY.get_components(PSY.TwoWindingTransformer, sys), 3)
         name = PSY.get_name(d)
         geom = POM._branch_geometry(d)
         adm = geom.adm

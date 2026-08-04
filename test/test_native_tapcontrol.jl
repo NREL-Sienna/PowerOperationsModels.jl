@@ -1,7 +1,7 @@
 @testset "TapControl models transformer tap ratio under DCP (c_sys14)" begin
     sys = PSB.build_system(PSITestSystems, "c_sys14")
     template = get_thermal_dispatch_template_network(NetworkModel(DCPNetworkModel))
-    set_device_model!(template, PSY.TapTransformer, TapControl)
+    set_device_model!(template, PSY.TwoWindingTransformer, TapControl)
     model = DecisionModel(template, sys; optimizer = HiGHS_optimizer)
     @test build!(model; output_dir = mktempdir()) == IOM.ModelBuildStatus.BUILT
     @test solve!(model) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
@@ -9,12 +9,12 @@
     res = IOM.OptimizationProblemOutputs(model)
     base = IOM.get_model_base_power(res)
     flow = read_variable(
-        res, "FlowActivePowerVariable__TapTransformer"; table_format = TableFormat.WIDE,
+        res, "FlowActivePowerVariable__TwoWindingTransformer"; table_format = TableFormat.WIDE,
     )
     va = read_variable(res, "VoltageAngle__ACBus"; table_format = TableFormat.WIDE)
 
     tested_a_real_tap = false
-    for tr in PSY.get_components(PSY.TapTransformer, sys)
+    for tr in PSY.get_components(PSY.TwoWindingTransformer, sys)
         name = PSY.get_name(tr)
         @test name in names(flow)
         adm = PNM.branch_admittance(tr)
@@ -39,7 +39,7 @@ end
 
     function _solve_obj(transformer_formulation)
         template = get_thermal_dispatch_template_network(NetworkModel(DCPNetworkModel))
-        set_device_model!(template, PSY.TapTransformer, transformer_formulation)
+        set_device_model!(template, PSY.TwoWindingTransformer, transformer_formulation)
         model = DecisionModel(template, sys; optimizer = HiGHS_optimizer)
         @test build!(model; output_dir = mktempdir()) == IOM.ModelBuildStatus.BUILT
         @test solve!(model) == IOM.RunStatus.SUCCESSFULLY_FINALIZED

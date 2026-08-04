@@ -21,7 +21,7 @@ const TEST_DIR = @__DIR__
 # must not be run as tests (ParallelTestRunner's default discovery would pick them up).
 
 # psy6: disabled pending transformer refactor. Two causes, both upstream of the test body:
-#   - transformer control formulations / Transformer3W are commented out in `src`
+#   - transformer control formulations / ThreeWindingTransformer are commented out in `src`
 #   - PowerFlows@psy6 does not precompile, so `PFS` is unavailable in the preamble
 const DISABLED_TESTS = Set([
     "test_ac_transmission_security_constrained_models",

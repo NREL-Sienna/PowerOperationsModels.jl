@@ -177,7 +177,7 @@ end
 end
 
 @testset "IVRNetworkModel objective ≈ ACPNetworkModel objective (c_sys14, non-unit taps)" begin
-    # c_sys14 has TapTransformers with tap ratios ~0.93–0.98, exercising the /tm²
+    # c_sys14 has TwoWindingTransformers with tap ratios ~0.93–0.98, exercising the /tm²
     # shunt path. IVR and ACP must converge to the same optimal value.
     sys = PSB.build_system(PSITestSystems, "c_sys14")
 

@@ -2769,13 +2769,13 @@ end
 
 # psy6: disabled pending transformer refactor
 # ################################################################################
-# # Transformer3W DCP / ACP construct_device! dispatches.
+# # ThreeWindingTransformer DCP / ACP construct_device! dispatches.
 # #
 # # These bypass the generic ACTransmission AC ArgumentConstructStage methods
-# # (which assume a single arc per device and fail on Transformer3W's
+# # (which assume a single arc per device and fail on ThreeWindingTransformer's
 # # get_primary_star_arc / get_secondary_star_arc / get_tertiary_star_arc).
 # # The actual variable creation, ohms, and rate-limit logic lives in
-# # ac_transmission_models/AC_branches.jl under the "Transformer3W explicit
+# # ac_transmission_models/AC_branches.jl under the "ThreeWindingTransformer explicit
 # # star-arc decomposition" section.
 # ################################################################################
 #
@@ -2787,7 +2787,7 @@ end
 #     container::OptimizationContainer,
 #     sys::PSY.System,
 #     ::ArgumentConstructStage,
-#     device_model::DeviceModel{PSY.Transformer3W, StaticBranch},
+#     device_model::DeviceModel{PSY.ThreeWindingTransformer, StaticBranch},
 #     network_model::NetworkModel{DCPNetworkModel},
 # )
 #     devices = get_available_components(device_model, sys)
@@ -2804,7 +2804,7 @@ end
 #     container::OptimizationContainer,
 #     sys::PSY.System,
 #     ::ModelConstructStage,
-#     device_model::DeviceModel{PSY.Transformer3W, StaticBranch},
+#     device_model::DeviceModel{PSY.ThreeWindingTransformer, StaticBranch},
 #     network_model::NetworkModel{DCPNetworkModel},
 # )
 #     devices = get_available_components(device_model, sys)
@@ -2822,7 +2822,7 @@ end
 #     container::OptimizationContainer,
 #     sys::PSY.System,
 #     ::ArgumentConstructStage,
-#     device_model::DeviceModel{PSY.Transformer3W, StaticBranch},
+#     device_model::DeviceModel{PSY.ThreeWindingTransformer, StaticBranch},
 #     network_model::NetworkModel{ACPNetworkModel},
 # )
 #     devices = get_available_components(device_model, sys)
@@ -2836,7 +2836,7 @@ end
 #     container::OptimizationContainer,
 #     sys::PSY.System,
 #     ::ModelConstructStage,
-#     device_model::DeviceModel{PSY.Transformer3W, StaticBranch},
+#     device_model::DeviceModel{PSY.ThreeWindingTransformer, StaticBranch},
 #     network_model::NetworkModel{ACPNetworkModel},
 # )
 #     devices = get_available_components(device_model, sys)

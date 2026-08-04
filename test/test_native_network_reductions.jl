@@ -4,7 +4,7 @@ import PowerNetworkMatrices as PNM
 # reduction shape the native formulations must handle:
 #   - radial:            "1-8-i_1" absorbed entirely (bus 8 -> 1), no arc entry
 #   - series chain:      arc (1,2) = "1-6-i_1" + "6-7-i_1" + "7-2-i_1"
-#   - cross-type chain:  arc (1,5) = Line "1-9-i_1" + Transformer2W "9-5-i_1"
+#   - cross-type chain:  arc (1,5) = Line "1-9-i_1" + TwoWindingTransformer "9-5-i_1"
 #   - parallel:          arc (1,4) = "1-4-i_1" ∥ "1-4-i_2" -> entry "1-4-i_double_circuit"
 #   - parallel-in-chain: arc (2,3) = "10-3-i_1" + ("2-10-i_1" ∥ "2-10-i_2")
 #   - direct:            arc (4,5) = "4-5-i_1"
@@ -75,7 +75,7 @@ end
 
     container = IOM.get_optimization_container(model_red)
     bfe_line = IOM.get_expression(container, BThetaBranchFlow, Line)
-    bfe_xfmr = IOM.get_expression(container, BThetaBranchFlow, Transformer2W)
+    bfe_xfmr = IOM.get_expression(container, BThetaBranchFlow, TwoWindingTransformer)
 
     # BThetaBranchFlow built exactly once per reduced arc, across both branch types.
     n_flow_expr = length(axes(bfe_line)[1]) + length(axes(bfe_xfmr)[1])
@@ -172,7 +172,7 @@ end
             ) + length(
                 _assigned_flow_constraint_axis(
                     container,
-                    IOM.ConstraintKey(POM.NetworkFlowConstraint, Transformer2W, meta),
+                    IOM.ConstraintKey(POM.NetworkFlowConstraint, TwoWindingTransformer, meta),
                 ),
             )
         @test n == CASE11_DISTINCT_REDUCED_ARCS
@@ -185,7 +185,7 @@ end
     @test pft_line["1-6-i_1", t1] === pft_line["6-7-i_1", t1]
     @test pft_line["6-7-i_1", t1] === pft_line["7-2-i_1", t1]
     @test "1-4-i_double_circuit" in axes(pft_line)[1]
-    pft_xfmr = IOM.get_variable(container, FlowActivePowerFromToVariable, Transformer2W)
+    pft_xfmr = IOM.get_variable(container, FlowActivePowerFromToVariable, TwoWindingTransformer)
     @test pft_line["1-9-i_1", t1] === pft_xfmr["9-5-i_1", t1]
 
     # The PNM series/parallel equivalents are exact two-port reductions, so the AC
@@ -251,7 +251,7 @@ end
             ),
         ) + length(
             _assigned_flow_constraint_axis(
-                container, IOM.ConstraintKey(POM.FlowRateConstraint, Transformer2W, "lb"),
+                container, IOM.ConstraintKey(POM.FlowRateConstraint, TwoWindingTransformer, "lb"),
             ),
         )
     @test n_lb == CASE11_DISTINCT_REDUCED_ARCS
@@ -281,7 +281,7 @@ end
             ),
         ) + length(
             _assigned_flow_constraint_axis(
-                container, IOM.ConstraintKey(POM.NetworkFlowConstraint, Transformer2W),
+                container, IOM.ConstraintKey(POM.NetworkFlowConstraint, TwoWindingTransformer),
             ),
         )
     @test n_flow == CASE11_DISTINCT_REDUCED_ARCS
@@ -292,7 +292,7 @@ end
             ),
         ) + length(
             _assigned_flow_constraint_axis(
-                container, IOM.ConstraintKey(POM.NetworkLossConstraint, Transformer2W),
+                container, IOM.ConstraintKey(POM.NetworkLossConstraint, TwoWindingTransformer),
             ),
         )
     @test n_loss == CASE11_DISTINCT_REDUCED_ARCS
@@ -303,7 +303,7 @@ end
     @test pft_line["1-6-i_1", t1] === pft_line["6-7-i_1", t1]
     @test pft_line["6-7-i_1", t1] === pft_line["7-2-i_1", t1]
     @test "1-4-i_double_circuit" in axes(pft_line)[1]
-    pft_xfmr = IOM.get_variable(container, FlowActivePowerFromToVariable, Transformer2W)
+    pft_xfmr = IOM.get_variable(container, FlowActivePowerFromToVariable, TwoWindingTransformer)
     @test pft_line["1-9-i_1", t1] === pft_xfmr["9-5-i_1", t1]
 end
 
@@ -382,7 +382,7 @@ end
 
 @testset "tap regulated-bus resolution errors for non-retained bus numbers" begin
     sys = PSB.build_system(PSITestSystems, "c_sys14")
-    tr = PSY.get_component(PSY.TapTransformer, sys, "Trans1")
+    tr = PSY.get_component(PSY.TwoWindingTransformer, sys, "Trans1")
     PSY.set_regulated_bus_number!(tr, 999)
     geom = POM._branch_geometry(tr)
     number_to_name = Dict(1 => "Bus 1")

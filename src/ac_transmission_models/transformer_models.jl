@@ -1,7 +1,7 @@
 #################################################################################
 # Transformer device families whose formulations are still under development:
 #
-#   PSY.TapTransformer         under TapControl        — fixed off-nominal tap,
+#   PSY.TwoWindingTransformer         under TapControl        — fixed off-nominal tap,
 #     a component property scaling the series susceptance in the DC Ohm's law.
 #   PSY.PhaseShiftingTransformer under PhaseAngleControl — phase shift as a
 #     bounded decision variable entering the DC Ohm's law additively,
@@ -17,10 +17,10 @@
 #################################################################################
 
 #! format: off
-get_variable_upper_bound(::Type{FlowActivePowerFromToVariable}, d::PSY.TapTransformer, ::Type{<:AbstractBranchFormulation}) = PSY.get_rating(d, PSY.SU)
-get_variable_lower_bound(::Type{FlowActivePowerFromToVariable}, d::PSY.TapTransformer, ::Type{<:AbstractBranchFormulation}) = -1 * PSY.get_rating(d, PSY.SU)
-get_variable_upper_bound(::Type{FlowActivePowerToFromVariable}, d::PSY.TapTransformer, ::Type{<:AbstractBranchFormulation}) = PSY.get_rating(d, PSY.SU)
-get_variable_lower_bound(::Type{FlowActivePowerToFromVariable}, d::PSY.TapTransformer, ::Type{<:AbstractBranchFormulation}) = -1 * PSY.get_rating(d, PSY.SU)
+get_variable_upper_bound(::Type{FlowActivePowerFromToVariable}, d::PSY.TwoWindingTransformer, ::Type{<:AbstractBranchFormulation}) = PSY.get_rating(d, PSY.SU)
+get_variable_lower_bound(::Type{FlowActivePowerFromToVariable}, d::PSY.TwoWindingTransformer, ::Type{<:AbstractBranchFormulation}) = -1 * PSY.get_rating(d, PSY.SU)
+get_variable_upper_bound(::Type{FlowActivePowerToFromVariable}, d::PSY.TwoWindingTransformer, ::Type{<:AbstractBranchFormulation}) = PSY.get_rating(d, PSY.SU)
+get_variable_lower_bound(::Type{FlowActivePowerToFromVariable}, d::PSY.TwoWindingTransformer, ::Type{<:AbstractBranchFormulation}) = -1 * PSY.get_rating(d, PSY.SU)
 #! format: on
 
 """
@@ -285,7 +285,7 @@ function add_constraints!(
     devices::IS.FlattenIteratorWrapper{T},
     device_model::DeviceModel{T, TapControl},
     network_model::NetworkModel{DCPNetworkModel},
-) where {T <: PSY.TapTransformer}
+) where {T <: PSY.TwoWindingTransformer}
     time_steps = get_time_steps(container)
     va = get_variable(container, VoltageAngle, PSY.ACBus)
     p = get_variable(container, FlowActivePowerVariable, T)
@@ -323,7 +323,7 @@ function construct_device!(
     ::ArgumentConstructStage,
     device_model::DeviceModel{T, TapControl},
     network_model::NetworkModel{DCPNetworkModel},
-) where {T <: PSY.TapTransformer}
+) where {T <: PSY.TwoWindingTransformer}
     @debug "construct_device TapControl DCP (ArgumentConstructStage)" _group =
         LOG_GROUP_BRANCH_CONSTRUCTIONS
     devices = get_available_components(device_model, sys)
@@ -365,7 +365,7 @@ function construct_device!(
     ::ModelConstructStage,
     device_model::DeviceModel{T, TapControl},
     network_model::NetworkModel{DCPNetworkModel},
-) where {T <: PSY.TapTransformer}
+) where {T <: PSY.TwoWindingTransformer}
     @debug "construct_device TapControl DCP (ModelConstructStage)" _group =
         LOG_GROUP_BRANCH_CONSTRUCTIONS
     devices = get_available_components(device_model, sys)
