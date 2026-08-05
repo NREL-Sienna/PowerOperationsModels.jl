@@ -551,9 +551,29 @@ end
 function add_to_objective_function!(
     container::OptimizationContainer,
     devices::IS.FlattenIteratorWrapper{T},
-    ::DeviceModel{T, U},
+    model::DeviceModel{T, U},
     ::Type{<:AbstractNetworkModel},
 ) where {T <: PSY.ControllableLoad, U <: PowerLoadDispatch}
+    # A reserve-providing PowerLoadDispatch load needs a non-zero energy/value cost (e.g. a VOLL
+    # LoadCost) to pin its dispatch: with a zero value curve - the `LoadCost(nothing)` default - P is
+    # unpriced and the shed-headroom constraint (P - Σr_up >= 0) leaves P free, silently degenerating
+    # the solution. Fail loudly rather than solve an ill-posed model. Only LoadCost with an explicit
+    # zero curve is rejected; MarketBidCost loads (their own demand bid) and costless non-reserve
+    # loads are unaffected.
+    if has_service_model(model)
+        for d in devices
+            cost = PSY.get_operation_cost(d)
+            if cost isa PSY.LoadCost && PSY.get_variable(cost) == zero(PSY.CostCurve)
+                throw(
+                    IS.ConflictingInputsError(
+                        "PowerLoadDispatch load '$(PSY.get_name(d))' provides a reserve service but " *
+                        "its LoadCost value curve is zero; attach an energy/VOLL value (e.g. " *
+                        "set_operation_cost! with a priced LoadCost) so its dispatch is pinned.",
+                    ),
+                )
+            end
+        end
+    end
     add_variable_cost!(container, ActivePowerVariable, devices, U)
     return
 end

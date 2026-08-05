@@ -181,3 +181,110 @@ end
     @test !IOM.has_container_key(
         container, POM.ActivePowerRangeExpressionUB, PSY.InterruptiblePowerLoad)
 end
+
+@testset "service-carrying PowerLoadDispatch load with a zero energy value fails loudly" begin
+    # A reserve-providing load with the default zero-value `LoadCost(nothing)` leaves its dispatch
+    # unpinned (P free under P - Σr_up >= 0). The add_to_objective_function! guard rejects it, so
+    # build! (which catches the ConflictingInputsError) returns FAILED instead of solving an
+    # ill-posed model. This is the invariant a builder that forgets to attach a VOLL value hits.
+    sys = deepcopy(PSB.build_system(PSITestSystems, "c_sys5_il"; add_reserves = true))
+    il = first(get_components(PSY.InterruptiblePowerLoad, sys))
+    set_operation_cost!(il, PSY.LoadCost(nothing))   # zero value curve
+    model = DecisionModel(_load_reserve_template(:up), sys; optimizer = HiGHS_optimizer)
+    @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
+          IOM.ModelBuildStatus.FAILED
+end
+
+@testset "PowerLoadDispatch load co-provides two up-services from one shared headroom" begin
+    # c_sys5_il gives the load BOTH Reserve7 (VariableReserve{ReserveUp}) and ORDC1
+    # (ReserveDemandCurve{ReserveUp}). Modeling both, a VOLL-pinned load's combined up-award across
+    # the two services must never exceed its consumption: the two DIFFERENT up-services fold into ONE
+    # shed-headroom expression (P - Σr_up >= 0). A per-service headroom bug would allow up to 2*P.
+    sys = deepcopy(PSB.build_system(PSITestSystems, "c_sys5_il"; add_reserves = true))
+    il = first(get_components(PSY.InterruptiblePowerLoad, sys))
+    set_operation_cost!(il,
+        PSY.LoadCost(PSY.CostCurve(PSY.LinearCurve(5000.0, 0.0), IS.NaturalUnit()), 24.0))
+
+    template = get_thermal_dispatch_template_network()
+    set_device_model!(template, RenewableDispatch, RenewableFullDispatch)
+    set_device_model!(template, PSY.InterruptiblePowerLoad, PowerLoadDispatch)
+    set_service_model!(template,
+        ServiceModel(VariableReserve{ReserveUp}, RangeReserve; use_slacks = true))
+    set_service_model!(template,
+        ServiceModel(ReserveDemandCurve{ReserveUp}, StepwiseCostReserve))
+    model = DecisionModel(template, sys; optimizer = HiGHS_optimizer)
+    @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
+          IOM.ModelBuildStatus.BUILT
+    @test solve!(model) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
+
+    res = IOM.OptimizationProblemOutputs(model)
+    iln = get_name(il)
+    p = read_variable(res, "ActivePowerVariable__InterruptiblePowerLoad";
+        table_format = TableFormat.WIDE)
+    vr = read_variable(res, "ActivePowerReserveVariable__VariableReserve__ReserveUp";
+        table_format = TableFormat.WIDE)
+    ordc = read_variable(res, "ActivePowerReserveVariable__ReserveDemandCurve__ReserveUp";
+        table_format = TableFormat.WIDE)
+    vrcols = [c for c in names(vr) if endswith(c, "__$(iln)")]
+    ordccols = [c for c in names(ordc) if endswith(c, "__$(iln)")]
+    @test !isempty(vrcols) && !isempty(ordccols)
+    combined = 0.0
+    for t in 1:size(p, 1)
+        a = sum(vr[t, c] for c in vrcols) + sum(ordc[t, c] for c in ordccols)
+        @test a <= p[t, iln] + 1e-3        # ONE shared shed headroom across both up-services
+        combined += a
+    end
+    @test combined > 1.0                    # non-vacuous: the load does co-provide
+end
+
+@testset "PowerLoadDispatch load offers into a flat StepwiseCostReserve, award bounded by offer" begin
+    # A load contributing to a flat ReserveDemandCurve (ORDC1) with a MarketBidCost carrying a $0
+    # price-taker AS offer - the ERCOT RRS-UFR pattern (loads clear at ~$0). The device-agnostic
+    # per-resource offer machinery must price the LOAD in a StepwiseCostReserve and cap its award at
+    # the OFFERED quantity, not its consumption.
+    sys = deepcopy(PSB.build_system(PSITestSystems, "c_sys5_il"; add_reserves = true))
+    il = first(get_components(PSY.InterruptiblePowerLoad, sys))
+    ordc1 = first(get_components(ReserveDemandCurve{ReserveUp}, sys))
+    pmax = PSY.get_max_active_power(il, PSY.NU)
+    offer_mw = 10.0
+    set_operation_cost!(il,
+        MarketBidCost(; no_load_cost = LinearCurve(0.0),
+            start_up = (hot = 0.0, warm = 0.0, cold = 0.0), shut_down = LinearCurve(0.0),
+            decremental_offer_curves = make_market_bid_curve([0.0, pmax], [5000.0], 0.0;
+                power_units = IS.NaturalUnit())))
+    init_times = [DateTime("2024-01-01T00:00:00"), DateTime("2024-01-02T00:00:00")]
+    offer_ts = Deterministic(PSY.get_name(ordc1),
+        Dict(
+            it => [IS.PiecewiseStepData([0.0, offer_mw], [0.0]) for _ in 1:24]
+            for it in init_times
+        ), Hour(1))
+    PSY.set_service_bid!(sys, il, ordc1, offer_ts, IS.NaturalUnit())
+
+    template = get_thermal_dispatch_template_network()
+    set_device_model!(template, RenewableDispatch, RenewableFullDispatch)
+    set_device_model!(template, PSY.InterruptiblePowerLoad, PowerLoadDispatch)
+    set_service_model!(template,
+        ServiceModel(ReserveDemandCurve{ReserveUp}, StepwiseCostReserve))
+    model = DecisionModel(template, sys; optimizer = HiGHS_optimizer)
+    @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
+          IOM.ModelBuildStatus.BUILT
+    @test solve!(model) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
+
+    container = get_optimization_container(model)
+    @test IOM.has_container_key(
+        container, POM.PiecewiseLinearBlockReserveOffer, PSY.InterruptiblePowerLoad)
+
+    res = IOM.OptimizationProblemOutputs(model)
+    iln = get_name(il)
+    aw = read_variable(res, "ActivePowerReserveVariable__ReserveDemandCurve__ReserveUp";
+        table_format = TableFormat.WIDE)
+    awcols = [c for c in names(aw) if endswith(c, "__$(iln)")]
+    @test !isempty(awcols)
+    total = 0.0
+    for t in 1:size(aw, 1)
+        a = sum(aw[t, c] for c in awcols)
+        @test a <= offer_mw + 1e-3         # bounded by the OFFERED quantity, not consumption
+        total += a
+    end
+    @test total > 1.0                       # the $0 price-taker block clears
+end
