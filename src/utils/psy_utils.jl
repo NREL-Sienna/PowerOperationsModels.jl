@@ -41,13 +41,10 @@ _branch_arc(d::PSY.TwoWindingTransformer) = PSY.get_arc(PSY.get_circuit(d))
 _branch_rating(d::PSY.ACTransmission) = PSY.get_rating(d, PSY.SU)
 _branch_rating(d::PSY.TwoWindingTransformer) =
     PSY.get_rating(PSY.get_circuit(d), PSY.SU)
+_branch_rating(d::PNM.ThreeWindingTransformerCircuit) =
+    PSY.get_rating(d.circuit, PSY.SU)
 
 _branch_rating_b(d::PSY.ACTransmission) = PSY.get_rating_b(d, PSY.SU)
-_branch_rating_b(d::PSY.TwoWindingTransformer) =
-    PSY.get_rating_b(PSY.get_circuit(d), PSY.SU)
-
-_branch_rating_c(d::PSY.ThreeWindingTransformer) =
-    PSY.get_rating_c(PSY.get_circuit(d), PSY.SU)
 
 _negated_rating(rating::Float64) = -rating
 _negated_rating(::Nothing) = nothing
