@@ -218,9 +218,9 @@ function add_expressions!(
 end
 
 """
-Merged cost-expression container for reserve services (e.g. `ProductionCostExpression` for ORDC):
-one dense `(service_name, time)` container per service type - the same shape as the device
-`ProductionCostExpression`. Read/written by
+Cost-expression container for reserve services, e.g. `ProductionCostExpression` for an
+operating reserve demand curve: one dense `(service_name, time)` container per service type,
+the same shape as the device `ProductionCostExpression`. Read and written by
 `add_to_expression!(container, ::CostExpressions, cost, ::ReserveDemand*, t)`.
 """
 function add_expressions!(

@@ -2974,7 +2974,7 @@ function add_to_expression!(
     return
 end
 
-# Add a reserve service's ORDC cost term into the merged dense `(service_name, time)`
+# Add a reserve service's demand-curve cost term into the dense `(service_name, time)`
 # cost-expression container at this service/time slot (a no-op if the container was not built).
 # Same shape as the device `ProductionCostExpression` path above.
 function add_to_expression!(

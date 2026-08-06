@@ -2693,7 +2693,7 @@ function add_to_expression!(
         name = PSY.get_name(d)
         # One `ServiceModel` per reserve type. Iterate the device's own services and
         # match those whose type is modeled (a service model of that type is attached),
-        # using each matching service's own name for the merged reserve-variable index.
+        # using each matching service's own name for the reserve-variable index.
         for service_model in get_services(model)
             S = get_component_type(service_model)
             for service in PSY.get_services(d)

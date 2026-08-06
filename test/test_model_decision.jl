@@ -371,14 +371,14 @@ end
     # This test needs to be reviewed
     # @test isapprox(get_objective_value(res), 256937.0; atol = 10000.0)
     vars = res.variable_values
-    # Reserve variables of a type share one merged container keyed
+    # Reserve variables of a type share one container keyed
     # `(service_name, device_name, time)`.
     service_key = IOM.VariableKey(
         ActivePowerReserveVariable,
         PSY.VariableReserveNonSpinning,
     )
     @test service_key in keys(vars)
-    # The merged container flattens to `"service_name__device_name"` result columns
+    # That container flattens to `"service_name__device_name"` result columns
     # (WIDE format one column per flattened pair).
     result = read_variable(
         res,

@@ -21,9 +21,8 @@ function check_activeservice_variables(
     for service in contributing_services
         service_name = PSY.get_name(service)
         variable = get_variable(container, ActivePowerReserveVariable, typeof(service))
-        # Merged container is keyed `(service_name, device_name, time)`; confirm this
-        # contributing service actually has entries rather than just that the container
-        # for the type exists.
+        # The container is keyed `(service_name, device_name, time)` and shared by the whole
+        # service type, so check for this service's own entries, not just that it exists.
         any(k -> k[1] == service_name, keys(variable.data)) || error(
             "The contributing service $service_name has no ActivePowerReserveVariable \
              entries; it must be modeled before the group reserve that references it.",
@@ -45,13 +44,11 @@ function add_constraints!(
 ) where {SR <: PSY.ConstantReserveGroup}
     time_steps = get_time_steps(container)
     service_name = PSY.get_name(service)
-    # Dense 2D group-requirement container keyed `[group_name, time]`, created once per type
-    # in `construct_service!`; fill this group's row.
+    # Dense container keyed `[group_name, time]`, built per type; fill this group's row.
     constraint = get_constraint(container, RequirementConstraint, SR)
     requirement = _get_requirement(service)
 
-    # Index each contributing reserve's provision from its type's merged
-    # `(service_name, device_name, time)` container, keyed `(service_name, t)`, in a single pass.
+    # Bucket each contributing reserve's provision by `(service_name, t)` in a single pass.
     member_vars = _group_member_variables(container, contributing_services)
 
     for t in time_steps
@@ -68,10 +65,9 @@ function add_constraints!(
     return
 end
 
-# Bucket the group's contributing reserve variables by `(service_name, time)` in one pass over
-# each contributing service's merged `(service_name, device_name, time)` container, so the
-# constraint loop above does keyed lookups instead of re-scanning the whole container per
-# `(group, t)`. Same-type services share one merged container, so each container is scanned once.
+# Bucket the group's contributing reserve variables by `(service_name, time)` so the constraint
+# loop above does keyed lookups instead of re-scanning per `(group, t)`. Services of the same
+# type share one `(service_name, device_name, time)` container, so each is scanned once.
 function _group_member_variables(
     container::OptimizationContainer,
     contributing_services::Vector{<:PSY.Service},

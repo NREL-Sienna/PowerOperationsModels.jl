@@ -1,4 +1,5 @@
-# Time-varying ORDC. Adapted from PowerSimulations.jl PR #1629 to the current PowerSystems data model,
+# Time-varying operating reserve demand curve (ORDC). Adapted from PowerSimulations.jl PR #1629
+# to the current PowerSystems data model,
 # where a time-varying ORDC is a `ReserveDemandTimeSeriesCurve` whose `variable` is a
 # `CostCurve{TimeSeriesPiecewiseIncrementalCurve}` (rather than a `ReserveDemandCurve`
 # carrying a bare `TimeSeriesKey`). The multi-step Simulation scenario from that PR is
@@ -119,8 +120,8 @@ end
     )
 end
 
-@testset "Merged reserve container isolates services of the same type" begin
-    # Two VariableReserve{ReserveUp} services share one merged
+@testset "Per-type reserve container isolates services of the same type" begin
+    # Two VariableReserve{ReserveUp} services share one
     # `(service, device, time)` ActivePowerReserveVariable container. Verify (a) each
     # service's requirement constraint sums only its own device variables (no
     # cross-service leakage) and (b) the proportional reserve cost prices each variable
@@ -143,7 +144,7 @@ end
         RequirementConstraint,
         VariableReserve{ReserveUp},
     )
-    # Exactly one merged container spans both services.
+    # Exactly one container spans both services.
     @test Set(k[1] for k in keys(rv.data)) == Set(["Reserve1", "Reserve11"])
 
     # (a) Reserve1's requirement constraint at t=1 has coefficient 1 for Reserve1's
@@ -274,8 +275,8 @@ end
     )
 end
 
-@testset "Merged reserve container isolates services with mixed device counts (solve)" begin
-    # Extends "Merged reserve container isolates services of the same type" (build-only,
+@testset "Per-type reserve container isolates services with mixed device counts (solve)" begin
+    # Extends "Per-type reserve container isolates services of the same type" (build-only,
     # isolation at t=1) to a full solve, and checks isolation at every requirement row, not
     # just Reserve1's. NOTE: in this fixture, Reserve1 and Reserve11 both contribute from
     # all five thermal units (Alta, Brighton, Park City, Solitude, Sundance) - there is no
@@ -313,7 +314,7 @@ end
 end
 
 @testset "RequirementConstraint dual is assigned and readable per service" begin
-    # The service dual path mirrors the merged (dense) RequirementConstraint container: one
+    # The service dual path mirrors the dense RequirementConstraint container: one
     # dual per service type keyed `(service_name, time)`, populated after solve. Uses an LP
     # dispatch template (no binaries) so the solver returns duals.
     c_sys5_uc = PSB.build_system(PSITestSystems, "c_sys5_uc"; add_reserves = true)
@@ -333,7 +334,7 @@ end
 
     container = get_optimization_container(model)
     dual_key = IOM.ConstraintKey(RequirementConstraint, VariableReserve{ReserveUp})
-    # One merged dual container per service type, dense (mirrors the merged constraint).
+    # One dual container per service type, dense (mirrors the constraint container).
     @test dual_key in keys(IOM.get_duals(container))
     @test IOM.get_duals(container)[dual_key] isa
           JuMP.Containers.DenseAxisArray{Float64, 2}
@@ -399,8 +400,8 @@ end
           IOM.ModelBuildStatus.BUILT
     @test solve!(model) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
 
-    # C1: the ORDC slope/breakpoint PWL cost params are ONE merged container per service type
-    # (names axis + batch-wide tranche axis). A 3-arg fetch succeeds only for the merged
+    # C1: the ORDC slope/breakpoint PWL cost params are ONE container per service type
+    # (names axis + batch-wide tranche axis). A 3-arg fetch succeeds only for a per-type
     # container; the two ORDCs above have different tranche counts, so the successful build+solve
     # also exercises the batch-wide tranche padding.
     container = get_optimization_container(model)
@@ -739,7 +740,7 @@ end
     end
 end
 
-@testset "Interface slacks are one merged container per type (use_slacks)" begin
+@testset "Interface slacks are one container per type (use_slacks)" begin
     # `use_slacks = true` on the interface ServiceModel builds InterfaceFlowSlackUp/Down as one
     # dense container per (variable type, TransmissionInterface) keyed by interface name, each
     # wired to the interface's violation penalty. `deepcopy` so the added interface does not leak
@@ -765,7 +766,7 @@ end
     container = get_optimization_container(model)
     time_steps = get_time_steps(container)
     for V in (POM.InterfaceFlowSlackUp, POM.InterfaceFlowSlackDown)
-        # 3-arg fetch proves the merged container.
+        # 3-arg fetch proves the per-type container.
         slack = IOM.get_variable(container, V, TransmissionInterface)
         @test axes(slack) == (["west_east"], time_steps)
         @test all(JuMP.lower_bound(slack["west_east", t]) == 0.0 for t in time_steps)
@@ -776,9 +777,9 @@ end
     @test all(JuMP.coefficient(obj, slack_up["west_east", t]) == 1e5 for t in time_steps)
 end
 
-@testset "Interface flow-limit params are one merged container per type" begin
+@testset "Interface flow-limit params are one container per type" begin
     # VariableMaxInterfaceFlow builds Min/MaxInterfaceFlowLimitParameter as one container per type
-    # over all interface names; the 3-arg fetch below proves the merged container.
+    # over all interface names; the 3-arg fetch below proves the per-type container.
     sys = deepcopy(PSB.build_system(PSITestSystems, "c_sys5_uc"; add_reserves = true))
     interface = TransmissionInterface(;
         name = "west_east",
@@ -812,11 +813,11 @@ end
 
     container = get_optimization_container(model)
     for P in (POM.MinInterfaceFlowLimitParameter, POM.MaxInterfaceFlowLimitParameter)
-        # 3-arg fetch (no meta) succeeds only if the container is merged per type.
+        # 3-arg fetch (no meta) succeeds only for a single container per type.
         param = IOM.get_parameter(container, P, TransmissionInterface)
         @test param !== nothing
     end
-    # The flow-limit constraint (which reads the merged params) built for the interface.
+    # The flow-limit constraint (which reads those params) built for the interface.
     @test size(
         IOM.get_constraint(container, POM.InterfaceFlowLimit, TransmissionInterface, "ub"),
     ) == (1, 24)
@@ -1179,7 +1180,7 @@ end
 
 @testset "GroupReserve requirement sums only its contributing services" begin
     # A ConstantReserveGroup's RequirementConstraint must sum the ActivePowerReserveVariable of
-    # every contributing service (and only those) across the merged (service, device, time)
+    # every contributing service (and only those) across the (service, device, time)
     # container. Exercises reserve_group.jl `add_constraints!` and its `_accumulate_group_reserve!`
     # function barrier. This path was previously unbuildable (the old
     # `_populate_contributing_devices!` errored on a ConstantReserveGroup); it is now reachable
@@ -1234,7 +1235,7 @@ end
 end
 
 @testset "GroupReserve sums across multiple contributing services" begin
-    # A group over two reserves must sum BOTH services' slices of the merged
+    # A group over two reserves must sum BOTH services' slices of the shared
     # `(service, device, time)` container - the multi-service case the single-service test above
     # does not exercise.
     sys = deepcopy(PSB.build_system(PSITestSystems, "c_sys5_uc"; add_reserves = true))

@@ -101,7 +101,7 @@ function add_constraints!(
         meta = "lb",
     )
     int_name = PSY.get_name(interface)
-    # Merged per-type parameter containers keyed by interface name; fetch the whole
+    # One parameter container per type, keyed by interface name; fetch the whole
     # container/multiplier array and index this interface's column/row.
     param_container_min =
         get_parameter(container, MinInterfaceFlowLimitParameter, PSY.TransmissionInterface)

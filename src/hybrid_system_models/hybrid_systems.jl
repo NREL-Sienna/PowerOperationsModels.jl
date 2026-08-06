@@ -450,7 +450,8 @@ function get_variable_upper_bound(
     )
 end
 
-# Disambiguate against the generic ORDC method in services_models/reserves.jl.
+# Disambiguate against the generic operating reserve demand curve method in
+# services_models/reserves.jl.
 function get_variable_upper_bound(
     ::Type{ActivePowerReserveVariable},
     r::Union{PSY.ReserveDemandCurve, PSY.ReserveDemandTimeSeriesCurve},
@@ -2074,8 +2075,7 @@ function add_constraints!(
             add_constraints_container!(container, HybridReserveAssignmentConstraint, V,
                 names, time_steps;
                 meta = "$(s_type)_$s_name")
-        # System-level reserve variable for this service (merged, keyed
-        # `(service, device, time)`).
+        # System-level reserve variable for this service, keyed `(service, device, time)`.
         sys_reserve = get_variable(container, ActivePowerReserveVariable, s_type)
         # Per-hybrid reserve variables for this service
         r_out = get_variable(

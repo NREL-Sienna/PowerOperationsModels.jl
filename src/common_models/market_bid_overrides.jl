@@ -338,8 +338,8 @@ _vom_offer_direction(::Type{<:AbstractControllablePowerLoadFormulation}) =
 #################################################################################
 
 """
-Add the delta PWL objective terms for an ORDC service (`StepwiseCostReserve` over
-`ReserveDemandCurve` / `ReserveDemandTimeSeriesCurve`).
+Add the delta PWL objective terms for an operating reserve demand curve (ORDC) service
+(`StepwiseCostReserve` over `ReserveDemandCurve` / `ReserveDemandTimeSeriesCurve`).
 """
 function add_pwl_term_delta!(
     container::OptimizationContainer,
@@ -363,7 +363,7 @@ function add_pwl_term_delta!(
     time_steps = get_time_steps(container)
     pwl_cost_expressions = Vector{JuMP.AffExpr}(undef, time_steps[end])
     for t in time_steps
-        # Merged (name-keyed) slope/breakpoint params, same as the device offer path.
+        # Name-keyed slope/breakpoint params, same as the device offer path.
         break_points, slopes = IOM._get_pwl_data(dir, container, component, t)
         pwl_vars = add_pwl_variables_delta!(
             container,
