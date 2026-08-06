@@ -1,9 +1,9 @@
 # One `ServiceModel` per service TYPE (like `DeviceModel`). `construct_service!` runs once
 # per type: it gets all services of the type via `get_available_components(model, sys)`,
 # reads each service's contributing devices from the nested per-service map
-# (`get_contributing_devices(model, service_name)`), and builds. The reserve variable /
-# constraint containers are merged per `(entry type, service type)`; each service fills its
-# own slice. `GroupReserve` is deferred to last.
+# (`get_contributing_devices(model, service_name)`), and builds. Reserve variable and
+# constraint containers are shared per `(entry type, service type)`, with each service
+# filling its own slice. `GroupReserve` is deferred to last.
 #
 # TODO(services stability): See issue #216.
 
@@ -236,9 +236,9 @@ function construct_service!(
         services,
         StepwiseCostReserve(),
     )
-    # Merged dense `(service, time)` cost-expression container, built once over all services.
+    # Dense `(service, time)` cost-expression container, built once over all services.
     add_expressions!(container, ProductionCostExpression, services, model)
-    # Merged slope/breakpoint PWL cost params, built once over all services.
+    # Slope/breakpoint PWL cost params, built once over all services.
     _maybe_process_stepwise(container, model, services)
     for service in services
         contributing_devices = get_contributing_devices(model, PSY.get_name(service))
@@ -887,8 +887,8 @@ function construct_service!(
                 )
             end
         end
-        # Merged per-type parameter containers over all interfaces, filled per
-        # interface by the vector `_add_parameters!` path.
+        # One parameter container per type over all interfaces, filled per interface by the
+        # vector `_add_parameters!` path.
         add_parameters!(container, MinInterfaceFlowLimitParameter, interfaces, model)
         add_parameters!(container, MaxInterfaceFlowLimitParameter, interfaces, model)
     end

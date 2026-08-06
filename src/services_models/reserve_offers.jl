@@ -1,22 +1,20 @@
-# Per-device ancillary-service (reserve) OFFER costs.
+# Per-device reserve offer costs.
 #
-# A contributing device can OFFER a PWL price/quantity curve for providing a reserve service,
-# stored via the PSY `set_service_bid!` path and retrieved with `get_services_bid`. This prices the
-# device's reserve award `ActivePowerReserveVariable[(service, device, t)]` by its own offer curve
-# instead of the flat `DEFAULT_RESERVE_COST`, using the delta/block-offer formulation:
+# A contributing device can offer a piecewise-linear price/quantity curve for providing a reserve
+# service, stored via the PSY `set_service_bid!` path and read with `get_services_bid`. This prices
+# the device's reserve award `ActivePowerReserveVariable[(service, device, t)]` by its own offer
+# curve instead of the flat `DEFAULT_RESERVE_COST`, using the delta/block-offer formulation:
 #
 #   δ_k >= 0,  δ_k <= P_{k+1} - P_k,  Σ_k δ_k == award,  objective += Σ_k slope_k · δ_k · dt
 #
-# Block variables are keyed 4D `(service_name, device_name, segment, time)` - the segment axis on
-# top of the 3D `(service, device, time)` reserve award. Reuses the device offer PWL machinery
+# Block variables are keyed `(service_name, device_name, segment, time)` - the segment axis on top
+# of the `(service, device, time)` reserve award. Reuses the device offer machinery
 # (`_get_raw_pwl_data`, `get_piecewise_curve_per_system_unit`, `get_pwl_cost_expression_delta`).
 
-# Does `device` offer into `service`? Dispatch on the operation-cost type. Only a MarketBidCost /
-# MarketBidTimeSeriesCost carries reserve offers readable via `get_services_bid`; the other
-# `OfferCurveCost` subtypes (ImportExportCost / ImportExportTimeSeriesCost) also carry an
-# `ancillary_service_offers` field but are NOT supported by `get_services_bid`, so they must fall
-# through to the `false` fallback here - otherwise a contributing device with an ImportExport cost
-# (e.g. a `Source`) carrying a reserve offer would enter the offering branch and hit a MethodError.
+# Does `device` offer into `service`? Only `MarketBidCost` / `MarketBidTimeSeriesCost` carry
+# reserve offers readable via `get_services_bid`. `ImportExportCost` / `ImportExportTimeSeriesCost`
+# have an `ancillary_service_offers` field too but are not supported by `get_services_bid`, so they
+# must reach the `false` fallback or an offering `Source` would hit a MethodError.
 _has_reserve_offer(device, service) =
     _cost_offers_reserve(PSY.get_operation_cost(device), service)
 _cost_offers_reserve(cost::Union{PSY.MarketBidCost, PSY.MarketBidTimeSeriesCost}, service) =
@@ -44,9 +42,9 @@ function add_reserve_offer_costs!(
         offering = [d for d in devices if _has_reserve_offer(d, service)]
         isempty(offering) && continue
         names = [PSY.get_name(d) for d in offering]
-        # 4D block var keyed (service, device, segment, time). The auto-created sparse container
-        # uses the 4-tuple key from `IOM.sparse_variable_key_type(PiecewiseLinearBlockReserveOffer)`;
-        # segments (which vary per device/time) are filled sparsely below.
+        # Block var keyed `(service, device, segment, time)` via
+        # `IOM.sparse_variable_key_type(PiecewiseLinearBlockReserveOffer)`. Segments vary per
+        # device and time, so they are filled sparsely below.
         blk = lazy_container_addition!(
             container,
             PiecewiseLinearBlockReserveOffer,

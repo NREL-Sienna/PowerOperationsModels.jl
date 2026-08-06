@@ -46,8 +46,8 @@ function add_parameters!(
     return
 end
 
-# Per-type ORDC PWL cost params: all the type's services share one merged container
-# (names axis + tranche axis).
+# Per-type operating reserve demand curve (ORDC) PWL cost params: all the type's services
+# share one container (names axis + tranche axis).
 function add_parameters!(
     container::OptimizationContainer,
     ::Type{T},
@@ -559,12 +559,11 @@ function get_max_tranches(component::PSY.Component, piecewise_ts::IS.TimeSeriesK
 end
 
 # Batch form (mirrors the device methods below): size the tranche axis to the largest tranche
-# count across the type's ORDC services; each service's shorter per-hour curves are padded
-# later in `unwrap_for_param`.
+# count across the type's services; shorter per-hour curves are padded in `unwrap_for_param`.
 #
-# `services` is typed `Vector{<:ReserveDemandTimeSeriesCurve}` (covariant) rather than tied to
-# the `ServiceModel`'s component type, because that type can be partially applied (e.g.
-# `ReserveDemandCurve` without its reserve-direction parameter) and `Vector` is invariant - a
+# `services` is typed `Vector{<:ReserveDemandTimeSeriesCurve}` rather than tied to the
+# `ServiceModel`'s component type, because that type can be partially applied (e.g.
+# `ReserveDemandCurve` without its reserve-direction parameter) and `Vector` is invariant, so a
 # vector of the concrete service instances would not match `Vector{D}`.
 function calc_additional_axes(
     ::OptimizationContainer,
@@ -656,9 +655,8 @@ function calc_additional_axes(
     return (IOM.make_tranche_axis(max_tranches + 1),)  # one more breakpoint than tranches
 end
 
-# `_add_objective_function_parameters!` holds the active components as a vector and both
-# device and service `calc_additional_axes` now take that batch (services size the tranche
-# axis to the batch-wide maximum, like devices), so this simply forwards the collection.
+# Both device and service `calc_additional_axes` take the whole batch, so forward the
+# collection `_add_objective_function_parameters!` already holds.
 _calc_additional_axes(
     container::OptimizationContainer,
     ::Type{P},
@@ -670,10 +668,9 @@ _calc_additional_axes(
 # _add_parameters! for ObjectiveFunctionParameter
 #################################################################################
 
-# Shared body for ObjectiveFunctionParameter cost params (slope/breakpoint,
-# cost-at-min, startup/shutdown). Both devices and ORDC services are batched into one
-# names-axis container with empty `meta`, built once over all the type's members and
-# filled per member. `W` is the device/service formulation.
+# Shared body for ObjectiveFunctionParameter cost params (slope/breakpoint, cost-at-min,
+# startup/shutdown). Devices and reserve-demand-curve services alike are batched into one
+# names-axis container with empty `meta`, filled per member. `W` is the formulation.
 function _add_objective_function_parameters!(
     container::OptimizationContainer,
     ::Type{T},
@@ -774,10 +771,9 @@ end
 #################################################################################
 # _add_parameters! for time-varying ORDC slope/breakpoint cost parameters
 #
-# Same cost-parameter machinery as the device path: batch all the type's ORDC services into
-# one merged container (names axis + tranche axis), the tranche axis sized to the batch-wide
-# maximum via `calc_additional_axes`. Read back name-keyed by the delta-PWL machinery,
-# matching the device offer path.
+# Same cost-parameter machinery as the device path: batch all the type's services into one
+# container (names axis + tranche axis), the tranche axis sized to the batch-wide maximum via
+# `calc_additional_axes`. Read back name-keyed by the delta-PWL machinery.
 #################################################################################
 
 function _add_parameters!(
@@ -1087,14 +1083,12 @@ function _add_parameters!(
     W <: AbstractReservesFormulation,
 } where {D <: PSY.Component}
     @debug "adding" T D U _group = IOM.LOG_GROUP_OPTIMIZATION_CONTAINER
-    # TODO: per-service keying when service feedforwards are ported. This path is currently
-    # unreachable (service feedforwards are no-op stubs in POM; the real machinery is still
-    # in PSI). Under the per-type ServiceModel, `get_contributing_devices(model)` flattens
-    # across ALL services of the type, so this builds a device-name-keyed parameter with no
-    # service axis — inconsistent with the merged `(service, device, time)` reserve
-    # variables it must feed forward against. Rebuild it per service (key by
-    # `(service, device)`, reading `get_contributing_devices(model, service_name)`) aligned
-    # with the merged reserve container before wiring service feedforwards.
+    # TODO: per-service keying when service feedforwards are ported. Unreachable today, since
+    # service feedforwards are no-op stubs in POM. `get_contributing_devices(model)` flattens
+    # across all services of the type, so this builds a device-name-keyed parameter with no
+    # service axis, inconsistent with the `(service, device, time)` reserve variables it must
+    # feed forward against. Re-key by `(service, device)` reading
+    # `get_contributing_devices(model, service_name)` before wiring service feedforwards.
     contributing_devices = IOM.get_contributing_devices(model)
     names = [PSY.get_name(device) for device in contributing_devices]
     time_steps = get_time_steps(container)

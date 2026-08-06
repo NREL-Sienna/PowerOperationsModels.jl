@@ -193,8 +193,7 @@ function _add_contributing_device_by_type!(
     if T ∈ incompatible_device_types || T ∉ modeled_devices
         return
     end
-    # Register `contributing_device` in the nested `service_name -> device_type -> devices` map:
-    # get-or-create this service's inner map, then its device-type bucket, and append.
+    # Register in the nested `service_name -> device_type -> devices` map.
     inner = get!(
         Dict{DataType, Vector{<:IS.InfrastructureSystemsComponent}},
         get_contributing_devices_map(service_model),
@@ -225,15 +224,9 @@ function _populate_contributing_devices!(
         empty!(service_models)
         return
     end
-    # One model per service type; fill the per-service nested map for every available
-    # service of each type. `get_available_components` already restricts this loop to
-    # available services, and `_add_contributing_device_by_type!` records only available,
-    # modeled, compatible devices (PSY's mapping includes unavailable ones). After
-    # populating each reserve we require at least one such device: a modeled reserve with no
-    # available provider can never meet its requirement - it would silently force slacks or
-    # make the model infeasible - so error loudly and name it rather than dropping it.
-    # A modeled TransmissionInterface likewise needs at least one available contributing branch,
-    # or its flow limit is meaningless. ConstantReserveGroup is exempt (see the check below).
+    # Fill the per-service nested map for every available service of each type.
+    # `_add_contributing_device_by_type!` keeps only available, modeled, compatible devices,
+    # since PSY's mapping includes unavailable ones.
     for (service_key, service_model) in service_models
         @debug "Populating service model $(service_key)"
         empty!(get_contributing_devices_map(service_model))
@@ -255,11 +248,9 @@ function _populate_contributing_devices!(
                     )
                 end
             end
-            # Exempt ConstantReserveGroup: a GroupReserve aggregates other services, so its
-            # contributing-device map is empty by design, and this check would otherwise reject
-            # every group reserve. Reserves and transmission interfaces DO draw on
-            # devices/branches, so an empty map there is a real misconfiguration. AGC is not
-            # modeled in POM, so it never reaches here.
+            # A reserve or interface with no available provider can never meet its requirement,
+            # so error rather than let it silently force slacks or go infeasible.
+            # ConstantReserveGroup aggregates other services, so its empty map is by design.
             if !(service_type <: PSY.ConstantReserveGroup) &&
                isempty(get_contributing_devices_map(service_model, service_name))
                 error(
