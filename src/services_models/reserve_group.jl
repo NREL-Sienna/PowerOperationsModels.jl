@@ -48,32 +48,35 @@ function add_constraints!(
     constraint = get_constraint(container, RequirementConstraint, SR)
     requirement = _get_requirement(service)
 
-    # Bucket each contributing reserve's provision by `(service_name, t)` in a single pass.
-    member_vars = _group_member_variables(container, contributing_services)
+    # Bucket every contributing reserve's provision by time step in a single pass. The
+    # constraint sums across all of them, so no per-service key is needed.
+    member_vars = _group_member_variables(container, contributing_services, time_steps)
+    jump_model = get_jump_model(container)
 
     for t in time_steps
-        resource_expression = JuMP.GenericAffExpr{Float64, JuMP.VariableRef}()
-        for r in contributing_services
-            for var in get(member_vars, (PSY.get_name(r), t), JuMP.VariableRef[])
-                JuMP.add_to_expression!(resource_expression, var)
-            end
+        vars = member_vars[t]
+        resource_expression = IOM.get_hinted_aff_expr(length(vars))
+        for var in vars
+            JuMP.add_to_expression!(resource_expression, var)
         end
         constraint[service_name, t] =
-            JuMP.@constraint(container.JuMPmodel, resource_expression >= requirement)
+            JuMP.@constraint(jump_model, resource_expression >= requirement)
     end
 
     return
 end
 
-# Bucket the group's contributing reserve variables by `(service_name, time)` so the constraint
-# loop above does keyed lookups instead of re-scanning per `(group, t)`. Services of the same
-# type share one `(service_name, device_name, time)` container, so each is scanned once.
+# Collect the group's contributing reserve variables into one bucket per time step, so the
+# constraint loop above indexes straight in rather than re-scanning per `(group, t)`. Services
+# of the same type share one `(service_name, device_name, time)` container, so each container
+# is scanned once.
 function _group_member_variables(
     container::OptimizationContainer,
     contributing_services::Vector{<:PSY.Service},
+    time_steps::UnitRange{Int},
 )
     member_names = Set(PSY.get_name(r) for r in contributing_services)
-    index = Dict{Tuple{String, Int}, Vector{JuMP.VariableRef}}()
+    index = [JuMP.VariableRef[] for _ in time_steps]
     scanned = Set{DataType}()
     for r in contributing_services
         rtype = typeof(r)
@@ -82,7 +85,7 @@ function _group_member_variables(
         reserve_variable = get_variable(container, ActivePowerReserveVariable, rtype)
         for (key, var) in reserve_variable.data
             key[1] in member_names || continue
-            push!(get!(Vector{JuMP.VariableRef}, index, (key[1], key[3])), var)
+            push!(index[key[3]], var)
         end
     end
     return index

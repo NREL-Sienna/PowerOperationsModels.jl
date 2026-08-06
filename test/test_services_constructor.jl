@@ -1181,10 +1181,9 @@ end
 @testset "GroupReserve requirement sums only its contributing services" begin
     # A ConstantReserveGroup's RequirementConstraint must sum the ActivePowerReserveVariable of
     # every contributing service (and only those) across the (service, device, time)
-    # container. Exercises reserve_group.jl `add_constraints!` and its `_accumulate_group_reserve!`
-    # function barrier. This path was previously unbuildable (the old
-    # `_populate_contributing_devices!` errored on a ConstantReserveGroup); it is now reachable
-    # because the no-contributing-devices error is scoped to `PSY.Reserve` only.
+    # container. Exercises reserve_group.jl `add_constraints!` and `_group_member_variables`.
+    # Reachable only because the no-contributing-devices error in
+    # `_populate_contributing_devices!` is scoped to `PSY.Reserve`, exempting groups.
     # `deepcopy` so the added group does not leak into the PSB-cached system.
     sys = deepcopy(PSB.build_system(PSITestSystems, "c_sys5_uc"; add_reserves = true))
     r1 = PSY.get_component(VariableReserve{ReserveUp}, sys, "Reserve1")
