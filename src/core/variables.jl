@@ -526,6 +526,18 @@ Docs abbreviation: ``\\t^i``
 struct HVDCInverterTapSettingVariable <: VariableType end
 
 """
+Block-offer delta variable for a per-device ancillary-service (reserve) OFFER. Sparse, keyed
+`(service_name, device_name, segment, time)` - the 4D `(service, device, segment, time)` cost
+structure on top of the 3D `(service, device, time)` reserve award `ActivePowerReserveVariable`.
+"""
+struct PiecewiseLinearBlockReserveOffer <: SparseVariableType end
+
+# Widen the auto-created sparse container to the 4D reserve-offer key. The IOM default is the
+# 3D device-offer shape `(device, segment, time)`; this adds the leading service axis.
+IOM.sparse_variable_key_type(::Type{PiecewiseLinearBlockReserveOffer}) =
+    Tuple{String, String, Int, Int}
+
+"""
 Struct to dispatch the creation of HVDC Piecewise Loss Variables
 
 Docs abbreviation: ``h`` or ``w``
@@ -832,6 +844,7 @@ const MULTI_START_VARIABLES = (HotStartVariable, WarmStartVariable, ColdStartVar
 should_write_resulting_value(::Type{PiecewiseLinearCostVariable}) = false
 should_write_resulting_value(::Type{PiecewiseLinearBlockIncrementalOffer}) = false
 should_write_resulting_value(::Type{PiecewiseLinearBlockDecrementalOffer}) = false
+should_write_resulting_value(::Type{PiecewiseLinearBlockReserveOffer}) = false
 should_write_resulting_value(::Type{HVDCPiecewiseLossVariable}) = false
 should_write_resulting_value(::Type{HVDCPiecewiseBinaryLossVariable}) = false
 should_write_resulting_value(::Type{<:InterpolationVariableType}) = false

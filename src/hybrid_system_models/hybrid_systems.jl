@@ -450,7 +450,8 @@ function get_variable_upper_bound(
     )
 end
 
-# Disambiguate against the generic ORDC method in services_models/reserves.jl.
+# Disambiguate against the generic operating reserve demand curve method in
+# services_models/reserves.jl.
 function get_variable_upper_bound(
     ::Type{ActivePowerReserveVariable},
     r::Union{PSY.ReserveDemandCurve, PSY.ReserveDemandTimeSeriesCurve},
@@ -743,6 +744,7 @@ function add_to_expression!(
     container::OptimizationContainer,
     ::Type{T},
     ::Type{U},
+    service::V,
     devices::Vector{UV},
     service_model::ServiceModel{V, W},
 ) where {
@@ -752,15 +754,15 @@ function add_to_expression!(
     V <: PSY.Reserve,
     W <: AbstractReservesFormulation,
 }
+    s_name = PSY.get_name(service)
+    variable = get_variable(container, U, V)
     for d in devices
         name = PSY.get_name(d)
-        s_name = get_service_name(service_model)
         expression = get_expression(container, T, UV, "$(V)_$(s_name)")
-        variable = get_variable(container, U, V, s_name)
         for t in get_time_steps(container)
             add_proportional_to_jump_expression!(
                 expression[name, t],
-                variable[name, t],
+                variable[(s_name, name, t)],
                 -1.0,
             )
         end
@@ -2073,8 +2075,8 @@ function add_constraints!(
             add_constraints_container!(container, HybridReserveAssignmentConstraint, V,
                 names, time_steps;
                 meta = "$(s_type)_$s_name")
-        # System-level reserve variable for this service
-        sys_reserve = get_variable(container, ActivePowerReserveVariable, s_type, s_name)
+        # System-level reserve variable for this service, keyed `(service, device, time)`.
+        sys_reserve = get_variable(container, ActivePowerReserveVariable, s_type)
         # Per-hybrid reserve variables for this service
         r_out = get_variable(
             container,
@@ -2093,7 +2095,7 @@ function add_constraints!(
             (service in PSY.get_services(d)) || continue
             constraint[name, t] = JuMP.@constraint(
                 get_jump_model(container),
-                r_out[name, t] + r_in[name, t] == sys_reserve[name, t]
+                r_out[name, t] + r_in[name, t] == sys_reserve[(s_name, name, t)]
             )
         end
     end

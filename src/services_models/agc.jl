@@ -57,7 +57,7 @@ function get_default_attributes(
     ::Type{PSY.AGC},
     ::Type{<:AbstractAGCFormulation},
 )
-    return Dict{String, Any}("aggregated_service_model" => false)
+    return Dict{String, Any}()
 end
 
 """

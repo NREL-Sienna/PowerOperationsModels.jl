@@ -192,15 +192,15 @@ end
     set_device_model!(template, HydroTurbine, HydroDispatchRunOfRiver)
     set_service_model!(
         template,
-        ServiceModel(VariableReserve{ReserveUp}, RangeReserve, "Reserve5"),
+        ServiceModel(VariableReserve{ReserveUp}, RangeReserve),
     )
     set_service_model!(
         template,
-        ServiceModel(VariableReserve{ReserveDown}, RangeReserve, "Reserve6"),
+        ServiceModel(VariableReserve{ReserveDown}, RangeReserve),
     )
     set_service_model!(
         template,
-        ServiceModel(ReserveDemandCurve{ReserveUp}, StepwiseCostReserve, "ORDC1"),
+        ServiceModel(ReserveDemandCurve{ReserveUp}, StepwiseCostReserve),
     )
 
     c_sys5_hyd = PSB.build_system(
