@@ -7,9 +7,7 @@ using InfrastructureSystems
 import InfrastructureSystems: TableFormat
 using PowerNetworkMatrices
 import PowerSystemCaseBuilder: PSITestSystems
-# psy6: disabled pending transformer refactor — PowerFlows@psy6 does not precompile
-# (UndefVarError: ThreeWindingTransformerWinding, renamed to ThreeWindingTransformerCircuit)
-# using PowerFlows
+using PowerFlows
 using DataFramesMeta
 
 # Test Packages
@@ -36,8 +34,7 @@ import LinearAlgebra
 const PSY = PowerSystems
 const POM = PowerOperationsModels
 const IOM = InfrastructureOptimizationModels
-# psy6: disabled pending transformer refactor
-# const PFS = PowerFlows
+const PFS = PowerFlows
 const PSB = PowerSystemCaseBuilder
 const PNM = PowerNetworkMatrices
 const ISOPT = InfrastructureSystems.Optimization
