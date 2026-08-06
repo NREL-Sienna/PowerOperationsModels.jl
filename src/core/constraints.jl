@@ -933,7 +933,7 @@ The specified constraint is formulated as:
 """
 struct StorageCyclingDischarge <: ConstraintType end
 
-## AS Provision Energy Constraints
+## Ancillary Service Provision Energy Constraints
 """
 Struct to specify the lower and upper bounds of the discharge variable considering reserves.
 

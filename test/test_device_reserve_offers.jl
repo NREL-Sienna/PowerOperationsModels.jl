@@ -129,7 +129,8 @@ end
 @testset "StepwiseCostReserve prices per-device reserve offers (demand curve + offer supply)" begin
     sys = deepcopy(PSB.build_system(PSITestSystems, "c_sys5_uc"; add_reserves = true))
     ordc = first(get_components(PSY.ReserveDemandCurve, sys))
-    # Ensure thermal devices contribute to the ORDC so they can carry per-device offers.
+    # Ensure thermal devices contribute to the operating reserve demand curve (ORDC) so they
+    # can carry per-device offers.
     for g in get_components(ThermalStandard, sys)
         ordc in PSY.get_services(g) || PSY.add_service!(g, ordc, sys)
     end

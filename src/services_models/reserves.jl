@@ -38,7 +38,8 @@ objective_function_multiplier(::Type{ServiceRequirementVariable}, ::Type{Stepwis
 uses_compact_power(::Union{PSY.ReserveDemandCurve, PSY.ReserveDemandTimeSeriesCurve}, ::StepwiseCostReserve)=false
 get_multiplier_value(::Type{<:AbstractPiecewiseLinearBreakpointParameter}, ::Union{PSY.ReserveDemandCurve, PSY.ReserveDemandTimeSeriesCurve}, ::Type{<:AbstractReservesFormulation}) = 1.0
 get_multiplier_value(::Type{<:AbstractPiecewiseLinearSlopeParameter}, ::Union{PSY.ReserveDemandCurve, PSY.ReserveDemandTimeSeriesCurve}, ::Type{<:AbstractReservesFormulation}) = 1.0
-# ORDC demand curves are willingness-to-pay (concave), i.e. a decremental offer.
+# Operating reserve demand curves (ORDC) are willingness-to-pay (concave), i.e. a decremental
+# offer.
 # Routes the reserve PWL cost path through IOM's OfferDirection dispatch; making
 # this incremental is a one-line change here. Mirrors `_onvar_offer_direction` /
 # `_vom_offer_direction` in market_bid_overrides.jl.
@@ -112,8 +113,8 @@ function add_reserve_variables!(
 }
     time_steps = get_time_steps(container)
     service_names = [PSY.get_name(s) for s in services]
-    # Merged 2D dense container keyed `(service_name, time)`, one per service type.
-    # Dense so the ORDC delta-PWL constraint path can read its axes.
+    # One dense container per service type, keyed `(service_name, time)`. Dense so the
+    # ORDC delta-PWL constraint path can read its axes.
     variable = add_variable_container!(container, T, D, service_names, time_steps)
 
     jump_model = get_jump_model(container)
@@ -131,8 +132,8 @@ function add_reserve_variables!(
     return
 end
 
-# Sum the reserve provision of one service across its contributing devices at time `t`
-# from the merged 3D sparse container keyed `(service_name, device_name, time)`.
+# Sum the reserve provision of one service across its contributing devices at time `t`,
+# reading the service type's sparse container keyed `(service_name, device_name, time)`.
 function _sum_service_reserves(
     reserve_variable::SparseAxisArray,
     service_name::String,
@@ -163,8 +164,7 @@ function add_constraints!(
 } where {D <: PSY.Component}
     time_steps = get_time_steps(container)
     service_name = PSY.get_name(service)
-    # Dense 2D constraint container keyed `[service_name, time]`, created once per type in
-    # `construct_service!`; fill this service's row.
+    # Dense container keyed `[service_name, time]`, built per type; fill this service's row.
     constraint = get_constraint(container, T, SR)
     reserve_variable = get_variable(container, ActivePowerReserveVariable, SR)
     use_slacks = get_use_slacks(model)
@@ -228,7 +228,7 @@ function add_constraints!(
 
     time_steps = get_time_steps(container)
     service_name = PSY.get_name(service)
-    # Merged 3D sparse constraint container keyed `(service_name, device_name, time)`.
+    # Sparse constraint container keyed `(service_name, device_name, time)`.
     cons = lazy_container_addition!(container, T, SR,
         [service_name],
         [PSY.get_name(d) for d in contributing_devices],
@@ -281,8 +281,7 @@ function add_constraints!(
 } where {D <: PSY.Component}
     time_steps = get_time_steps(container)
     service_name = PSY.get_name(service)
-    # Dense 2D constraint container keyed `[service_name, time]`, created once per type in
-    # `construct_service!`; fill this service's row.
+    # Dense container keyed `[service_name, time]`, built per type; fill this service's row.
     constraint = get_constraint(container, T, SR)
     reserve_variable = get_variable(container, ActivePowerReserveVariable, SR)
     use_slacks = get_use_slacks(model)
@@ -332,8 +331,7 @@ function add_constraints!(
 } where {D <: PSY.Component}
     time_steps = get_time_steps(container)
     service_name = PSY.get_name(service)
-    # Dense 2D constraint container keyed `[service_name, time]`, created once per type in
-    # `construct_service!`; fill this service's row.
+    # Dense container keyed `[service_name, time]`, built per type; fill this service's row.
     constraint = get_constraint(container, T, SR)
     reserve_variable = get_variable(container, ActivePowerReserveVariable, SR)
     requirement_variable =
@@ -494,10 +492,9 @@ function add_constraints!(
     reserve_response_time = PSY.get_time_frame(service)
     jump_model = get_jump_model(container)
     for d in contributing_devices
-        # Function barrier: `contributing_devices` may have an abstract element type, so passing
-        # `d`, `varstatus`, `var_r` and `cons` into the callee lets Julia specialize it on their
-        # concrete runtime types. Inside the barrier `varstatus[name, t]` / `var_r[...]` are then
-        # statically dispatched (one dynamic dispatch per device at the call, not per timestep).
+        # Function barrier: `contributing_devices` may have an abstract element type, so the
+        # callee specializes on the concrete types and dispatches once per device rather than
+        # once per timestep.
         varstatus = get_variable(container, OnVariable, typeof(d))
         _add_reserve_power_constraint_device!(
             cons,
@@ -552,18 +549,18 @@ function add_to_objective_function!(
     S <: Union{PSY.ReserveDemandCurve, PSY.ReserveDemandTimeSeriesCurve},
     SR <: StepwiseCostReserve,
 }
-    # Demand side: price the endogenous ServiceRequirementVariable by the (decremental) ORDC/ASDC
-    # demand curve. `objective_function_multiplier(ServiceRequirementVariable, StepwiseCostReserve)`
-    # is -1, so this enters the objective as a benefit.
+    # Demand side: price the endogenous ServiceRequirementVariable by the decremental
+    # operating reserve demand curve. `objective_function_multiplier(ServiceRequirementVariable,
+    # StepwiseCostReserve)` is -1, so this enters the objective as a benefit.
     add_reserves_variable_cost!(container, ServiceRequirementVariable, service, SR)
-    # Supply side: price each contributing device's reserve award by its own AS offer curve
-    # (`set_service_bid!` path). No-op for devices that submitted no offer; deliberately NO flat
-    # `DEFAULT_RESERVE_COST` fallback, so a pure-ORDC service (no device offers) is unchanged.
+    # Supply side: price each contributing device's reserve award by its own reserve offer curve
+    # (`set_service_bid!` path). No-op for devices that submitted no offer, and there is
+    # deliberately no flat `DEFAULT_RESERVE_COST` fallback, so a service whose demand curve is
+    # its only price signal is unchanged.
     add_reserve_offer_costs!(container, service, model)
     return
 end
 
-# originally was add_variable_cost!, but I don't see other call sites besides the above.
 function add_reserves_variable_cost!(
     container::OptimizationContainer,
     ::Type{U},
@@ -591,10 +588,13 @@ function _add_reserves_variable_cost_to_objective!(
     # FIXME clashes with name of a function...ick.
     variable_cost = PSY.get_variable(component)
     if variable_cost isa Nothing
-        error("ORDC curve $(component_name) does not have cost data.")
+        error(
+            "Operating reserve demand curve $(component_name) does not have cost data.",
+        )
     elseif !(variable_cost isa PSY.CostCurve)
         error(
-            "ORDC curve $(component_name) has cost data of type $(typeof(variable_cost)), \
+            "Operating reserve demand curve $(component_name) has cost data of type \
+            $(typeof(variable_cost)), \
             but a `PSY.CostCurve` is required for the StepwiseCostReserve formulation.",
         )
     end
@@ -607,9 +607,9 @@ function _add_reserves_variable_cost_to_objective!(
     is_t_variant = is_time_variant(variable_cost)
     if is_t_variant && !(component isa PSY.ReserveDemandTimeSeriesCurve)
         error(
-            "ORDC curve $(component_name) of type $(typeof(component)) has a \
-            time-series-backed cost; a `PSY.ReserveDemandTimeSeriesCurve` is required \
-            for time-varying ORDC cost.",
+            "Operating reserve demand curve $(component_name) of type $(typeof(component)) \
+            has a time-series-backed cost; a `PSY.ReserveDemandTimeSeriesCurve` is required \
+            for a time-varying demand curve cost.",
         )
     end
 
@@ -633,16 +633,16 @@ function _add_reserves_variable_cost_to_objective!(
 end
 
 """
-Add the decremental piecewise slope/breakpoint cost parameters for a time-varying
-ORDC (`ReserveDemandTimeSeriesCurve`) service.
+Add the decremental piecewise slope/breakpoint cost parameters for a time-varying operating
+reserve demand curve (`ReserveDemandTimeSeriesCurve`) service.
 """
 function process_stepwise_cost_reserve_parameters!(
     container::OptimizationContainer,
     model::ServiceModel,
     services::Vector{D},
 ) where {D <: PSY.ReserveDemandTimeSeriesCurve}
-    # All services of a per-type model share the same offer direction; build the merged
-    # slope/breakpoint param containers once over all services.
+    # All services of a per-type model share the same offer direction, so the
+    # slope/breakpoint param containers are built once over all services.
     dir = _reserve_offer_direction(first(services))
     for param in (IOM._breakpoint_param(dir), IOM._slope_param(dir))
         add_parameters!(container, param, services, model)
@@ -665,10 +665,9 @@ function add_reserves_proportional_cost!(
     base_p = get_model_base_power(container)
     service_name = PSY.get_name(service)
     reserve_variable = get_variable(container, U, T)
-    # Index this service's slice of the merged `(service, device, time)` container directly by
-    # its contributing device names (every `(service, device, t)` key exists), so each provision
-    # is priced exactly once without scanning the whole container. Devices in `skip_devices` are
-    # priced by their offer curve (add_reserve_offer_costs!), not the flat cost.
+    # Index this service's slice of the `(service, device, time)` container by its contributing
+    # device names, so each provision is priced once without scanning the whole container.
+    # `skip_devices` are priced by their offer curve in `add_reserve_offer_costs!` instead.
     cost = DEFAULT_RESERVE_COST / base_p
     for name in contributing_names
         name in skip_devices && continue
