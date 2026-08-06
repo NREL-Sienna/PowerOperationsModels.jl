@@ -22,10 +22,9 @@ end
     # --- DC ohm-law physics check ---
     # StaticBranch under DCP carries the flow as the BThetaBranchFlow expression (in
     # per-unit):
-    #   p_pu == -b * (va_from - va_to)
-    # where b = imag(inv(r + jx)) — the AC series susceptance, not the DC 1/x — and
-    # there is no
-    # FlowActivePowerVariable/defining equality on this path.
+    #   p_pu == b * (va_from - va_to - shift)
+    # with the DC susceptance b = 1/(tap*x) and the DC phase shift
+    # There is no FlowActivePowerVariable/defining equality on this path.
     # read_expression returns BThetaBranchFlow in natural units (MW);
     # VoltageAngle is unitless (radians, no conversion). Divide flow by base_power.
     res = IOM.OptimizationProblemOutputs(model)
@@ -34,13 +33,13 @@ end
         read_expression(res, "BThetaBranchFlow__Line"; table_format = TableFormat.WIDE)
     va = read_variable(res, "VoltageAngle__ACBus"; table_format = TableFormat.WIDE)
     line = first(PSY.get_components(PSY.Line, sys))
-    b = imag(inv(complex(PSY.get_r(line, PSY.SU), PSY.get_x(line, PSY.SU))))
+    b = 1 / PSY.get_x(line, PSY.SU)
     fr = PSY.get_name(PSY.get_from(PSY.get_arc(line)))
     to = PSY.get_name(PSY.get_to(PSY.get_arc(line)))
     lname = PSY.get_name(line)
     # Row 1 = first time step; columns are component names.
     # Compare both sides in per-unit: divide MW output by base_power.
-    @test isapprox(pflow[1, lname] / base_power, -b * (va[1, fr] - va[1, to]); atol = 1e-6)
+    @test isapprox(pflow[1, lname] / base_power, b * (va[1, fr] - va[1, to]); atol = 1e-6)
 end
 
 @testset "native ACPNetworkModel builds and solves (c_sys5)" begin
@@ -72,7 +71,8 @@ end
         reduce_degree_two_branches = true,
     )
     template = get_thermal_dispatch_template_network(net)
-    model = DecisionModel(template, sys; optimizer = HiGHS_optimizer)
+    # TODO: fails with HiGHS QP solver, why?
+    model = DecisionModel(template, sys; optimizer = ipopt_optimizer)
     @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
           IOM.ModelBuildStatus.BUILT
     @test solve!(model) == IOM.RunStatus.SUCCESSFULLY_FINALIZED

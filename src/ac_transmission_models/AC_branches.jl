@@ -2009,6 +2009,9 @@ function _ivr_current_rating(
     return rate_a / vmin
 end
 
+_branch_arc(d::PSY.ACTransmission) = PSY.get_arc(d)
+_branch_arc(d::PSY.TwoWindingTransformer) = PSY.get_arc(PSY.get_circuit(d))
+
 function _min_endpoint_voltage_limit(branch::PSY.ACTransmission)
     arc = _branch_arc(branch)
     # bus voltage limits are already per-unit
@@ -2018,9 +2021,7 @@ function _min_endpoint_voltage_limit(branch::PSY.ACTransmission)
 end
 
 # Series segments may themselves be parallel groups; recursion bottoms out at devices.
-function _min_endpoint_voltage_limit(
-    entry::Union{PNM.BranchesSeries, PNM.AbstractBranchesParallel},
-)
+function _min_endpoint_voltage_limit(entry::PNM.AbstractReductionAggregate)
     return minimum(_min_endpoint_voltage_limit(member) for member in entry)
 end
 
