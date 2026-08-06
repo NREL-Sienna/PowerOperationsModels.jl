@@ -479,29 +479,29 @@ end
 end
 
 @testset "use_slacks on a no-machinery formulation fails template validation" begin
-   # # slack_spec defaults to NoBranchSlacks, so every pair whose constructors build no
-   # # slack containers now rejects the request instead of silently ignoring it.
-   # # StaticBranchUnbounded builds nothing at all; VoltageControlTap never creates slacks.
-   # sys = PSB.build_system(PSITestSystems, "c_sys5")
-   # for network_formulation in (DCPNetworkModel, ACPNetworkModel)
-   #     template =
-   #         get_thermal_dispatch_template_network(NetworkModel(network_formulation))
-   #     set_device_model!(
-   #         template,
-   #         DeviceModel(PSY.Line, StaticBranchUnbounded; use_slacks = true),
-   #     )
-   #     model = DecisionModel(template, sys; optimizer = HiGHS_optimizer)
-   #     @test_throws IS.ConflictingInputsError POM.validate_template(model)
-   # end
+    # # slack_spec defaults to NoBranchSlacks, so every pair whose constructors build no
+    # # slack containers now rejects the request instead of silently ignoring it.
+    # # StaticBranchUnbounded builds nothing at all; VoltageControlTap never creates slacks.
+    # sys = PSB.build_system(PSITestSystems, "c_sys5")
+    # for network_formulation in (DCPNetworkModel, ACPNetworkModel)
+    #     template =
+    #         get_thermal_dispatch_template_network(NetworkModel(network_formulation))
+    #     set_device_model!(
+    #         template,
+    #         DeviceModel(PSY.Line, StaticBranchUnbounded; use_slacks = true),
+    #     )
+    #     model = DecisionModel(template, sys; optimizer = HiGHS_optimizer)
+    #     @test_throws IS.ConflictingInputsError POM.validate_template(model)
+    # end
 
-   # sys14 = PSB.build_system(PSITestSystems, "c_sys14")
-   # template = get_thermal_dispatch_template_network(NetworkModel(ACPNetworkModel))
-   # set_device_model!(
-   #     template,
-   #     DeviceModel(PSY.TwoWindingTransformer, VoltageControlTap; use_slacks = true),
-   # )
-   # model = DecisionModel(template, sys14; optimizer = ipopt_optimizer)
-   # @test_throws IS.ConflictingInputsError POM.validate_template(model)
+    # sys14 = PSB.build_system(PSITestSystems, "c_sys14")
+    # template = get_thermal_dispatch_template_network(NetworkModel(ACPNetworkModel))
+    # set_device_model!(
+    #     template,
+    #     DeviceModel(PSY.TwoWindingTransformer, VoltageControlTap; use_slacks = true),
+    # )
+    # model = DecisionModel(template, sys14; optimizer = ipopt_optimizer)
+    # @test_throws IS.ConflictingInputsError POM.validate_template(model)
 end
 
 @testset "CopperPlateNetworkModel accepts use_slacks as inert with a validation warning" begin

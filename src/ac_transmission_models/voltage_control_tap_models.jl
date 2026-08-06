@@ -90,7 +90,10 @@ end
 
 requires_initialization(::VoltageControlTap) = false
 
-function get_default_attributes(::Type{<:PSY.TwoWindingTransformer}, ::Type{VoltageControlTap})
+function get_default_attributes(
+    ::Type{<:PSY.TwoWindingTransformer},
+    ::Type{VoltageControlTap},
+)
     return Dict{String, Any}(
         PARALLEL_BRANCH_MAX_RATING_KEY => "single_element_contingency",
     )

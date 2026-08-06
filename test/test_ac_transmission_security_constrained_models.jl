@@ -47,8 +47,16 @@ end
         ),
     )
     set_device_model!(template, PSY.Line, POM.SecurityConstrainedStaticBranch)
-    set_device_model!(template, PSY.TwoWindingTransformer, POM.SecurityConstrainedStaticBranch)
-    set_device_model!(template, PSY.TwoWindingTransformer, POM.SecurityConstrainedStaticBranch)
+    set_device_model!(
+        template,
+        PSY.TwoWindingTransformer,
+        POM.SecurityConstrainedStaticBranch,
+    )
+    set_device_model!(
+        template,
+        PSY.TwoWindingTransformer,
+        POM.SecurityConstrainedStaticBranch,
+    )
 
     ps_model = DecisionModel(template, c_sys5; optimizer = HiGHS_optimizer)
     @test build!(ps_model; output_dir = mktempdir(; cleanup = true)) ==
@@ -171,8 +179,16 @@ end
         ),
     )
     set_device_model!(template, PSY.Line, POM.SecurityConstrainedStaticBranch)
-    set_device_model!(template, PSY.TwoWindingTransformer, POM.SecurityConstrainedStaticBranch)
-    set_device_model!(template, PSY.TwoWindingTransformer, POM.SecurityConstrainedStaticBranch)
+    set_device_model!(
+        template,
+        PSY.TwoWindingTransformer,
+        POM.SecurityConstrainedStaticBranch,
+    )
+    set_device_model!(
+        template,
+        PSY.TwoWindingTransformer,
+        POM.SecurityConstrainedStaticBranch,
+    )
 
     ps_model = DecisionModel(template, c_sys5; optimizer = HiGHS_optimizer)
     @test build!(ps_model; output_dir = mktempdir(; cleanup = true)) ==
@@ -255,7 +271,8 @@ end
 
     # Allowed combinations must pass.
     ok_models = IOM.BranchModelContainer()
-    ok_models[nameof(PSY.ThreeWindingTransformer)] = DeviceModel(PSY.ThreeWindingTransformer, POM.StaticBranch)
+    ok_models[nameof(PSY.ThreeWindingTransformer)] =
+        DeviceModel(PSY.ThreeWindingTransformer, POM.StaticBranch)
     ok_models[nameof(PSY.Line)] =
         DeviceModel(PSY.Line, POM.SecurityConstrainedStaticBranch)
     @test isnothing(
@@ -288,8 +305,16 @@ end
         ),
     )
     set_device_model!(template, PSY.Line, POM.SecurityConstrainedStaticBranch)
-    set_device_model!(template, PSY.TwoWindingTransformer, POM.SecurityConstrainedStaticBranch)
-    set_device_model!(template, PSY.TwoWindingTransformer, POM.SecurityConstrainedStaticBranch)
+    set_device_model!(
+        template,
+        PSY.TwoWindingTransformer,
+        POM.SecurityConstrainedStaticBranch,
+    )
+    set_device_model!(
+        template,
+        PSY.TwoWindingTransformer,
+        POM.SecurityConstrainedStaticBranch,
+    )
 
     ps_model = DecisionModel(template, c_sys14; optimizer = HiGHS_optimizer)
     @test build!(ps_model; output_dir = mktempdir(; cleanup = true)) ==
@@ -375,7 +400,11 @@ end
         ),
     )
     set_device_model!(auto_template, PSY.Line, POM.SecurityConstrainedStaticBranch)
-    set_device_model!(auto_template, PSY.TwoWindingTransformer, POM.SecurityConstrainedStaticBranch)
+    set_device_model!(
+        auto_template,
+        PSY.TwoWindingTransformer,
+        POM.SecurityConstrainedStaticBranch,
+    )
     set_device_model!(
         auto_template,
         PSY.TwoWindingTransformer,
@@ -439,7 +468,11 @@ end
         NetworkModel(PTDFNetworkModel; contingency_matrix = PNM.VirtualMODF(sys)),
     )
     set_device_model!(template, PSY.Line, POM.SecurityConstrainedStaticBranch)
-    set_device_model!(template, PSY.TwoWindingTransformer, POM.SecurityConstrainedStaticBranch)
+    set_device_model!(
+        template,
+        PSY.TwoWindingTransformer,
+        POM.SecurityConstrainedStaticBranch,
+    )
     ps_model = DecisionModel(template, sys; optimizer = HiGHS_optimizer)
     @test build!(ps_model; output_dir = mktempdir(; cleanup = true)) ==
           IOM.ModelBuildStatus.BUILT
@@ -454,7 +487,11 @@ end
     container = IOM.get_optimization_container(ps_model)
     line_pcbf = IOM.get_expression(container, POM.PostContingencyBranchFlow, PSY.Line)
     transformer_pcbf =
-        IOM.get_expression(container, POM.PostContingencyBranchFlow, PSY.TwoWindingTransformer)
+        IOM.get_expression(
+            container,
+            POM.PostContingencyBranchFlow,
+            PSY.TwoWindingTransformer,
+        )
 
     line_name = PSY.get_name(line)
     transformer_name = PSY.get_name(transformer)
@@ -927,8 +964,16 @@ end
             ),
         )
         set_device_model!(template, PSY.Line, POM.SecurityConstrainedStaticBranch)
-        set_device_model!(template, PSY.TwoWindingTransformer, POM.SecurityConstrainedStaticBranch)
-        set_device_model!(template, PSY.TwoWindingTransformer, POM.SecurityConstrainedStaticBranch)
+        set_device_model!(
+            template,
+            PSY.TwoWindingTransformer,
+            POM.SecurityConstrainedStaticBranch,
+        )
+        set_device_model!(
+            template,
+            PSY.TwoWindingTransformer,
+            POM.SecurityConstrainedStaticBranch,
+        )
 
         ps_model = DecisionModel(template, sys; optimizer = HiGHS_optimizer)
         @test build!(ps_model; output_dir = mktempdir(; cleanup = true)) ==
@@ -998,8 +1043,16 @@ end
             ),
         )
         set_device_model!(template, PSY.Line, POM.SecurityConstrainedStaticBranch)
-        set_device_model!(template, PSY.TwoWindingTransformer, POM.SecurityConstrainedStaticBranch)
-        set_device_model!(template, PSY.TwoWindingTransformer, POM.SecurityConstrainedStaticBranch)
+        set_device_model!(
+            template,
+            PSY.TwoWindingTransformer,
+            POM.SecurityConstrainedStaticBranch,
+        )
+        set_device_model!(
+            template,
+            PSY.TwoWindingTransformer,
+            POM.SecurityConstrainedStaticBranch,
+        )
 
         ps_model = DecisionModel(template, sys; optimizer = HiGHS_optimizer)
         @test build!(ps_model; output_dir = mktempdir(; cleanup = true)) ==
@@ -1073,8 +1126,16 @@ end
             ),
         )
         set_device_model!(template, PSY.Line, POM.SecurityConstrainedStaticBranch)
-        set_device_model!(template, PSY.TwoWindingTransformer, POM.SecurityConstrainedStaticBranch)
-        set_device_model!(template, PSY.TwoWindingTransformer, POM.SecurityConstrainedStaticBranch)
+        set_device_model!(
+            template,
+            PSY.TwoWindingTransformer,
+            POM.SecurityConstrainedStaticBranch,
+        )
+        set_device_model!(
+            template,
+            PSY.TwoWindingTransformer,
+            POM.SecurityConstrainedStaticBranch,
+        )
 
         ps_model = DecisionModel(template, sys; optimizer = HiGHS_optimizer)
         @test build!(ps_model; output_dir = mktempdir(; cleanup = true)) ==
@@ -1186,8 +1247,16 @@ end
             ),
         )
         set_device_model!(template, PSY.Line, POM.SecurityConstrainedStaticBranch)
-        set_device_model!(template, PSY.TwoWindingTransformer, POM.SecurityConstrainedStaticBranch)
-        set_device_model!(template, PSY.TwoWindingTransformer, POM.SecurityConstrainedStaticBranch)
+        set_device_model!(
+            template,
+            PSY.TwoWindingTransformer,
+            POM.SecurityConstrainedStaticBranch,
+        )
+        set_device_model!(
+            template,
+            PSY.TwoWindingTransformer,
+            POM.SecurityConstrainedStaticBranch,
+        )
 
         ps_model = DecisionModel(template, sys; optimizer = HiGHS_optimizer)
         @test build!(ps_model; output_dir = mktempdir(; cleanup = true)) ==
@@ -1306,8 +1375,16 @@ end
             duals = [POM.PostContingencyFlowRateConstraint],
         ),
     )
-    set_device_model!(template, PSY.TwoWindingTransformer, POM.SecurityConstrainedStaticBranch)
-    set_device_model!(template, PSY.TwoWindingTransformer, POM.SecurityConstrainedStaticBranch)
+    set_device_model!(
+        template,
+        PSY.TwoWindingTransformer,
+        POM.SecurityConstrainedStaticBranch,
+    )
+    set_device_model!(
+        template,
+        PSY.TwoWindingTransformer,
+        POM.SecurityConstrainedStaticBranch,
+    )
 
     ps_model = DecisionModel(template, c_sys5; optimizer = HiGHS_optimizer)
     @test build!(ps_model; output_dir = mktempdir(; cleanup = true)) ==
@@ -1336,8 +1413,16 @@ end
             duals = [POM.PostContingencyFlowRateConstraint],
         ),
     )
-    set_device_model!(template, PSY.TwoWindingTransformer, POM.SecurityConstrainedStaticBranch)
-    set_device_model!(template, PSY.TwoWindingTransformer, POM.SecurityConstrainedStaticBranch)
+    set_device_model!(
+        template,
+        PSY.TwoWindingTransformer,
+        POM.SecurityConstrainedStaticBranch,
+    )
+    set_device_model!(
+        template,
+        PSY.TwoWindingTransformer,
+        POM.SecurityConstrainedStaticBranch,
+    )
 
     ps_model = DecisionModel(template, c_sys5; optimizer = HiGHS_optimizer)
     @test build!(ps_model; output_dir = mktempdir(; cleanup = true)) ==

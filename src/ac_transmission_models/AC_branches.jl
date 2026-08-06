@@ -1082,77 +1082,6 @@ function _price_slack_upper!(
     return
 end
 
-# Concrete element type for `_branch_geometries` so constraint builders stay type-stable
-# and empty axes still yield `String` name comprehensions (an axis can be empty when the
-# other branch type's constructor claimed every shared reduced arc first).
-const BranchGeometry = @NamedTuple{
-    name::String,
-    from_name::String,
-    to_name::String,
-    from_number::Int,
-    to_number::Int,
-    adm::NamedTuple{
-        (:g, :b, :g_fr, :b_fr, :g_to, :b_to, :tap, :shift),
-        NTuple{8, Float64},
-    },
-    direct::Bool,
-}
-
-# Per-branch geometry, un-reduced case (branch's own arc endpoints + PNM.branch_admittance).
-# Split per-branch so the caller's comprehension yields a concretely-typed vector.
-function _unreduced_geometry(arc::PSY.Arc)
-    from_bus = PSY.get_from(arc)
-    to_bus = PSY.get_to(arc)
-    return (
-        name = PSY.get_name(d),
-        from_name = PSY.get_name(from_bus),
-        to_name = PSY.get_name(to_bus),
-        from_number = PSY.get_number(from_bus),
-        to_number = PSY.get_number(to_bus),
-        adm = PNM.branch_admittance(d),
-        direct = true,
-    )
-end
-
-# A direct entry is the physical branch itself; series/parallel entries are PNM's
-# equivalent wrappers. Drives per-device data lookups (angle limits, monitored-line
-# flow limits) that only exist on physical branches.
-_is_direct_entry(::PNM.BranchesSeries) = false
-_is_direct_entry(::PNM.AbstractBranchesParallel) = false
-_is_direct_entry(::PSY.ACTransmission) = true
-
-# π-parameters of a reduction entry: the branch's own admittance for a direct arc, PNM's
-# merged equivalent for a series/parallel arc. Both are oriented to the entry's stored
-# reduced arc, which is exactly the arc `name_to_arc_map` reports for the entry.
-_entry_admittance(entry::PNM.BranchesSeries, nr::PNM.NetworkReductionData) =
-    PNM.branch_admittance(entry, nr)
-_entry_admittance(entry::PNM.AbstractBranchesParallel, nr::PNM.NetworkReductionData) =
-    PNM.branch_admittance(entry, nr)
-_entry_admittance(entry::PSY.ACTransmission, ::PNM.NetworkReductionData) =
-    PNM.branch_admittance(entry)
-
-# Geometry of one reduction entry (`name_to_arc_map` row). The reduced arc's endpoints
-# are always retained buses, so `number_to_name` (retained-only) covers them.
-function _reduced_geometry(
-    nr::PNM.NetworkReductionData,
-    number_to_name::Dict{Int, String},
-    name::String,
-    arc_tuple::Tuple{Int, Int},
-    entry,
-)
-    from_no = arc_tuple[1]
-    to_no = arc_tuple[2]
-    return (
-        name = name,
-        from_name = number_to_name[from_no],
-        to_name = number_to_name[to_no],
-        from_number = from_no,
-        to_number = to_no,
-        adm = _entry_admittance(entry, nr),
-        direct = _is_direct_entry(entry),
-    )
-end
-
 # (name, rating-entry) pairs for a rating/limit constraint family: one pair per device
 # when no reduction is active (the entry IS the device), or one pair per reduced arc of
 # `T` not yet claimed for `C` (the entry is the direct branch or PNM's series/parallel
@@ -1206,22 +1135,72 @@ function _validate_controlled_branch_not_reduced(
     return
 end
 
-_get_arcs(d::ACTransmission) = (PSY.get_arc(d),)
-_get_arcs(d::TwoWindingTransformer) = (PSY.get_arc(PSY.get_circuit(d)),)
-_get_arcs(d::ThreeWindingTransformer) =
-    map(PSY.get_arc, (PSY.get_primary_circuit(d), PSY.get_secondary_circuit(d), PSY.get_tertiary_circuit(d)))
+# Concrete element type for `_branch_geometries` so constraint builders stay type-stable
+# and empty axes still yield `String` name comprehensions (an axis can be empty when the
+# other branch type's constructor claimed every shared reduced arc first).
+const BranchGeometry = @NamedTuple{
+    name::String,
+    from_name::String,
+    to_name::String,
+    from_number::Int,
+    to_number::Int,
+    adm::NamedTuple{
+        (:g, :b, :g_fr, :b_fr, :g_to, :b_to, :tap, :shift),
+        NTuple{8, Float64},
+    },
+    b_dc::Float64,
+    shift_dc::Float64,
+    r_dc::Float64,
+    direct::Bool,
+}
+
+_is_aggregate(::PNM.AbstractReductionAggregate) = true
+_is_aggregate(::PSY.ACTransmission) = false
+
+_branch_admittance(branch::PNM.AbstractReductionAggregate, nr::PNM.NetworkReductionData) =
+    PNM.branch_admittance(branch, nr)
+_branch_admittance(branch::PSY.ACTransmission, ::PNM.NetworkReductionData) =
+    PNM.branch_admittance(branch)
+
+_dc_phase_shift(branch::PNM.AbstractReductionAggregate, nr::PNM.NetworkReductionData) =
+    PNM.get_series_phase_shift(branch, nr)
+_dc_phase_shift(branch::PSY.ACTransmission, ::PNM.NetworkReductionData) =
+    PNM.get_series_phase_shift(branch)
+
+function _branch_geometry(
+    nr::PNM.NetworkReductionData,
+    number_to_name::Dict{Int, String},
+    name::String,
+    arc_tuple::Tuple{Int, Int},
+    branch,
+)
+    from_no = arc_tuple[1]
+    to_no = arc_tuple[2]
+    return (
+        name = name,
+        from_name = number_to_name[from_no],
+        to_name = number_to_name[to_no],
+        from_number = from_no,
+        to_number = to_no,
+        adm = _branch_admittance(branch, nr),
+        b_dc = PNM.get_series_susceptance(branch, PSY.SU),
+        shift_dc = _dc_phase_shift(branch, nr),
+        r_dc = PNM.arc_dc_resistance(nr, arc_tuple),
+        direct = !_is_aggregate(branch),
+    )
+end
 
 """
 Per-branch network geometry for the native nodal constraint builders.
 
-Un-reduced case: one geometry per device (own endpoints, own π-parameters). Under an
-active network reduction: one geometry per reduced arc of `T` not yet claimed for the
-constraint family `C` — the representative axis from
-[`get_branch_argument_constraint_axis`](@ref) — with PNM's reduction-aware equivalent
-admittance. Every member of a reduced arc (series segments, parallel groups, across
-branch types) shares one set of flow variables, so each arc's physics must be built
-exactly once; the tracker-backed axis guarantees that across `construct_device!` calls.
-Constraint containers must be sized with the returned geometry names.
+One geometry per arc of `T` not yet claimed for the constraint family `C` — the
+representative axis from [`get_branch_argument_constraint_axis`](@ref) — with PNM's
+reduction-aware equivalent admittance.
+
+Every member of a reduced arc (series segments, parallel groups, across branch types)
+shares one set of flow variables, so each arc's physics must be built exactly once;
+the tracker-backed axis guarantees that across `construct_device!` calls. Constraint
+containers must be sized with the returned geometry names.
 """
 function _branch_geometries(
     number_to_name::Dict{Int, String},
@@ -1231,16 +1210,12 @@ function _branch_geometries(
     ::Type{C},
 ) where {T <: PSY.ACTransmission, C <: ConstraintType}
     nr = get_network_reduction(network_model)
-    if isempty(nr)
-        arcs = collect(Iterators.flatten(_get_arcs(d) for d in devices))
-        return BranchGeometry[_unreduced_geometry(d) for d in devices]
-    end
     tracker = get_reduced_branch_tracker(network_model)
     representative_names = get_branch_argument_constraint_axis(nr, tracker, T, C)
     arc_map = get_name_to_arc_map_entries(nr, T)
     all_branch_maps_by_type = PNM.get_all_branch_maps_by_type(nr)
     geoms = BranchGeometry[
-        _reduced_geometry(
+        _branch_geometry(
             nr,
             number_to_name,
             name,
@@ -2495,10 +2470,11 @@ end
 """
 Add branch Ohm's law (DC power flow) constraint for ACBranch under DCPNetworkModel:
 
-    p_fr == -b * (va_fr - va_to - shift)
+    p_fr == b * (va_fr - va_to - shift)
 
-where `b` is the series susceptance from `branch_admittance` and `shift` is the nominal
-phase-shift angle (0 for non-PST branches).
+where `b` is the DC series susceptance `1/(a·x)` and `shift` is the DC phase-shift angle
+(0 for non-PST branches) — the same pair PNM's `BA_Matrix` and `arc_dc_shift_injection`
+use, not the π-recovery `adm.b`/`adm.shift`.
 """
 function add_constraints!(
     container::OptimizationContainer,
@@ -2531,9 +2507,9 @@ function add_constraints!(
     end
 
     for g in geoms
-        shift = g.adm.shift
+        shift = g.shift_dc
         for t in time_steps
-            rhs = -g.adm.b * (va[g.from_name, t] - va[g.to_name, t] - shift)
+            rhs = g.b_dc * (va[g.from_name, t] - va[g.to_name, t] - shift)
             if use_slacks
                 rhs += slack_ub[g.name, t] - slack_lb[g.name, t]
             end
@@ -2547,7 +2523,10 @@ end
 """
 Add the B-θ branch-flow expression for ACBranch StaticBranch under DCPNetworkModel:
 
-    BThetaBranchFlow = -b * (va_fr - va_to - shift)
+    BThetaBranchFlow = b * (va_fr - va_to - shift)
+
+with the DC `b`/`shift` pair described on the `NetworkFlowConstraint` builder above, so the
+`b·shift` offset matches PNM's `arc_dc_shift_injection`.
 
 Angles are the only decision variables for StaticBranch under DCP — there is no
 `FlowActivePowerVariable` and no defining Ohm's-law equality; the flow is carried
@@ -2580,8 +2559,8 @@ function add_expressions!(
     jump_model = get_jump_model(container)
 
     for g in geoms
-        b = g.adm.b
-        shift = g.adm.shift
+        b = g.b_dc
+        shift = g.shift_dc
         from_name = g.from_name
         to_name = g.to_name
         from_no = g.from_number
@@ -2589,7 +2568,7 @@ function add_expressions!(
         for t in time_steps
             flow = JuMP.@expression(
                 jump_model,
-                -b * (va[from_name, t] - va[to_name, t] - shift)
+                b * (va[from_name, t] - va[to_name, t] - shift)
             )
             bfe[g.name, t] = flow
             add_proportional_to_jump_expression!(nodal_expr[from_no, t], flow, -1.0)
@@ -3374,7 +3353,7 @@ end
 """
 Add the DC Ohm's law for the from-to directional flow under DCPLLNetworkModel:
 
-    p_fr == -b * (va_fr - va_to - shift)
+    p_fr == b * (va_fr - va_to - shift)
 
 identical to the DCP law; the to-from flow is determined by the quadratic loss constraint.
 """
@@ -3404,7 +3383,7 @@ function add_constraints!(
             cons[g.name, t] = JuMP.@constraint(
                 jump_model,
                 pft[g.name, t] ==
-                -g.adm.b * (va[g.from_name, t] - va[g.to_name, t] - g.adm.shift),
+                g.b_dc * (va[g.from_name, t] - va[g.to_name, t] - g.shift_dc),
             )
         end
     end
@@ -3414,10 +3393,11 @@ end
 """
 Add the DCPLL quadratic line-loss constraint:
 
-    p_fr + p_to >= r * p_fr^2,   r = g / (g^2 + b^2)
+    p_fr + p_to >= r * p_fr^2
 
 The sum of the two directional flows must cover the resistive loss. At the cost-minimizing
-optimum this binds, so the to-bus receives p_fr minus the loss. Convex (Ipopt).
+optimum this binds, so the to-bus receives p_fr minus the loss. Convex (Ipopt). `r` is the
+DC equivalent series resistance from `PNM.arc_dc_resistance`.
 """
 function add_constraints!(
     container::OptimizationContainer,
@@ -3441,7 +3421,7 @@ function add_constraints!(
 
     jump_model = get_jump_model(container)
     for g in geoms
-        r = g.adm.g / (g.adm.g^2 + g.adm.b^2)
+        r = g.r_dc
         for t in time_steps
             cons[g.name, t] = JuMP.@constraint(
                 jump_model,

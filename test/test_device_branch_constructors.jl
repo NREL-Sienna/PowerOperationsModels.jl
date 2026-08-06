@@ -198,8 +198,16 @@ end
             FlowActivePowerVariable,
             TwoTerminalGenericHVDCLine,
         )
-        @test check_variable_bounded(model_m, FlowActivePowerVariable, TwoWindingTransformer)
-        @test check_variable_bounded(model_m, FlowActivePowerVariable, TwoWindingTransformer)
+        @test check_variable_bounded(
+            model_m,
+            FlowActivePowerVariable,
+            TwoWindingTransformer,
+        )
+        @test check_variable_bounded(
+            model_m,
+            FlowActivePowerVariable,
+            TwoWindingTransformer,
+        )
 
         @test solve!(model_m) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
 
@@ -531,60 +539,60 @@ end
 end
 
 @testset "DC Power Flow Models for phase-shifting TwoWindingTransformer and Line" begin
-#     system = build_system(PSITestSystems, "c_sys5_uc")
-#
-#     line = get_component(Line, system, "1")
-#
-#     ps = TwoWindingTransformer(;
-#         name = get_name(line),
-#         available = true,
-#         active_power_flow = 0.0,
-#         reactive_power_flow = 0.0,
-#         r = get_r(line, PSY.SU),
-#         x = get_r(line, PSY.SU),
-#         primary_shunt = 0.0,
-#         tap = 1.0,
-#         α = 0.0,
-#         rating = get_rating(line, PSY.SU),
-#         arc = get_arc(line),
-#         base_power = get_base_power(system, PSY.NU),
-#     )
-#
-#     add_component!(system, ps)
-#     remove_component!(system, line)
-#
-#     template = get_template_dispatch_with_network(
-#         NetworkModel(PTDFNetworkModel; network_matrix = PTDF(system)),
-#     )
-#     set_device_model!(template, DeviceModel(TwoWindingTransformer, PhaseAngleControl))
-#     model_m = DecisionModel(template, system; optimizer = HiGHS_optimizer)
-#     @test build!(model_m; output_dir = mktempdir(; cleanup = true)) ==
-#           IOM.ModelBuildStatus.BUILT
-#
-#     @test check_variable_unbounded(
-#         model_m,
-#         FlowActivePowerVariable,
-#         TwoWindingTransformer,
-#     )
-#
-#     @test solve!(model_m) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
-#
-#     @test check_flow_variable_values(
-#         model_m,
-#         FlowActivePowerVariable,
-#         TwoWindingTransformer,
-#         "1",
-#         get_rating(ps, PSY.SU),
-#     )
-#
-#     @test check_flow_variable_values(
-#         model_m,
-#         PhaseShifterAngle,
-#         TwoWindingTransformer,
-#         "1",
-#         -π / 2,
-#         π / 2,
-#     )
+    #     system = build_system(PSITestSystems, "c_sys5_uc")
+    #
+    #     line = get_component(Line, system, "1")
+    #
+    #     ps = TwoWindingTransformer(;
+    #         name = get_name(line),
+    #         available = true,
+    #         active_power_flow = 0.0,
+    #         reactive_power_flow = 0.0,
+    #         r = get_r(line, PSY.SU),
+    #         x = get_r(line, PSY.SU),
+    #         primary_shunt = 0.0,
+    #         tap = 1.0,
+    #         α = 0.0,
+    #         rating = get_rating(line, PSY.SU),
+    #         arc = get_arc(line),
+    #         base_power = get_base_power(system, PSY.NU),
+    #     )
+    #
+    #     add_component!(system, ps)
+    #     remove_component!(system, line)
+    #
+    #     template = get_template_dispatch_with_network(
+    #         NetworkModel(PTDFNetworkModel; network_matrix = PTDF(system)),
+    #     )
+    #     set_device_model!(template, DeviceModel(TwoWindingTransformer, PhaseAngleControl))
+    #     model_m = DecisionModel(template, system; optimizer = HiGHS_optimizer)
+    #     @test build!(model_m; output_dir = mktempdir(; cleanup = true)) ==
+    #           IOM.ModelBuildStatus.BUILT
+    #
+    #     @test check_variable_unbounded(
+    #         model_m,
+    #         FlowActivePowerVariable,
+    #         TwoWindingTransformer,
+    #     )
+    #
+    #     @test solve!(model_m) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
+    #
+    #     @test check_flow_variable_values(
+    #         model_m,
+    #         FlowActivePowerVariable,
+    #         TwoWindingTransformer,
+    #         "1",
+    #         get_rating(ps, PSY.SU),
+    #     )
+    #
+    #     @test check_flow_variable_values(
+    #         model_m,
+    #         PhaseShifterAngle,
+    #         TwoWindingTransformer,
+    #         "1",
+    #         -π / 2,
+    #         π / 2,
+    #     )
 end
 
 @testset "AC Power Flow Models for TwoTerminalGenericHVDCLine  Flow Constraints and TwoWindingTransformer & TwoWindingTransformer Unbounded" begin
@@ -621,10 +629,26 @@ end
     model_m = DecisionModel(template, system; optimizer = ipopt_optimizer)
     @test build!(model_m; output_dir = mktempdir(; cleanup = true)) ==
           IOM.ModelBuildStatus.BUILT
-    @test check_variable_bounded(model_m, FlowActivePowerFromToVariable, TwoWindingTransformer)
-    @test check_variable_bounded(model_m, FlowReactivePowerFromToVariable, TwoWindingTransformer)
-    @test check_variable_bounded(model_m, FlowActivePowerToFromVariable, TwoWindingTransformer)
-    @test check_variable_bounded(model_m, FlowReactivePowerToFromVariable, TwoWindingTransformer)
+    @test check_variable_bounded(
+        model_m,
+        FlowActivePowerFromToVariable,
+        TwoWindingTransformer,
+    )
+    @test check_variable_bounded(
+        model_m,
+        FlowReactivePowerFromToVariable,
+        TwoWindingTransformer,
+    )
+    @test check_variable_bounded(
+        model_m,
+        FlowActivePowerToFromVariable,
+        TwoWindingTransformer,
+    )
+    @test check_variable_bounded(
+        model_m,
+        FlowReactivePowerToFromVariable,
+        TwoWindingTransformer,
+    )
 
     psi_constraint_test(model_m, ratelimit_constraint_keys)
 
