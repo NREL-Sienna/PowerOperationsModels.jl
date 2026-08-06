@@ -283,6 +283,7 @@ function _add_time_series_parameters!(
     ts_name = _get_time_series_name(T, first(devices), model)
     model_interval = get_interval(get_settings(container))
     ts_interval = model_interval
+    model_resolution = get_resolution(get_settings(container))
     device_name_axis, ts_uuid_axis =
         get_branch_argument_parameter_axes(
             net_reduction_data,
@@ -290,6 +291,7 @@ function _add_time_series_parameters!(
             ts_type,
             ts_name;
             interval = ts_interval,
+            resolution = model_resolution,
         )
     if isempty(device_name_axis)
         @info "No devices with time series $ts_name found for $D devices. Skipping parameter addition."
@@ -305,7 +307,9 @@ function _add_time_series_parameters!(
         D,
         ts_type,
         ts_name,
-        ts_uuid_axis,
+        # Branches can share one stored series, so the UUID axis is deduplicated; the
+        # per-branch row lookups below already key by UUID and name separately.
+        unique(ts_uuid_axis),
         device_name_axis,
         additional_axes,
         time_steps,
@@ -347,6 +351,7 @@ function _add_time_series_parameters!(
                 device_with_time_series,
                 ts_name;
                 interval = ts_interval,
+                resolution = model_resolution,
             )
             ts_vals =
                 IOM.unwrap_for_param.((param_instance,), raw_ts_vals, (additional_axes,))
