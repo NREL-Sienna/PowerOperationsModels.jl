@@ -811,24 +811,46 @@ function _add_parameters!(
     ts_name = get_time_series_names(model)[T]
     time_steps = get_time_steps(container)
     model_interval = get_interval(get_settings(container))
-    ts_interval = model_interval
+    is_ts_interval = _to_is_interval(model_interval)
+    model_resolution = get_resolution(get_settings(container))
+    is_ts_resolution = _to_is_resolution(model_resolution)
     names = [PSY.get_name(s) for s in services]
-    ts_uuids = [
-        string(
+
+    # Services can share one stored time series, so the UUID parameter axis is deduplicated
+    # while the multiplier axis stays one row per service, joined by the name -> uuid map.
+    # `resolution` accompanies `interval` so an off-resolution series is rejected, not read.
+    service_ts_uuids = Dict{String, String}()
+    initial_values = Dict{String, AbstractArray}()
+    for (name, service) in zip(names, services)
+        ts_uuid = string(
             IS.get_time_series_uuid(
                 ts_type,
-                s,
+                service,
                 ts_name;
-                interval = _to_is_interval(ts_interval),
+                resolution = is_ts_resolution,
+                interval = is_ts_interval,
             ),
-        ) for s in services
-    ]
+        )
+        service_ts_uuids[name] = ts_uuid
+        if !haskey(initial_values, ts_uuid)
+            initial_values[ts_uuid] = IOM.get_time_series_initial_values!(
+                container,
+                ts_type,
+                service,
+                ts_name;
+                interval = model_interval,
+                resolution = model_resolution,
+            )
+        end
+    end
+
+    uuid_axis = collect(keys(initial_values))
     additional_axes = calc_additional_axes(container, T, services, model)
     parameter_container = add_param_container!(container, T,
         U,
         ts_type,
         ts_name,
-        ts_uuids,
+        uuid_axis,
         names,
         additional_axes,
         time_steps,
@@ -838,15 +860,19 @@ function _add_parameters!(
     attributes = IOM.get_attributes(parameter_container)
     parent_param = IOM.get_parameter_array_data(parameter_container)
     parent_mult = IOM.get_multiplier_array_data(parameter_container)
-    for (i, service) in enumerate(services)
-        name = names[i]
-        ts_vector = IOM.get_time_series(container, service, ts_name; interval = ts_interval)
-        multiplier = get_multiplier_value(T, service, V)
-        IOM._set_multiplier_at!(parent_mult, multiplier, i)
+
+    # Parameter rows follow `uuid_axis`, multiplier rows follow `names`; the two differ in
+    # length when services share a series.
+    for (i, ts_uuid) in enumerate(uuid_axis)
+        ts_vector = initial_values[ts_uuid]
         for t in time_steps
             IOM._set_parameter_at!(parent_param, jump_model, ts_vector[t], i, t)
         end
-        IOM.add_component_name!(attributes, name, ts_uuids[i])
+    end
+    for (i, service) in enumerate(services)
+        name = names[i]
+        IOM._set_multiplier_at!(parent_mult, get_multiplier_value(T, service, V), i)
+        IOM.add_component_name!(attributes, name, service_ts_uuids[name])
     end
     return
 end

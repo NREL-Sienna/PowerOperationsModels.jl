@@ -165,6 +165,85 @@ end
     end
 end
 
+@testset "Services sharing one requirement forecast share a parameter row" begin
+    # Bulk `add_time_series!` stores one array for both services, so both resolve to the same
+    # UUID. The UUID parameter axis must dedupe or JuMP rejects the repeated axis element.
+    sys = deepcopy(PSB.build_system(PSITestSystems, "c_sys5_uc"; add_reserves = true))
+    r1 = PSY.get_component(VariableReserve{ReserveUp}, sys, "Reserve1")
+    r11 = PSY.get_component(VariableReserve{ReserveUp}, sys, "Reserve11")
+    PSY.set_requirement!(r11, 2 * PSY.get_requirement(r1, PSY.SU) * PSY.SU)
+    forecast = PSY.get_time_series(PSY.Deterministic, r1, "requirement")
+    PSY.remove_time_series!(sys, PSY.Deterministic, r1, "requirement")
+    PSY.remove_time_series!(sys, PSY.Deterministic, r11, "requirement")
+    PSY.add_time_series!(sys, [r1, r11], forecast)
+    @test IS.get_time_series_uuid(PSY.Deterministic, r1, "requirement") ==
+          IS.get_time_series_uuid(PSY.Deterministic, r11, "requirement")
+
+    template = get_thermal_dispatch_template_network(CopperPlateNetworkModel)
+    set_service_model!(template, ServiceModel(VariableReserve{ReserveUp}, RangeReserve))
+    model = DecisionModel(template, sys; optimizer = HiGHS_optimizer)
+    @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
+          IOM.ModelBuildStatus.BUILT
+
+    container = get_optimization_container(model)
+    param_container = IOM.get_parameter(
+        container,
+        RequirementTimeSeriesParameter,
+        VariableReserve{ReserveUp},
+    )
+    # One parameter row for the shared series; still one multiplier row per service.
+    @test length(axes(IOM.get_parameter_array(param_container))[1]) == 1
+    @test Set(axes(IOM.get_multiplier_array(param_container))[1]) ==
+          Set(["Reserve1", "Reserve11"])
+
+    # Both services resolve to that single row through the name -> uuid map.
+    vals1 = jump_value.(IOM.get_parameter_column_refs(param_container, "Reserve1"))
+    vals11 = jump_value.(IOM.get_parameter_column_refs(param_container, "Reserve11"))
+    @test vals1 == vals11
+
+    # Sharing the profile does not merge the services: each keeps its own requirement scale.
+    multipliers = IOM.get_multiplier_array(param_container)
+    @test multipliers["Reserve11", 1] == 2 * multipliers["Reserve1", 1]
+end
+
+@testset "Service requirement time series must match the model resolution" begin
+    # `ReserveFast` carries a 5-minute requirement while the model runs hourly. That series
+    # must be rejected rather than silently read at the wrong resolution. The explicit
+    # `resolution` kwarg is required: `_reconcile_resolution!` errors first without it.
+    sys = deepcopy(PSB.build_system(PSITestSystems, "c_sys5_uc"; add_reserves = true))
+    fast = VariableReserve{ReserveUp}("ReserveFast", true, 60.0, 0.05)
+    PSY.add_service!(sys, fast, get_components(ThermalStandard, sys))
+    initial_time = DateTime("2024-01-01T00:00:00")
+    five_min_values = collect(range(0.01, 0.05; length = 288))
+    PSY.add_time_series!(
+        sys,
+        fast,
+        PSY.Deterministic(;
+            name = "requirement",
+            data = Dict(
+                initial_time => five_min_values,
+                initial_time + Day(1) => five_min_values,
+            ),
+            resolution = Minute(5),
+        ),
+    )
+    @test length(IOM.get_time_series_resolutions(sys)) == 2
+
+    template = get_thermal_dispatch_template_network(CopperPlateNetworkModel)
+    set_service_model!(template, ServiceModel(VariableReserve{ReserveUp}, RangeReserve))
+    model = DecisionModel(
+        template,
+        sys;
+        optimizer = HiGHS_optimizer,
+        resolution = Hour(1),
+    )
+    output_dir = mktempdir(; cleanup = true)
+    @test build!(model; output_dir = output_dir) == IOM.ModelBuildStatus.FAILED
+    # The build wraps its logging, so assert on the log rather than at the call site.
+    log_contents = read(joinpath(output_dir, "operation_problem.log"), String)
+    @test occursin("No matching metadata", log_contents)
+end
+
 @testset "Per-type populate errors when one service of the type has no contributing devices" begin
     # Under the per-type ServiceModel, one model covers every VariableReserve{ReserveUp}
     # service. A modeled reserve with no available contributing device can never meet its
