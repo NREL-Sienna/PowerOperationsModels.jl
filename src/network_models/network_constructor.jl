@@ -142,8 +142,8 @@ function construct_network!(
     return
 end
 
-# Generic active-power-only Argument stage: CopperPlate, AreaBalance, PTDF, AreaPTDF,
-# NFA. No voltage variables; only the (active) balance slacks.
+# Generic active-power-only Argument stage: CopperPlate, AreaBalance, NFA
+# No voltage variables; only the (active) balance slacks.
 function construct_network!(
     container::OptimizationContainer,
     sys::PSY.System,
@@ -152,6 +152,37 @@ function construct_network!(
     ::ArgumentConstructStage,
 )
     _add_balance_slack_variables!(container, sys, model; reactive = false)
+    return
+end
+
+function _add_dc_phase_shift_injections!(
+    container::OptimizationContainer,
+    model::NetworkModel{<:AbstractPTDFNetworkModel},
+)
+    network_reduction = get_network_reduction(model)
+    nodal_expr = get_expression(container, ActivePowerBalance, PSY.ACBus)
+    time_steps = get_time_steps(container)
+    for arc in PNM.get_arc_axis(network_reduction)
+        injection = PNM.arc_dc_shift_injection(network_reduction, arc)
+        iszero(injection) && continue
+        from_no, to_no = arc
+        for t in time_steps
+            JuMP.add_to_expression!(nodal_expr[from_no, t], injection)
+            JuMP.add_to_expression!(nodal_expr[to_no, t], -injection)
+        end
+    end
+    return
+end
+
+function construct_network!(
+    container::OptimizationContainer,
+    sys::PSY.System,
+    model::NetworkModel{<:AbstractPTDFNetworkModel},
+    ::PowerOperationsProblemTemplate,
+    ::ArgumentConstructStage,
+)
+    _add_balance_slack_variables!(container, sys, model; reactive = false)
+    _add_dc_phase_shift_injections!(container, model)
     return
 end
 

@@ -25,11 +25,6 @@ const TEST_DIR = @__DIR__
 #   - PowerFlows@psy6 does not precompile, so `PFS` is unavailable in the preamble
 const DISABLED_TESTS = Set([
     "test_ac_transmission_security_constrained_models",
-    "test_device_branch_constructors",
-    "test_native_dcp_acp_models",
-    "test_native_lpacc_model",
-    "test_native_network_reductions",
-    "test_native_tapcontrol",
     "test_pf_injection_resolver",
     "test_power_flow_in_the_loop",
     "test_voltage_control_tap_models",

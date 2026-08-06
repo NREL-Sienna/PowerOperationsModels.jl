@@ -353,11 +353,13 @@ function add_constraints!(
             # KCL at from terminal (tm → t)
             cons_cr_fr[name, t] = JuMP.@constraint(
                 jump_model,
-                cr_f * tt2 == tr * csr_b - ti * csi_b + g_fr * vr_f - b_fr * vi_f,
+                cr_f * tt2 ==
+                tr * csr_b - ti * csi_b + (g_fr * vr_f - b_fr * vi_f) * tt2,
             )
             cons_ci_fr[name, t] = JuMP.@constraint(
                 jump_model,
-                ci_f * tt2 == tr * csi_b + ti * csr_b + g_fr * vi_f + b_fr * vr_f,
+                ci_f * tt2 ==
+                tr * csi_b + ti * csr_b + (g_fr * vi_f + b_fr * vr_f) * tt2,
             )
 
             # KCL at to terminal (no tap)
