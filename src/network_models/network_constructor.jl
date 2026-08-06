@@ -103,6 +103,7 @@ _add_static_branch_btheta_expression!(
 # arguments, then network arguments, then device Model stage, then network Model stage
 # that closes the nodal balance). This is the only point in the build order where
 # `VoltageAngle` exists AND the nodal balance is still open for writes.
+# TODO: Maybe we build all argument stages first, including networks?
 function _add_static_branch_btheta_expression!(
     container::OptimizationContainer,
     sys::PSY.System,

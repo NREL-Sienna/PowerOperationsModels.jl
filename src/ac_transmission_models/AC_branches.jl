@@ -1100,8 +1100,7 @@ const BranchGeometry = @NamedTuple{
 
 # Per-branch geometry, un-reduced case (branch's own arc endpoints + PNM.branch_admittance).
 # Split per-branch so the caller's comprehension yields a concretely-typed vector.
-function _branch_geometry(d)
-    arc = _branch_arc(d)
+function _unreduced_geometry(arc::PSY.Arc)
     from_bus = PSY.get_from(arc)
     to_bus = PSY.get_to(arc)
     return (
@@ -1134,7 +1133,7 @@ _entry_admittance(entry::PSY.ACTransmission, ::PNM.NetworkReductionData) =
 
 # Geometry of one reduction entry (`name_to_arc_map` row). The reduced arc's endpoints
 # are always retained buses, so `number_to_name` (retained-only) covers them.
-function _entry_geometry(
+function _reduced_geometry(
     nr::PNM.NetworkReductionData,
     number_to_name::Dict{Int, String},
     name::String,
@@ -1207,6 +1206,11 @@ function _validate_controlled_branch_not_reduced(
     return
 end
 
+_get_arcs(d::ACTransmission) = (PSY.get_arc(d),)
+_get_arcs(d::TwoWindingTransformer) = (PSY.get_arc(PSY.get_circuit(d)),)
+_get_arcs(d::ThreeWindingTransformer) =
+    map(PSY.get_arc, (PSY.get_primary_circuit(d), PSY.get_secondary_circuit(d), PSY.get_tertiary_circuit(d)))
+
 """
 Per-branch network geometry for the native nodal constraint builders.
 
@@ -1228,14 +1232,15 @@ function _branch_geometries(
 ) where {T <: PSY.ACTransmission, C <: ConstraintType}
     nr = get_network_reduction(network_model)
     if isempty(nr)
-        return BranchGeometry[_branch_geometry(d) for d in devices]
+        arcs = collect(Iterators.flatten(_get_arcs(d) for d in devices))
+        return BranchGeometry[_unreduced_geometry(d) for d in devices]
     end
     tracker = get_reduced_branch_tracker(network_model)
     representative_names = get_branch_argument_constraint_axis(nr, tracker, T, C)
     arc_map = get_name_to_arc_map_entries(nr, T)
     all_branch_maps_by_type = PNM.get_all_branch_maps_by_type(nr)
     geoms = BranchGeometry[
-        _entry_geometry(
+        _reduced_geometry(
             nr,
             number_to_name,
             name,
