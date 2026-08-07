@@ -41,11 +41,11 @@ function get_variable_upper_bound(::Type{AncillaryServiceVariableDischarge}, r::
     return PSY.get_max_output_fraction(r) * PSY.get_output_active_power_limits(d, PSY.SU).max
 end
 
-function get_variable_upper_bound(::Type{AncillaryServiceVariableCharge}, r::PSY.ReserveDemandCurve, d::PSY.Storage, ::Type{<:AbstractStorageFormulation})
+function get_variable_upper_bound(::Type{AncillaryServiceVariableCharge}, r::Union{PSY.ReserveDemandCurve, PSY.ReserveDemandTimeSeriesCurve}, d::PSY.Storage, ::Type{<:AbstractStorageFormulation})
     return PSY.get_input_active_power_limits(d, PSY.SU).max
 end
 
-function get_variable_upper_bound(::Type{AncillaryServiceVariableDischarge}, r::PSY.ReserveDemandCurve, d::PSY.Storage, ::Type{<:AbstractStorageFormulation})
+function get_variable_upper_bound(::Type{AncillaryServiceVariableDischarge}, r::Union{PSY.ReserveDemandCurve, PSY.ReserveDemandTimeSeriesCurve}, d::PSY.Storage, ::Type{<:AbstractStorageFormulation})
     return PSY.get_output_active_power_limits(d, PSY.SU).max
 end
 
