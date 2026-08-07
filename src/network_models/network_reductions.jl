@@ -187,6 +187,7 @@ function get_branch_argument_parameter_axes(
     ::Type{V},
     ts_name::String;
     interval::Dates.Millisecond = IOM.UNSET_INTERVAL,
+    resolution::Dates.Millisecond = IOM.UNSET_RESOLUTION,
 ) where {T <: IS.InfrastructureSystemsComponent, V <: IS.TimeSeriesData}
     return get_branch_argument_parameter_axes(
         net_reduction_data,
@@ -194,6 +195,7 @@ function get_branch_argument_parameter_axes(
         V,
         ts_name;
         interval = interval,
+        resolution = resolution,
     )
 end
 
@@ -216,8 +218,10 @@ function get_branch_argument_parameter_axes(
     ::Type{V},
     ts_name::String;
     interval::Dates.Millisecond = IOM.UNSET_INTERVAL,
+    resolution::Dates.Millisecond = IOM.UNSET_RESOLUTION,
 ) where {T <: IS.InfrastructureSystemsComponent, V <: IS.TimeSeriesData}
     is_interval = IOM._to_is_interval(interval)
+    is_resolution = IOM._to_is_resolution(resolution)
     name_axis = Vector{String}()
     ts_uuid_axis = Vector{String}()
     arc_map = get(PNM.get_name_to_arc_maps(net_reduction_data), T, nothing)
@@ -236,6 +240,7 @@ function get_branch_argument_parameter_axes(
                         V,
                         device_with_time_series,
                         ts_name;
+                        resolution = is_resolution,
                         interval = is_interval,
                     ),
                 ),

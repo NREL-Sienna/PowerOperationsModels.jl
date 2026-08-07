@@ -104,7 +104,7 @@ get_offer_curves(::IOM.DecrementalOffer, op_cost::PSY.OfferCurveCost) =
 get_offer_curves(::IOM.IncrementalOffer, op_cost::PSY.OfferCurveCost) =
     get_output_offer_curves(op_cost)
 
-# direction and ORDC reserve service: the demand curve is carried on the service's
+# direction and operating reserve demand curve (ORDC) reserve service: the curve is on the
 # `variable` field (a CostCurve, static or time-series-backed) rather than split
 # across incremental/decremental sides. Direction is irrelevant to the lookup; the
 # service-side direction trait (`_reserve_offer_direction`) is decremental.

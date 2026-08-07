@@ -514,15 +514,15 @@ no-op.
 
 ## [Service Formulations](@id service_formulations)
 
-| Formulation                  | Service type                | Argument stage                                                                                 | Model stage                                                |
-|:---------------------------- |:--------------------------- |:---------------------------------------------------------------------------------------------- |:---------------------------------------------------------- |
-| `RangeReserve`               | `PSY.Reserve`               | `RequirementTimeSeriesParameter` (omitted for `ConstantReserve`), `ActivePowerReserveVariable` | `RequirementConstraint`, `ParticipationFractionConstraint` |
-| `RampReserve`                | `PSY.Reserve`               | as above                                                                                       | as above **+ `RampConstraint`**                            |
-| `NonSpinningReserve`         | `PSY.ReserveNonSpinning`    | as above, but **no** device-range expression wiring                                            | as above **+ `ReservePowerConstraint`**                    |
-| `StepwiseCostReserve` (ORDC) | `PSY.Reserve`               | `ServiceRequirementVariable` + ORDC slope/breakpoint parameters                                | `RequirementConstraint` only — no participation constraint |
-| `GroupReserve`               | `PSY.ConstantReserveGroup`  | no variables                                                                                   | `RequirementConstraint` across contributing services       |
-| `ConstantMaxInterfaceFlow`   | `PSY.TransmissionInterface` | optional slacks, `InterfaceTotalFlow` expression                                               | `InterfaceFlowLimit` (`"ub"`/`"lb"`)                       |
-| `VariableMaxInterfaceFlow`   | `PSY.TransmissionInterface` | as above **+ min/max flow-limit parameters**                                                   | as above, with parameterized limits                        |
+| Formulation                                            | Service type                | Argument stage                                                                                 | Model stage                                                |
+|:------------------------------------------------------ |:--------------------------- |:---------------------------------------------------------------------------------------------- |:---------------------------------------------------------- |
+| `RangeReserve`                                         | `PSY.Reserve`               | `RequirementTimeSeriesParameter` (omitted for `ConstantReserve`), `ActivePowerReserveVariable` | `RequirementConstraint`, `ParticipationFractionConstraint` |
+| `RampReserve`                                          | `PSY.Reserve`               | as above                                                                                       | as above **+ `RampConstraint`**                            |
+| `NonSpinningReserve`                                   | `PSY.ReserveNonSpinning`    | as above, but **no** device-range expression wiring                                            | as above **+ `ReservePowerConstraint`**                    |
+| `StepwiseCostReserve` (operating reserve demand curve) | `PSY.Reserve`               | `ServiceRequirementVariable` + demand-curve slope/breakpoint parameters                        | `RequirementConstraint` only — no participation constraint |
+| `GroupReserve`                                         | `PSY.ConstantReserveGroup`  | no variables                                                                                   | `RequirementConstraint` across contributing services       |
+| `ConstantMaxInterfaceFlow`                             | `PSY.TransmissionInterface` | optional slacks, `InterfaceTotalFlow` expression                                               | `InterfaceFlowLimit` (`"ub"`/`"lb"`)                       |
+| `VariableMaxInterfaceFlow`                             | `PSY.TransmissionInterface` | as above **+ min/max flow-limit parameters**                                                   | as above, with parameterized limits                        |
 
 `GroupReserve` is deliberately constructed **last** in both stages, because it aggregates the other
 services' variables.
@@ -586,8 +586,8 @@ commitment.
 
 Offer *direction* selects the delta family: generation is an `IncrementalOffer`; the charging side
 of storage, the import side of a `Source`, and controllable loads are `DecrementalOffer` (negative
-objective sign). ORDC reserve demand curves are also decremental, because a willingness-to-pay
-curve is concave.
+objective sign). Operating reserve demand curves are also decremental, because a
+willingness-to-pay curve is concave.
 
 ## [When to use `meta` versus a new key type](@id meta_vs_key_type)
 

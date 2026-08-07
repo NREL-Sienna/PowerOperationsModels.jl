@@ -321,6 +321,7 @@ include("network_models/network_constructor.jl")
 # Services Models
 include("services_models/service_slacks.jl")
 include("services_models/reserves.jl")
+include("services_models/reserve_offers.jl")
 include("services_models/reserve_group.jl")
 # include("services_models/agc.jl")  # TODO: needs _get_ace_error
 include("services_models/transmission_interface.jl")

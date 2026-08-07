@@ -721,6 +721,7 @@ function add_to_expression!(
     container::OptimizationContainer,
     ::Type{T},
     ::Type{U},
+    service::V,
     devices::Vector{UV},
     service_model::ServiceModel{V, W},
 ) where {
@@ -730,15 +731,15 @@ function add_to_expression!(
     V <: PSY.Reserve,
     W <: AbstractReservesFormulation,
 }
+    s_name = PSY.get_name(service)
+    variable = get_variable(container, U, V)
     for d in devices
         name = PSY.get_name(d)
-        s_name = get_service_name(service_model)
         expression = get_expression(container, T, UV, "$(V)_$(s_name)")
-        variable = get_variable(container, U, V, s_name)
         for t in get_time_steps(container)
             add_proportional_to_jump_expression!(
                 expression[name, t],
-                variable[name, t],
+                variable[(s_name, name, t)],
                 -1.0,
             )
         end

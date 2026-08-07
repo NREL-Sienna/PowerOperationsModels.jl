@@ -360,7 +360,7 @@ end
     )
     set_service_model!(
         template,
-        ServiceModel(VariableReserveNonSpinning, NonSpinningReserve, "NonSpinningReserve"),
+        ServiceModel(VariableReserveNonSpinning, NonSpinningReserve),
     )
 
     UC = DecisionModel(template, c_sys5; optimizer = HiGHS_optimizer)
@@ -371,12 +371,21 @@ end
     # This test needs to be reviewed
     # @test isapprox(get_objective_value(res), 256937.0; atol = 10000.0)
     vars = res.variable_values
+    # Reserve variables of a type share one container keyed
+    # `(service_name, device_name, time)`.
     service_key = IOM.VariableKey(
         ActivePowerReserveVariable,
         PSY.VariableReserveNonSpinning,
-        "NonSpinningReserve",
     )
     @test service_key in keys(vars)
+    # That container flattens to `"service_name__device_name"` result columns
+    # (WIDE format one column per flattened pair).
+    result = read_variable(
+        res,
+        "ActivePowerReserveVariable__VariableReserveNonSpinning";
+        table_format = TableFormat.WIDE,
+    )
+    @test any(startswith(string(n), "NonSpinningReserve__") for n in names(result))
 end
 
 @testset "Test serialization/deserialization of DecisionModel outputs" begin
