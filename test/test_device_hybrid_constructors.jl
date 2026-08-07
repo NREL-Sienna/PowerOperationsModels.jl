@@ -51,12 +51,15 @@ function _build_hybrid_template(
             attributes = attributes),
     )
     if with_reserves
+        # One `ServiceModel` per reserve TYPE now covers every service of that type; set
+        # each distinct type once. (The per-name `_NON_HYBRID_RESERVES` exclusion still
+        # governs which reserves are attached to the hybrid in `_build_hybrid_test_system`.)
+        modeled_types = Set{DataType}()
         for service in PSY.get_components(PSY.VariableReserve, sys)
-            s_name = PSY.get_name(service)
-            any(occursin(prefix, s_name) for prefix in _NON_HYBRID_RESERVES) && continue
-            POM.set_service_model!(template,
-                POM.ServiceModel(typeof(service), POM.RangeReserve, s_name),
-            )
+            T = typeof(service)
+            T in modeled_types && continue
+            push!(modeled_types, T)
+            POM.set_service_model!(template, POM.ServiceModel(T, POM.RangeReserve))
         end
     end
     return template

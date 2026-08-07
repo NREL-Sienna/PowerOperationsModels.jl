@@ -252,11 +252,11 @@ end =#
     set_device_model!(template, RenewableDispatch, FixedOutput)
     set_service_model!(
         template,
-        ServiceModel(VariableReserve{ReserveUp}, RangeReserve, "Reserve3"),
+        ServiceModel(VariableReserve{ReserveUp}, RangeReserve),
     )
     set_service_model!(
         template,
-        ServiceModel(VariableReserve{ReserveDown}, RangeReserve, "Reserve4"),
+        ServiceModel(VariableReserve{ReserveDown}, RangeReserve),
     )
 
     c_sys5_bat = PSB.build_system(PSITestSystems, "c_sys5_bat"; add_reserves = true)
@@ -371,11 +371,11 @@ end
     set_device_model!(template, RenewableDispatch, FixedOutput)
     set_service_model!(
         template,
-        ServiceModel(VariableReserve{ReserveUp}, RangeReserve, "Reserve3"),
+        ServiceModel(VariableReserve{ReserveUp}, RangeReserve),
     )
     set_service_model!(
         template,
-        ServiceModel(VariableReserve{ReserveDown}, RangeReserve, "Reserve4"),
+        ServiceModel(VariableReserve{ReserveDown}, RangeReserve),
     )
 
     c_sys5_bat = PSB.build_system(PSITestSystems, "c_sys5_bat"; add_reserves = true)
@@ -434,11 +434,11 @@ end
     set_device_model!(template, RenewableDispatch, FixedOutput)
     set_service_model!(
         template,
-        ServiceModel(VariableReserve{ReserveUp}, RangeReserve, "Reserve3"),
+        ServiceModel(VariableReserve{ReserveUp}, RangeReserve),
     )
     set_service_model!(
         template,
-        ServiceModel(VariableReserve{ReserveDown}, RangeReserve, "Reserve4"),
+        ServiceModel(VariableReserve{ReserveDown}, RangeReserve),
     )
 
     c_sys5_bat = PSB.build_system(PSITestSystems, "c_sys5_bat"; add_reserves = true)
@@ -464,11 +464,11 @@ end
     set_device_model!(template, RenewableDispatch, FixedOutput)
     set_service_model!(
         template,
-        ServiceModel(VariableReserve{ReserveUp}, RangeReserve, "Reserve3"),
+        ServiceModel(VariableReserve{ReserveUp}, RangeReserve),
     )
     set_service_model!(
         template,
-        ServiceModel(VariableReserve{ReserveDown}, RangeReserve, "Reserve4"),
+        ServiceModel(VariableReserve{ReserveDown}, RangeReserve),
     )
 
     c_sys5_bat = PSB.build_system(PSITestSystems, "c_sys5_bat"; add_reserves = true)

@@ -1980,6 +1980,7 @@ function add_to_expression!(
     container::OptimizationContainer,
     ::Type{T},
     ::Type{U},
+    service::X,
     devices::Union{Vector{V}, IS.FlattenIteratorWrapper{V}},
     model::ServiceModel{X, W},
 ) where {
@@ -1989,8 +1990,8 @@ function add_to_expression!(
     X <: PSY.Reserve{PSY.ReserveUp},
     W <: AbstractReservesFormulation,
 }
-    service_name = get_service_name(model)
-    variable = get_variable(container, U, X, service_name)
+    service_name = PSY.get_name(service)
+    variable = get_variable(container, U, X)
     if !has_container_key(container, T, V)
         add_expressions!(container, T, devices, model)
     end
@@ -1998,7 +1999,11 @@ function add_to_expression!(
     time_steps = get_time_steps(container)
     for d in devices, t in time_steps
         name = PSY.get_name(d)
-        add_proportional_to_jump_expression!(expression[name, t], variable[name, t], 1.0)
+        add_proportional_to_jump_expression!(
+            expression[name, t],
+            variable[(service_name, name, t)],
+            1.0,
+        )
     end
     return
 end
@@ -2016,7 +2021,7 @@ function add_to_expression!(
 }
     expression = get_expression(container, InterfaceTotalFlow, PSY.TransmissionInterface)
     service_name = PSY.get_name(service)
-    variable = get_variable(container, T, PSY.TransmissionInterface, service_name)
+    variable = get_variable(container, T, PSY.TransmissionInterface)
     time_steps = get_time_steps(container)
     for t in time_steps
         add_proportional_to_jump_expression!(
@@ -2101,9 +2106,9 @@ function add_to_expression!(
 ) where {V <: Union{ConstantMaxInterfaceFlow, VariableMaxInterfaceFlow}}
     net_reduction_data = get_network_reduction(network_model)
     expression = get_expression(container, InterfaceTotalFlow, PSY.TransmissionInterface)
-    service_name = get_service_name(model)
+    service_name = PSY.get_name(service)
     direction_map = PSY.get_direction_mapping(service)
-    contributing_devices_map = get_contributing_devices_map(model)
+    contributing_devices_map = get_contributing_devices_map(model, service_name)
     for (br_type, contributing_devices) in contributing_devices_map
         variable = get_variable(container, FlowActivePowerVariable, br_type)
         _handle_nodal_or_zonal_interfaces(
@@ -2131,9 +2136,9 @@ function add_to_expression!(
 ) where {V <: Union{ConstantMaxInterfaceFlow, VariableMaxInterfaceFlow}}
     net_reduction_data = get_network_reduction(network_model)
     expression = get_expression(container, InterfaceTotalFlow, PSY.TransmissionInterface)
-    service_name = get_service_name(model)
+    service_name = PSY.get_name(service)
     direction_map = PSY.get_direction_mapping(service)
-    contributing_devices_map = get_contributing_devices_map(model)
+    contributing_devices_map = get_contributing_devices_map(model, service_name)
     for (br_type, contributing_devices) in contributing_devices_map
         if has_container_key(container, BThetaBranchFlow, br_type)
             flow = get_expression(container, BThetaBranchFlow, br_type)
@@ -2172,9 +2177,9 @@ function add_to_expression!(
 ) where {V <: Union{ConstantMaxInterfaceFlow, VariableMaxInterfaceFlow}}
     net_reduction_data = get_network_reduction(network_model)
     expression = get_expression(container, InterfaceTotalFlow, PSY.TransmissionInterface)
-    service_name = get_service_name(model)
+    service_name = PSY.get_name(service)
     direction_map = PSY.get_direction_mapping(service)
-    contributing_devices_map = get_contributing_devices_map(model)
+    contributing_devices_map = get_contributing_devices_map(model, service_name)
     # Ignore interfaces over lines for AreaPTDFModel
     if !_is_interchanges_interfaces(contributing_devices_map)
         return
@@ -2201,9 +2206,9 @@ function add_to_expression!(
 ) where {V <: Union{ConstantMaxInterfaceFlow, VariableMaxInterfaceFlow}}
     net_reduction_data = get_network_reduction(network_model)
     expression = get_expression(container, InterfaceTotalFlow, PSY.TransmissionInterface)
-    service_name = get_service_name(model)
+    service_name = PSY.get_name(service)
     direction_map = PSY.get_direction_mapping(service)
-    contributing_devices_map = get_contributing_devices_map(model)
+    contributing_devices_map = get_contributing_devices_map(model, service_name)
     # Interfaces over interchanges
     if _is_interchanges_interfaces(contributing_devices_map)
         return
@@ -2378,6 +2383,7 @@ function add_to_expression!(
     container::OptimizationContainer,
     ::Type{T},
     ::Type{U},
+    service::X,
     devices::Union{Vector{V}, IS.FlattenIteratorWrapper{V}},
     model::ServiceModel{X, W},
 ) where {
@@ -2387,8 +2393,8 @@ function add_to_expression!(
     X <: PSY.Reserve{PSY.ReserveDown},
     W <: AbstractReservesFormulation,
 }
-    service_name = get_service_name(model)
-    variable = get_variable(container, U, X, service_name)
+    service_name = PSY.get_name(service)
+    variable = get_variable(container, U, X)
     if !has_container_key(container, T, V)
         add_expressions!(container, T, devices, model)
     end
@@ -2396,7 +2402,11 @@ function add_to_expression!(
     time_steps = get_time_steps(container)
     for d in devices, t in time_steps
         name = PSY.get_name(d)
-        add_proportional_to_jump_expression!(expression[name, t], variable[name, t], -1.0)
+        add_proportional_to_jump_expression!(
+            expression[name, t],
+            variable[(service_name, name, t)],
+            -1.0,
+        )
     end
     return
 end
@@ -2472,15 +2482,16 @@ end
 function add_to_expression!(
     container::OptimizationContainer,
     ::Type{U},
+    service::V,
     model::ServiceModel{V, W},
     devices_template::Dict{Symbol, DeviceModel},
 ) where {U <: VariableType, V <: PSY.Reserve, W <: AbstractReservesFormulation}
-    contributing_devices_map = get_contributing_devices_map(model)
+    contributing_devices_map = get_contributing_devices_map(model, PSY.get_name(service))
     for (device_type, devices) in contributing_devices_map
         device_model = get(devices_template, Symbol(device_type), nothing)
         device_model === nothing && continue
         expression_type = get_expression_type_for_reserve(U, device_type, V)
-        add_to_expression!(container, expression_type, U, devices, model)
+        add_to_expression!(container, expression_type, U, service, devices, model)
     end
     return
 end
@@ -2963,6 +2974,9 @@ function add_to_expression!(
     return
 end
 
+# Add a reserve service's demand-curve cost term into the dense `(service_name, time)`
+# cost-expression container at this service/time slot (a no-op if the container was not built).
+# Same shape as the device `ProductionCostExpression` path above.
 function add_to_expression!(
     container::OptimizationContainer,
     ::Type{S},
@@ -2973,9 +2987,8 @@ function add_to_expression!(
     S <: CostExpressions,
     T <: Union{PSY.ReserveDemandCurve, PSY.ReserveDemandTimeSeriesCurve},
 }
-    if has_container_key(container, S, T, PSY.get_name(component))
-        device_cost_expression =
-            get_expression(container, S, T, PSY.get_name(component))
+    if has_container_key(container, S, T)
+        device_cost_expression = get_expression(container, S, T)
         component_name = PSY.get_name(component)
         JuMP.add_to_expression!(
             device_cost_expression[component_name, time_period],

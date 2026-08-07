@@ -54,12 +54,11 @@ function get_initial_conditions_template(
 
     for service_model in values(get_service_models(model.template))
         base_model = get_initial_conditions_service_model(model, service_model)
-        base_model.service_name = service_model.service_name
         base_model.contributing_devices_map = service_model.contributing_devices_map
         base_model.use_slacks = service_model.use_slacks
         base_model.time_series_names = service_model.time_series_names
         base_model.attributes = service_model.attributes
-        set_service_model!(ic_template, get_service_name(service_model), base_model)
+        set_service_model!(ic_template, base_model)
     end
     _reset_reduced_branch_tracker!(network_model, number_of_steps)
     if !isempty(get_service_models(model.template))

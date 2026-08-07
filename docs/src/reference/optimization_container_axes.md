@@ -32,17 +32,16 @@ Two failure modes to watch for when touching any of these:
 The 2nd (or, for the two system-wide/service-keyed cases, 1st) axis is always exactly one
 element. Always indexed downstream with **both** keys — never a single key.
 
-| Container type                                                | File                                           | Placeholder axis              | Notes                                                                                                                                                                                                                                      |
-|:------------------------------------------------------------- |:---------------------------------------------- |:----------------------------- |:------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `StateofChargeTargetConstraint`                               | `energy_storage_models/storage_models.jl`      | `[time_steps[end]]`           | End-of-horizon state-of-charge target; indexed `[name, time_steps[end]]`.                                                                                                                                                                  |
-| `StorageCyclingCharge` / `StorageCyclingDischarge`            | `energy_storage_models/storage_models.jl`      | `[time_steps[end]]`           | Whole-horizon cycling budget; indexed `[name, time_steps[end]]`.                                                                                                                                                                           |
-| `EnergyBudgetConstraint` / `WaterBudgetConstraint`            | `static_injector_models/hydro_generation.jl`   | `["horizon"]`                 | Whole-horizon energy/water budget; indexed `[name, "horizon"]`. (The budget-interval variant of `EnergyBudgetConstraint` uses a real multi-element `eachindex(windows)` axis instead — not a placeholder.)                                 |
-| `ReservoirLevelTargetConstraint`                              | `static_injector_models/hydro_generation.jl`   | `[time_steps[end]]`           | End-of-horizon reservoir level target; indexed `[name, time_steps[end]]`.                                                                                                                                                                  |
-| `ImportExportBudgetConstraint` (`meta = "import"`/`"export"`) | `static_injector_models/source.jl`             | `["horizon"]`                 | Whole-horizon import/export budget; indexed `[name, "horizon"]`.                                                                                                                                                                           |
-| `ActiveRangeICConstraint`                                     | `static_injector_models/thermal_generation.jl` | `[1]`                         | End-of-horizon initial-condition range constraint; indexed `[name, 1]`.                                                                                                                                                                    |
-| `SteadyStateFrequencyDeviation` (variable + constraint)       | `services_models/agc.jl`                       | `["System"]` (1st axis)       | System-wide AGC scalar; indexed `["System", t]`. **Dead code** — `agc.jl` is not `include`d in `PowerOperationsModels.jl` (needs `_get_ace_error`), so this is unreachable today; kept consistent for when it's re-enabled.                |
-| `ReserveRequirementSlack`                                     | `services_models/service_slacks.jl`            | `[service_name]` (1st axis)   | Built via the `meta`-keyword overload (`add_variable_container!(container, T, U, [service_name], time_steps; meta=service_name)`) so `meta` still disambiguates same-type services while the axis stays real; indexed `[service_name, t]`. |
-| `InterfaceFlowSlackUp` / `InterfaceFlowSlackDown`             | `services_models/service_slacks.jl`            | `[interface_name]` (1st axis) | Same pattern as `ReserveRequirementSlack`; indexed `[interface_name, t]`.                                                                                                                                                                  |
+| Container type                                                | File                                           | Placeholder axis              | Notes                                                                                                                                                                                                                       |
+|:------------------------------------------------------------- |:---------------------------------------------- |:----------------------------- |:--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `StateofChargeTargetConstraint`                               | `energy_storage_models/storage_models.jl`      | `[time_steps[end]]`           | End-of-horizon state-of-charge target; indexed `[name, time_steps[end]]`.                                                                                                                                                   |
+| `StorageCyclingCharge` / `StorageCyclingDischarge`            | `energy_storage_models/storage_models.jl`      | `[time_steps[end]]`           | Whole-horizon cycling budget; indexed `[name, time_steps[end]]`.                                                                                                                                                            |
+| `EnergyBudgetConstraint` / `WaterBudgetConstraint`            | `static_injector_models/hydro_generation.jl`   | `["horizon"]`                 | Whole-horizon energy/water budget; indexed `[name, "horizon"]`. (The budget-interval variant of `EnergyBudgetConstraint` uses a real multi-element `eachindex(windows)` axis instead — not a placeholder.)                  |
+| `ReservoirLevelTargetConstraint`                              | `static_injector_models/hydro_generation.jl`   | `[time_steps[end]]`           | End-of-horizon reservoir level target; indexed `[name, time_steps[end]]`.                                                                                                                                                   |
+| `ImportExportBudgetConstraint` (`meta = "import"`/`"export"`) | `static_injector_models/source.jl`             | `["horizon"]`                 | Whole-horizon import/export budget; indexed `[name, "horizon"]`.                                                                                                                                                            |
+| `ActiveRangeICConstraint`                                     | `static_injector_models/thermal_generation.jl` | `[1]`                         | End-of-horizon initial-condition range constraint; indexed `[name, 1]`.                                                                                                                                                     |
+| `SteadyStateFrequencyDeviation` (variable + constraint)       | `services_models/agc.jl`                       | `["System"]` (1st axis)       | System-wide AGC scalar; indexed `["System", t]`. **Dead code** — `agc.jl` is not `include`d in `PowerOperationsModels.jl` (needs `_get_ace_error`), so this is unreachable today; kept consistent for when it's re-enabled. |
+| `InterfaceFlowSlackUp` / `InterfaceFlowSlackDown`             | `services_models/service_slacks.jl`            | `[interface_name]` (1st axis) | One **dense** container per (slack variable type, `TransmissionInterface`), built once over all interfaces with no `meta` and filled per interface; the axis is real (interface names), indexed `[interface_name, t]`.      |
 
 Also already-2D-by-construction, kept here for completeness (2nd axis is a true singleton but
 was never a bare 1D container — no fix needed, just easy to misread as one):
@@ -66,18 +65,60 @@ loop, so no bug there; it just isn't part of the "always exactly one column" fam
 
 ## 3D containers
 
-| Container type                                                              | File                                           | Notes                                                                                                                          |
-|:--------------------------------------------------------------------------- |:---------------------------------------------- |:------------------------------------------------------------------------------------------------------------------------------ |
-| `HydroTurbineFlowRateVariable`                                              | `static_injector_models/hydro_generation.jl`   | Indexed `[turbine_name, reservoir_name, time_step]` — flow rate depends on both the turbine and which reservoir it draws from. |
-| `StartupInitialConditionConstraint` (`meta = "ub"`/`"lb"`, `sparse = true`) | `static_injector_models/thermal_generation.jl` | `SparseAxisArray` indexed `[name, time_step, start_stage]`.                                                                    |
+| Container type                                                                | File                                           | Notes                                                                                                                                                                        |
+|:----------------------------------------------------------------------------- |:---------------------------------------------- |:---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `HydroTurbineFlowRateVariable`                                                | `static_injector_models/hydro_generation.jl`   | Indexed `[turbine_name, reservoir_name, time_step]` — flow rate depends on both the turbine and which reservoir it draws from.                                               |
+| `StartupInitialConditionConstraint` (`meta = "ub"`/`"lb"`, `sparse = true`)   | `static_injector_models/thermal_generation.jl` | `SparseAxisArray` indexed `[name, time_step, start_stage]`.                                                                                                                  |
+| `ActivePowerReserveVariable`                                                  | `services_models/reserves.jl`                  | `SparseAxisArray` keyed `(service_name, device_name, time_step)`. One container per service type; each service fills its own slice. See the service-container section below. |
+| `ParticipationFractionConstraint`, `RampConstraint`, `ReservePowerConstraint` | `services_models/reserves.jl`                  | `SparseAxisArray` keyed `(service_name, device_name, time_step)`, matching the reserve variable above.                                                                       |
+| `ReserveOfferLinkingConstraint`                                               | `services_models/reserve_offers.jl`            | `SparseAxisArray` keyed `(service_name, device_name, time_step)`. Ties a device's reserve award to its offer-curve blocks.                                                   |
 
-Everything else built via `add_*_container!` is 2D `[device_name, time_step]`, including the
-practically-1D singleton-second-axis containers above — they're still 2 axes and follow the
-normal `container[name, t]` indexing pattern.
+## 4D containers
+
+| Container type                     | File                                | Notes                                                                                                                                                                                |
+|:---------------------------------- |:----------------------------------- |:------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `PiecewiseLinearBlockReserveOffer` | `services_models/reserve_offers.jl` | `SparseAxisArray` keyed `(service_name, device_name, segment, time_step)` — the offer-curve segment axis on top of the 3D reserve award. Built directly, not via `add_*_container!`. |
 
 ### MarketBidCost PWL block-offer variables: a 3D container that bypasses `add_*_container!`
 
 Time-varying offer-curve costs (`MarketBidCost`, `ImportExportCost`, and the
-`ReserveDemandCurve`/ORDC service cost) use a genuinely 3D structure — `(device_name, pwl_segment_index, time_step)` — but it is **not** built via the `add_*_container!` +
+`ReserveDemandCurve` operating reserve demand curve service cost) use a genuinely 3D structure — `(device_name, pwl_segment_index, time_step)` — but it is **not** built via the `add_*_container!` +
 `Vararg` axes mechanism documented above. It's a `SparseAxisArray{JuMP.VariableRef}` keyed
 by `Tuple{String, Int, Int}`, constructed as empty and populated per-`(name, t)` by IOM.
+
+### Service (reserve) containers, keyed by service type
+
+Service models are registered **per type** — `set_service_model!(template, ServiceModel(VariableReserve{ReserveUp}, RangeReserve))`, no service name, exactly like
+`set_device_model!`. `construct_service!` runs once per type: it iterates the type's
+services (`get_available_components(model, sys)`) and reads each service's contributing
+devices from the model's per-service `contributing_devices_map`. All services of a given
+`(entry type, service type)` share one container with empty `meta`, carrying the service
+name as an axis value rather than in the `meta` field. Density follows whether the entry
+depends on the contributing-device axis:
+
+  - **Device-indexed entries** (depend on contributing devices) - `ActivePowerReserveVariable`,
+    `ParticipationFractionConstraint`, `RampConstraint`, `ReservePowerConstraint` - are one
+    `SparseAxisArray` keyed `(service_name, device_name, time_step)`. Sparse because each
+    service's contributing-device set is ragged. Filled per service via
+    `lazy_container_addition!(...; sparse = true)`; indexed `container[(service_name, device_name, t)]`.
+  - **Service-indexed entries** (no dependence on contributing devices) -
+    `RequirementConstraint`, `ReserveRequirementSlack`, `ServiceRequirementVariable`, and the
+    `RequirementTimeSeriesParameter` - are one **dense** container per service type keyed
+    `(service_name, time_step)`, built once over all the type's services (reusing the same
+    dense component builders devices use) and filled per service; indexed
+    `container[service_name, t]`. `use_slacks` is per type: `ReserveRequirementSlack` is built
+    over all the type's services when the type uses slacks, and omitted otherwise.
+
+The service duals mirror the constraint containers. Results flatten leading dimensions to
+encoded columns, e.g. `ActivePowerReserveVariable__<ServiceType>` with
+`"service_name__device_name"` columns (WIDE), mirroring the PWL block-offer flattening
+above. The transmission-interface flow-limit parameters and slacks and the reserve demand
+curve (`StepwiseCostReserve`) piecewise cost parameters are likewise **dense** per-type containers
+with empty `meta`, built once over all the type's services/interfaces. The storage/hybrid
+reserve sub-containers are the remaining `meta`-keyed service containers.
+
+## Everything else is 2D
+
+Anything not listed above is built via `add_*_container!` as 2D `[device_name, time_step]`,
+including the practically-1D singleton-second-axis containers - they're still 2 axes and
+follow the normal `container[name, t]` indexing pattern.

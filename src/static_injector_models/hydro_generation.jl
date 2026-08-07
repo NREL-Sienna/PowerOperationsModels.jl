@@ -2691,26 +2691,21 @@ function add_to_expression!(
     expression = get_expression(container, T, V)
     for d in devices
         name = PSY.get_name(d)
-        service_models = get_services(model)
-        for service_model in service_models
-            service_name = get_service_name(service_model)
-            services = PSY.get_services(d)
-            service_ix = findfirst(x -> PSY.get_name(x) == service_name, services)
-            if isnothing(service_ix)
-                #Device does not participate in this service but others might. Skipping.
-                continue
-            end
-            service = services[service_ix]
-            if isa(service, PSY.Reserve{PSY.ReserveUp})
+        # One `ServiceModel` per reserve type. Iterate the device's own services and
+        # match those whose type is modeled (a service model of that type is attached),
+        # using each matching service's own name for the reserve-variable index.
+        for service_model in get_services(model)
+            S = get_component_type(service_model)
+            for service in PSY.get_services(d)
+                typeof(service) <: S || continue
+                isa(service, PSY.Reserve{PSY.ReserveUp}) || continue
+                service_name = PSY.get_name(service)
                 deployed_fraction = PSY.get_deployed_fraction(service)
-                variable = get_variable(container, U,
-                    typeof(service),
-                    service_name,
-                )
+                variable = get_variable(container, U, typeof(service))
                 for t in get_time_steps(container)
                     add_proportional_to_jump_expression!(
                         expression[name, t],
-                        variable[name, t],
+                        variable[(service_name, name, t)],
                         deployed_fraction,
                     )
                 end
@@ -2736,27 +2731,20 @@ function add_to_expression!(
     expression = get_expression(container, T, V)
     for d in devices
         name = PSY.get_name(d)
-        service_models = get_services(model)
-        for service_model in service_models
-            service_name = get_service_name(service_model)
-            # Find service with the same name of the service_model, that should exist in the device
-            services = PSY.get_services(d)
-            service_ix = findfirst(x -> PSY.get_name(x) == service_name, services)
-            if isnothing(service_ix)
-                #Device does not participate in this service but others might. Skipping.
-                continue
-            end
-            service = services[service_ix]
-            if isa(service, PSY.Reserve{PSY.ReserveDown})
+        # One `ServiceModel` per reserve type. Iterate the device's own services and
+        # match those whose type is modeled, using each matching service's own name.
+        for service_model in get_services(model)
+            S = get_component_type(service_model)
+            for service in PSY.get_services(d)
+                typeof(service) <: S || continue
+                isa(service, PSY.Reserve{PSY.ReserveDown}) || continue
+                service_name = PSY.get_name(service)
                 deployed_fraction = PSY.get_deployed_fraction(service)
-                variable = get_variable(container, U,
-                    typeof(service),
-                    service_name,
-                )
+                variable = get_variable(container, U, typeof(service))
                 for t in get_time_steps(container)
                     add_proportional_to_jump_expression!(
                         expression[name, t],
-                        variable[name, t],
+                        variable[(service_name, name, t)],
                         deployed_fraction,
                     )
                 end
@@ -2810,6 +2798,7 @@ function add_to_expression!(
     container::OptimizationContainer,
     ::Type{T},
     ::Type{U},
+    service::X,
     devices::Union{Vector{V}, IS.FlattenIteratorWrapper{V}},
     model::ServiceModel{X, W},
 ) where {
@@ -2819,15 +2808,19 @@ function add_to_expression!(
     X <: PSY.Reserve{PSY.ReserveUp},
     W <: AbstractReservesFormulation,
 }
-    service_name = get_service_name(model)
-    variable = get_variable(container, U, X, service_name)
+    service_name = PSY.get_name(service)
+    variable = get_variable(container, U, X)
     if !has_container_key(container, T, V)
         add_expressions!(container, T, devices, model)
     end
     expression = get_expression(container, T, V)
     for d in devices, t in get_time_steps(container)
         name = PSY.get_name(d)
-        add_proportional_to_jump_expression!(expression[name, t], variable[name, t], 1.0)
+        add_proportional_to_jump_expression!(
+            expression[name, t],
+            variable[(service_name, name, t)],
+            1.0,
+        )
     end
     return
 end
@@ -2836,6 +2829,7 @@ function add_to_expression!(
     container::OptimizationContainer,
     ::Type{T},
     ::Type{U},
+    service::X,
     devices::Union{Vector{V}, IS.FlattenIteratorWrapper{V}},
     model::ServiceModel{X, W},
 ) where {
@@ -2845,15 +2839,19 @@ function add_to_expression!(
     X <: PSY.Reserve{PSY.ReserveDown},
     W <: AbstractReservesFormulation,
 }
-    service_name = get_service_name(model)
-    variable = get_variable(container, U, X, service_name)
+    service_name = PSY.get_name(service)
+    variable = get_variable(container, U, X)
     if !has_container_key(container, T, V)
         add_expressions!(container, T, devices, model)
     end
     expression = get_expression(container, T, V)
     for d in devices, t in get_time_steps(container)
         name = PSY.get_name(d)
-        add_proportional_to_jump_expression!(expression[name, t], variable[name, t], -1.0)
+        add_proportional_to_jump_expression!(
+            expression[name, t],
+            variable[(service_name, name, t)],
+            -1.0,
+        )
     end
     return
 end
