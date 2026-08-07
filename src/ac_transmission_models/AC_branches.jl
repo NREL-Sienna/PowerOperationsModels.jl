@@ -355,7 +355,7 @@ function branch_rate_bounds!(
             @assert limits.min <= limits.max "Infeasible rate limits for branch $(name)"
             for t in time_steps
                 # Variable-creation defaults (MonitoredLine asymmetric limits,
-                # TwoWindingTransformer/TwoWindingTransformer ratings) are authoritative — never clobber
+                # TwoWindingTransformer ratings) are authoritative — never clobber
                 # an existing bound.
                 if !JuMP.has_upper_bound(var[name, t])
                     JuMP.set_upper_bound(var[name, t], limits.max)
@@ -778,7 +778,8 @@ function _make_flow_expressions!(
         @inbounds for i in nz_idx
             JuMP.add_to_expression!(acc, ptdf_col[i], nodal_balance_expressions[i, t])
         end
-        expressions[t] = acc + shift_offset
+        JuMP.add_to_expression!(acc, shift_offset)
+        expressions[t] = acc
     end
     return name, expressions
 end
@@ -805,7 +806,8 @@ function _make_flow_expressions!(
                 nodal_balance_expressions[nz_idx[k], t],
             )
         end
-        expressions[t] = acc + shift_offset
+        JuMP.add_to_expression!(acc, shift_offset)
+        expressions[t] = acc
     end
     return name, expressions
 end

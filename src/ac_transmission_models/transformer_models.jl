@@ -16,13 +16,6 @@
 # variable) is NOT part of this file — see voltage_control_tap_models.jl.
 #################################################################################
 
-#! format: off
-get_variable_upper_bound(::Type{FlowActivePowerFromToVariable}, d::PSY.TwoWindingTransformer, ::Type{<:AbstractBranchFormulation}) = PSY.get_rating(d, PSY.SU)
-get_variable_lower_bound(::Type{FlowActivePowerFromToVariable}, d::PSY.TwoWindingTransformer, ::Type{<:AbstractBranchFormulation}) = -1 * PSY.get_rating(d, PSY.SU)
-get_variable_upper_bound(::Type{FlowActivePowerToFromVariable}, d::PSY.TwoWindingTransformer, ::Type{<:AbstractBranchFormulation}) = PSY.get_rating(d, PSY.SU)
-get_variable_lower_bound(::Type{FlowActivePowerToFromVariable}, d::PSY.TwoWindingTransformer, ::Type{<:AbstractBranchFormulation}) = -1 * PSY.get_rating(d, PSY.SU)
-#! format: on
-
 """
 Add branch flow constraints for phase shifting transformers with DC Power Model
 """
