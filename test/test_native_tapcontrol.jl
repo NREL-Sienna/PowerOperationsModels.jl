@@ -10,7 +10,8 @@
     res = IOM.OptimizationProblemOutputs(model)
     base = IOM.get_model_base_power(res)
     flow = read_variable(
-        res, "FlowActivePowerVariable__TwoWindingTransformer"; table_format = TableFormat.WIDE,
+        res, "FlowActivePowerVariable__TwoWindingTransformer";
+        table_format = TableFormat.WIDE,
     )
     va = read_variable(res, "VoltageAngle__ACBus"; table_format = TableFormat.WIDE)
 

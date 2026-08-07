@@ -357,15 +357,33 @@ end
           IOM.ModelBuildStatus.BUILT
 
     container = IOM.get_optimization_container(model)
-    ptf = IOM.get_variable(container, FlowActivePowerToFromVariable, PSY.TwoWindingTransformer)
-    qft = IOM.get_variable(container, FlowReactivePowerFromToVariable, PSY.TwoWindingTransformer)
+    ptf = IOM.get_variable(
+        container,
+        FlowActivePowerToFromVariable,
+        PSY.TwoWindingTransformer,
+    )
+    qft = IOM.get_variable(
+        container,
+        FlowReactivePowerFromToVariable,
+        PSY.TwoWindingTransformer,
+    )
     vr = IOM.get_variable(container, VoltageReal, PSY.ACBus)
     vi = IOM.get_variable(container, VoltageImaginary, PSY.ACBus)
     tap = IOM.get_variable(container, TapRatioVariable, PSY.TwoWindingTransformer)
     con_ptf =
-        IOM.get_constraint(container, POM.NetworkFlowConstraint, PSY.TwoWindingTransformer, "p_tf")
+        IOM.get_constraint(
+            container,
+            POM.NetworkFlowConstraint,
+            PSY.TwoWindingTransformer,
+            "p_tf",
+        )
     con_qft =
-        IOM.get_constraint(container, POM.NetworkFlowConstraint, PSY.TwoWindingTransformer, "q_ft")
+        IOM.get_constraint(
+            container,
+            POM.NetworkFlowConstraint,
+            PSY.TwoWindingTransformer,
+            "q_ft",
+        )
 
     t = 1
     for d in Iterators.take(PSY.get_components(PSY.TwoWindingTransformer, sys), 3)
