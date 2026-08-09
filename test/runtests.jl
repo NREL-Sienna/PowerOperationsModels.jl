@@ -24,9 +24,7 @@ const TEST_DIR = @__DIR__
 #   - transformer control formulations / ThreeWindingTransformer are commented out in `src`
 #   - PowerFlows@psy6 does not precompile, so `PFS` is unavailable in the preamble
 const DISABLED_TESTS = Set([
-    "test_ac_transmission_security_constrained_models",
     "test_native_tapcontrol",
-    "test_power_flow_in_the_loop",
     "test_voltage_control_tap_models",
 ])
 

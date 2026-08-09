@@ -102,10 +102,8 @@ end
     @test solve!(model_m) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
 end
 
-@testset "DC Power Flow Models for TwoTerminalGenericHVDCLine  with with Line Flow Constraints, TwoWindingTransformer & TwoWindingTransformer Unbounded" begin
+@testset "DC Power Flow Models for TwoTerminalGenericHVDCLine  with with Line Flow Constraints, TwoWindingTransformer Unbounded" begin
     ratelimit_constraint_keys = [
-        IOM.ConstraintKey(FlowRateConstraint, TwoWindingTransformer, "ub"),
-        IOM.ConstraintKey(FlowRateConstraint, TwoWindingTransformer, "lb"),
         IOM.ConstraintKey(FlowRateConstraint, TwoWindingTransformer, "ub"),
         IOM.ConstraintKey(FlowRateConstraint, TwoWindingTransformer, "lb"),
     ]
@@ -128,7 +126,6 @@ end
             NetworkModel(model),
         )
         set_device_model!(template, TwoTerminalGenericHVDCLine, HVDCTwoTerminalLossless)
-        set_device_model!(template, DeviceModel(TwoWindingTransformer, StaticBranch))
         set_device_model!(template, DeviceModel(TwoWindingTransformer, StaticBranch))
         model_m = DecisionModel(template, system; optimizer = ipopt_optimizer)
         @test build!(model_m; output_dir = mktempdir(; cleanup = true)) ==
@@ -165,7 +162,7 @@ end
     end
 end
 
-@testset "DC Power Flow Models for Unbounded TwoTerminalGenericHVDCLine , and StaticBranchBounds for TwoWindingTransformer & TwoWindingTransformer" begin
+@testset "DC Power Flow Models for Unbounded TwoTerminalGenericHVDCLine , and StaticBranchBounds for TwoWindingTransformer" begin
     system = PSB.build_system(PSITestSystems, "c_sys14_dc")
     hvdc_line = PSY.get_component(TwoTerminalGenericHVDCLine, system, "DCLine3")
     limits_from = PSY.get_active_power_limits_from(hvdc_line, PSY.SU)
@@ -188,7 +185,6 @@ end
             DeviceModel(TwoTerminalGenericHVDCLine, HVDCTwoTerminalUnbounded),
         )
         set_device_model!(template, DeviceModel(TwoWindingTransformer, StaticBranchBounds))
-        set_device_model!(template, DeviceModel(TwoWindingTransformer, StaticBranchBounds))
         model_m = DecisionModel(template, system; optimizer = ipopt_optimizer)
         @test build!(model_m; output_dir = mktempdir(; cleanup = true)) ==
               IOM.ModelBuildStatus.BUILT
@@ -197,11 +193,6 @@ end
             model_m,
             FlowActivePowerVariable,
             TwoTerminalGenericHVDCLine,
-        )
-        @test check_variable_bounded(
-            model_m,
-            FlowActivePowerVariable,
-            TwoWindingTransformer,
         )
         @test check_variable_bounded(
             model_m,
@@ -472,13 +463,11 @@ end
     end
 end
 
-@testset "DC Power Flow Models for TwoTerminalGenericHVDCLine  Dispatch and TwoWindingTransformer & TwoWindingTransformer Unbounded" begin
+@testset "DC Power Flow Models for TwoTerminalGenericHVDCLine  Dispatch and TwoWindingTransformer Unbounded" begin
     ratelimit_constraint_keys = [
-        IOM.ConstraintKey(FlowRateConstraint, TwoWindingTransformer, "ub"),
         IOM.ConstraintKey(FlowRateConstraint, Line, "ub"),
         IOM.ConstraintKey(FlowRateConstraint, Line, "lb"),
         IOM.ConstraintKey(FlowRateConstraint, TwoWindingTransformer, "ub"),
-        IOM.ConstraintKey(FlowRateConstraint, TwoWindingTransformer, "lb"),
         IOM.ConstraintKey(FlowRateConstraint, TwoWindingTransformer, "lb"),
         IOM.ConstraintKey(FlowRateConstraint, TwoTerminalGenericHVDCLine, "ub"),
         IOM.ConstraintKey(FlowRateConstraint, TwoTerminalGenericHVDCLine, "lb"),
@@ -501,7 +490,6 @@ end
     template = get_template_dispatch_with_network(
         NetworkModel(PTDFNetworkModel),
     )
-    set_device_model!(template, DeviceModel(TwoWindingTransformer, StaticBranch))
     set_device_model!(template, DeviceModel(TwoWindingTransformer, StaticBranch))
     set_device_model!(
         template,
@@ -595,10 +583,8 @@ end
     #     )
 end
 
-@testset "AC Power Flow Models for TwoTerminalGenericHVDCLine  Flow Constraints and TwoWindingTransformer & TwoWindingTransformer Unbounded" begin
+@testset "AC Power Flow Models for TwoTerminalGenericHVDCLine  Flow Constraints and TwoWindingTransformer Unbounded" begin
     ratelimit_constraint_keys = [
-        IOM.ConstraintKey(FlowRateConstraintFromTo, TwoWindingTransformer),
-        IOM.ConstraintKey(FlowRateConstraintToFrom, TwoWindingTransformer),
         IOM.ConstraintKey(FlowRateConstraintFromTo, TwoWindingTransformer),
         IOM.ConstraintKey(FlowRateConstraintToFrom, TwoWindingTransformer),
         IOM.ConstraintKey(FlowRateConstraint, TwoTerminalGenericHVDCLine, "ub"),
@@ -621,7 +607,6 @@ end
 
     template = get_template_dispatch_with_network(ACPNetworkModel)
     set_device_model!(template, TwoWindingTransformer, StaticBranchBounds)
-    set_device_model!(template, TwoWindingTransformer, StaticBranchBounds)
     set_device_model!(
         template,
         DeviceModel(TwoTerminalGenericHVDCLine, HVDCTwoTerminalLossless),
@@ -631,17 +616,7 @@ end
           IOM.ModelBuildStatus.BUILT
     @test check_variable_bounded(
         model_m,
-        FlowActivePowerFromToVariable,
-        TwoWindingTransformer,
-    )
-    @test check_variable_bounded(
-        model_m,
         FlowReactivePowerFromToVariable,
-        TwoWindingTransformer,
-    )
-    @test check_variable_bounded(
-        model_m,
-        FlowActivePowerToFromVariable,
         TwoWindingTransformer,
     )
     @test check_variable_bounded(

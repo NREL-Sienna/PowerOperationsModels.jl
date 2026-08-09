@@ -1,4 +1,3 @@
-# TODO: reenable with tap control
 @testset "TapControl models transformer tap ratio under DCP (c_sys14)" begin
     sys = PSB.build_system(PSITestSystems, "c_sys14")
     template = get_thermal_dispatch_template_network(NetworkModel(DCPNetworkModel))
