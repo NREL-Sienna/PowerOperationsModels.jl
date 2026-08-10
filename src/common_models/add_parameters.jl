@@ -559,9 +559,15 @@ calc_additional_axes(
 #################################################################################
 
 function get_max_tranches(component::PSY.Component, piecewise_ts::IS.TimeSeriesKey)
-    data = PSY.get_data(PSY.get_time_series(component, piecewise_ts))
-    return IOM.get_max_tranches(data)
+    return IOM.get_max_tranches(_ordc_ts_data(PSY.get_time_series(component, piecewise_ts)))
 end
+
+# A real `Deterministic` exposes its windows via `get_data`. The `transform_single_time_series!`
+# product (`DeterministicSingleTimeSeries`) has no `get_data`, but its wrapped `SingleTimeSeries`
+# holds the same per-hour curves as a `TimeArray`, which `IOM.get_max_tranches` also accepts.
+_ordc_ts_data(ts) = PSY.get_data(ts)
+_ordc_ts_data(ts::IS.DeterministicSingleTimeSeries) =
+    PSY.get_data(IS.get_single_time_series(ts))
 
 # Batch form (mirrors the device methods below): size the tranche axis to the largest tranche
 # count across the type's services; shorter per-hour curves are padded in `unwrap_for_param`.

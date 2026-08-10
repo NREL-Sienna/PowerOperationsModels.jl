@@ -1479,3 +1479,69 @@ end
 # Hydro reserves (`HydroTurbineEnergyDispatch` absent), the old bare-`TimeSeriesKey` ORDC
 # tests (the current PowerSystems model uses `ReserveDemandTimeSeriesCurve`; covered by the two ORDC testsets above),
 # and all Simulation-orchestration testsets (Simulation framework absent in the IOM/POM split).
+
+# Time-varying ORDC support when the curve is attached as a `SingleTimeSeries` and materialized by
+# `transform_single_time_series!` (the ORDC testsets above attach a direct `Deterministic` with
+# thermal contributors, so neither path below is otherwise covered):
+#   (a) `StorageDispatchWithReserves` reserve bounds must accept `ReserveDemandTimeSeriesCurve`
+#       (only `ReserveDemandCurve` was specialized, so a storage contributor fell through to the
+#       generic method's `get_max_output_fraction`, which the demand curves lack).
+#   (b) `get_max_tranches` must handle the `DeterministicSingleTimeSeries` produced by transform
+#       (which has no `get_data`).
+
+@testset "StorageDispatchWithReserves reserve bound accepts ReserveDemandTimeSeriesCurve" begin
+    sys = PSB.build_system(PSITestSystems, "c_sys5_bat")
+    storage = first(get_components(PSY.EnergyReservoirStorage, sys))
+    ordc_ts = ReserveDemandTimeSeriesCurve{ReserveUp}(
+        stub_ts_offer_curve(; power_units = PSY.SU), "ORDC_TS", true, 1.0)
+    # Full input/output range (no get_max_output_fraction), exactly as for a static ReserveDemandCurve.
+    @test POM.get_variable_upper_bound(
+        POM.AncillaryServiceVariableDischarge, ordc_ts, storage,
+        POM.StorageDispatchWithReserves) ==
+          PSY.get_output_active_power_limits(storage, PSY.SU).max
+    @test POM.get_variable_upper_bound(
+        POM.AncillaryServiceVariableCharge, ordc_ts, storage,
+        POM.StorageDispatchWithReserves) ==
+          PSY.get_input_active_power_limits(storage, PSY.SU).max
+end
+
+@testset "get_max_tranches handles the transform product (DeterministicSingleTimeSeries)" begin
+    sys = PSB.build_system(PSITestSystems, "c_sys5_bat"; add_reserves = true)
+    it = first(PSY.get_forecast_initial_times(sys))
+    res = first(PSY.get_time_series_resolutions(sys))
+    n = IS.get_horizon_count(PSY.get_forecast_horizon(sys), res)
+    times = collect(range(it; step = res, length = n))
+
+    # Per-hour demand curves with alternating tranche counts (2 and 3); max tranches = 3.
+    two = IS.PiecewiseStepData([0.0, 100.0, 200.0], [50.0, 30.0])
+    three = IS.PiecewiseStepData([0.0, 100.0, 200.0, 300.0], [50.0, 30.0, 10.0])
+    curves = [isodd(k) ? three : two for k in 1:n]
+
+    ordc_ts = ReserveDemandTimeSeriesCurve{ReserveUp}(
+        stub_ts_offer_curve(; power_units = IS.NaturalUnit()), "ORDC_TS", true, 1.0)
+    add_service!(sys, ordc_ts, get_components(PSY.EnergyReservoirStorage, sys))
+    add_time_series!(sys, ordc_ts,
+        IS.SingleTimeSeries(;
+            name = "variable_cost",
+            data = IS.TimeSeries.TimeArray(times, curves),
+        ))
+    key = IS.ForecastKey(; time_series_type = IS.Deterministic, name = "variable_cost",
+        initial_timestamp = it, resolution = res,
+        horizon = PSY.get_forecast_horizon(sys),
+        interval = PSY.get_forecast_interval(sys),
+        count = PSY.get_forecast_window_count(sys),
+        features = Dict{String, Any}())
+    PSY.set_variable!(ordc_ts,
+        PSY.make_market_bid_ts_curve(key, nothing, IS.NaturalUnit()))
+
+    transform_single_time_series!(sys, PSY.get_forecast_horizon(sys),
+        PSY.get_forecast_interval(sys); delete_existing = false)
+
+    resolved =
+        PSY.get_time_series(ordc_ts, IS.get_time_series_key(PSY.get_variable(ordc_ts)))
+    @test resolved isa IS.DeterministicSingleTimeSeries      # the case that broke get_data
+    @test POM.get_max_tranches(
+        ordc_ts,
+        IS.get_time_series_key(PSY.get_variable(ordc_ts)),
+    ) == 3
+end
