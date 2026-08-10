@@ -2293,7 +2293,7 @@ function calculate_aux_variable_value!(
             else
                 served_regup = 0.0
             end
-            if has_container_key(container, HydroServedReserveUpExpression, typeof(d))
+            if has_container_key(container, HydroServedReserveDownExpression, typeof(d))
                 served_regdn = jump_value(
                     get_expression(container, HydroServedReserveDownExpression, T)[
                         name,
