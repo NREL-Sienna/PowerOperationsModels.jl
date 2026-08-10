@@ -178,7 +178,7 @@ struct StaticBranch <: AbstractBranchFormulation end
 # psy6: disabled pending transformer refactor
 # """
 # Branch formulation for transformers that models the off-nominal tap ratio in the DC
-# power-flow Ohm's law. Use as `DeviceModel(TapTransformer, TapControl)` under an
+# power-flow Ohm's law. Use as `DeviceModel(TwoWindingTransformer, TapControl)` under an
 # active-power DC network (e.g. DCPNetworkModel). Reduces to `StaticBranch` when tap == 1.
 # """
 # struct TapControl <: AbstractBranchFormulation end
@@ -191,7 +191,7 @@ struct StaticBranch <: AbstractBranchFormulation end
 # regulated bus voltage is fixed to `voltage_setpoint`; under `REACTIVE_POWER_FLOW` /
 # `ACTIVE_POWER_FLOW` the corresponding terminal flow is fixed to its target (the model is
 # otherwise identical across modes — count-invariant `JuMP.fix`). Use as
-# `DeviceModel(TapTransformer, VoltageControlTap)` under an AC network (e.g. ACPNetworkModel).
+# `DeviceModel(TwoWindingTransformer, VoltageControlTap)` under an AC network (e.g. ACPNetworkModel).
 # Only valid under AC network models; dropped from DC templates automatically via
 # `models_reactive_power`.
 # """

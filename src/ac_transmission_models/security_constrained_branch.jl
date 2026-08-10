@@ -566,6 +566,7 @@ function _build_post_contingency_flow_expressions_for_outage(
     modf_cols::Dict{Tuple{String, Tuple{Int64, Int64}}, Vector{Float64}},
     nodal_balance_expressions::Matrix{JuMP.AffExpr},
     entries::Vector{Tuple{DataType, String, Tuple{Int, Int}, String}},
+    net_reduction_data::IOM.AbstractInfrastructureNetworkReductionData,
 )
     results = Vector{Tuple{String, Vector{JuMP.AffExpr}}}(undef, length(entries))
     for (i, entry) in enumerate(entries)
@@ -576,6 +577,7 @@ function _build_post_contingency_flow_expressions_for_outage(
             time_steps,
             modf_col,
             nodal_balance_expressions,
+            -PNM.arc_dc_shift_injection(net_reduction_data, arc),
         )
         results[i] = (name, expressions)
     end
@@ -645,6 +647,7 @@ function _add_modf_post_contingency_flow_expressions!(
                 modf_cols,
                 nodal_injection_expressions,
                 entries,
+                net_reduction_data,
             )
         catch e
             @error "Post-contingency flow-expression task failed" outage_id =

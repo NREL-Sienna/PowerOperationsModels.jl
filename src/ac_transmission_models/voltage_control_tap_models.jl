@@ -1,7 +1,7 @@
 #################################################################################
 # Voltage-controlling tap transformer (Family B).
 #
-# `VoltageControlTap` models the off-nominal tap ratio of a `PSY.TapTransformer`
+# `VoltageControlTap` models the off-nominal tap ratio of a `PSY.TwoWindingTransformer`
 # as a bounded continuous decision variable `t ∈ [t_min, t_max]`
 # (`TapRatioVariable`) that enters the AC π-model Ohm's law nonlinearly (the fixed
 # tap `tm` of the StaticBranch law is replaced by the variable `t`, so the self
@@ -22,25 +22,25 @@
 
 # Finite tap-ratio bounds (pu turns ratio) for the control variable `t`. A
 # non-finite limit is a data error (Principle 0 / IPOPT).
-function _tap_ratio_limits(d::PSY.TapTransformer)
+function _tap_ratio_limits(d::PSY.TwoWindingTransformer)
     lims = PSY.get_tap_limits(d)
     lo = lims.min
     hi = lims.max
     if !(isfinite(lo) && isfinite(hi))
         error(
-            "TapTransformer $(PSY.get_name(d)) has non-finite tap_limits ",
+            "TwoWindingTransformer $(PSY.get_name(d)) has non-finite tap_limits ",
             "($(lo), $(hi)); cannot bound TapRatioVariable",
         )
     end
     if lo <= 0.0
         error(
-            "TapTransformer $(PSY.get_name(d)) has a non-positive tap lower limit ",
+            "TwoWindingTransformer $(PSY.get_name(d)) has a non-positive tap lower limit ",
             "($(lo)); the variable-tap Ohm's law divides by t and requires t > 0",
         )
     end
     if hi < lo
         error(
-            "TapTransformer $(PSY.get_name(d)) has tap_limits.max < tap_limits.min ",
+            "TwoWindingTransformer $(PSY.get_name(d)) has tap_limits.max < tap_limits.min ",
             "($(hi) < $(lo))",
         )
     end
@@ -53,19 +53,19 @@ end
 
 get_variable_binary(
     ::Type{TapRatioVariable},
-    ::Type{<:PSY.TapTransformer},
+    ::Type{<:PSY.TwoWindingTransformer},
     ::Type{VoltageControlTap},
 ) = false
 
 get_variable_multiplier(
     ::Type{TapRatioVariable},
-    ::Type{<:PSY.TapTransformer},
+    ::Type{<:PSY.TwoWindingTransformer},
     ::Type{VoltageControlTap},
 ) = 1.0
 
 function get_variable_lower_bound(
     ::Type{TapRatioVariable},
-    d::PSY.TapTransformer,
+    d::PSY.TwoWindingTransformer,
     ::Type{VoltageControlTap},
 )
     return _tap_ratio_limits(d).min
@@ -73,7 +73,7 @@ end
 
 function get_variable_upper_bound(
     ::Type{TapRatioVariable},
-    d::PSY.TapTransformer,
+    d::PSY.TwoWindingTransformer,
     ::Type{VoltageControlTap},
 )
     return _tap_ratio_limits(d).max
@@ -82,7 +82,7 @@ end
 # Warm-start the tap at its current position so IPOPT begins inside the bounds.
 function get_variable_warm_start_value(
     ::Type{TapRatioVariable},
-    d::PSY.TapTransformer,
+    d::PSY.TwoWindingTransformer,
     ::Type{VoltageControlTap},
 )
     return PSY.get_tap(d)
@@ -90,14 +90,17 @@ end
 
 requires_initialization(::VoltageControlTap) = false
 
-function get_default_attributes(::Type{<:PSY.TapTransformer}, ::Type{VoltageControlTap})
+function get_default_attributes(
+    ::Type{<:PSY.TwoWindingTransformer},
+    ::Type{VoltageControlTap},
+)
     return Dict{String, Any}(
         PARALLEL_BRANCH_MAX_RATING_KEY => "single_element_contingency",
     )
 end
 
 function get_default_time_series_names(
-    ::Type{<:PSY.TapTransformer},
+    ::Type{<:PSY.TwoWindingTransformer},
     ::Type{VoltageControlTap},
 )
     return Dict{Type{<:TimeSeriesParameter}, String}()
@@ -121,7 +124,7 @@ function add_constraints!(
     devices::IS.FlattenIteratorWrapper{T},
     device_model::DeviceModel{T, VoltageControlTap},
     network_model::NetworkModel{ACPNetworkModel},
-) where {T <: PSY.TapTransformer}
+) where {T <: PSY.TwoWindingTransformer}
     time_steps = get_time_steps(container)
 
     va = get_variable(container, VoltageAngle, PSY.ACBus)
@@ -174,7 +177,7 @@ function add_constraints!(
     devices::IS.FlattenIteratorWrapper{T},
     device_model::DeviceModel{T, VoltageControlTap},
     network_model::NetworkModel{ACRNetworkModel},
-) where {T <: PSY.TapTransformer}
+) where {T <: PSY.TwoWindingTransformer}
     time_steps = get_time_steps(container)
 
     vr = get_variable(container, VoltageReal, PSY.ACBus)
@@ -244,7 +247,7 @@ function add_constraints!(
     devices::IS.FlattenIteratorWrapper{T},
     device_model::DeviceModel{T, VoltageControlTap},
     network_model::NetworkModel{IVRNetworkModel},
-) where {T <: PSY.TapTransformer}
+) where {T <: PSY.TwoWindingTransformer}
     time_steps = get_time_steps(container)
 
     vr = get_variable(container, VoltageReal, PSY.ACBus)
@@ -350,11 +353,13 @@ function add_constraints!(
             # KCL at from terminal (tm → t)
             cons_cr_fr[name, t] = JuMP.@constraint(
                 jump_model,
-                cr_f * tt2 == tr * csr_b - ti * csi_b + g_fr * vr_f - b_fr * vi_f,
+                cr_f * tt2 ==
+                tr * csr_b - ti * csi_b + (g_fr * vr_f - b_fr * vi_f) * tt2,
             )
             cons_ci_fr[name, t] = JuMP.@constraint(
                 jump_model,
-                ci_f * tt2 == tr * csi_b + ti * csr_b + g_fr * vi_f + b_fr * vr_f,
+                ci_f * tt2 ==
+                tr * csi_b + ti * csr_b + (g_fr * vi_f + b_fr * vr_f) * tt2,
             )
 
             # KCL at to terminal (no tap)
@@ -390,7 +395,7 @@ end
 # between ACP and ACR. VOLTAGE regulation is handled per-network (ACP: direct vm fix;
 # ACR/IVR: fix via RegulatedVoltageMagnitude aux variable).
 function _fix_tap_flow_objective!(
-    d::PSY.TapTransformer,
+    d::PSY.TwoWindingTransformer,
     name::String,
     qft,
     pft,
@@ -413,14 +418,14 @@ end
 
 # Resolve the regulated-bus name for a transformer: `regulated_bus_number == 0`
 # means the arc's to-bus (local control).
-function _tap_regulated_bus_name(d::PSY.TapTransformer, geom, number_to_name)
+function _tap_regulated_bus_name(d::PSY.TwoWindingTransformer, geom, number_to_name)
     reg = PSY.get_regulated_bus_number(d)
     if iszero(reg)
         return geom.to_name
     end
     if !haskey(number_to_name, reg)
         error(
-            "TapTransformer $(PSY.get_name(d)) regulates bus number $(reg), which is \
+            "TwoWindingTransformer $(PSY.get_name(d)) regulates bus number $(reg), which is \
              not a retained bus — it does not exist or was absorbed by a network \
              reduction. Fix the regulated_bus_number or exclude the bus from the \
              reduction with a PNM reduction filter.",
@@ -432,21 +437,21 @@ end
 # Resolve the regulated ACBus for a transformer (used to bound and tie the ACR/IVR
 # RegulatedVoltageMagnitude aux variable). `regulated_bus_number == 0` means the
 # arc's to-bus (local control); otherwise the ACBus carrying that number.
-function _tap_regulated_bus(d::PSY.TapTransformer, bus_by_number)
+function _tap_regulated_bus(d::PSY.TwoWindingTransformer, bus_by_number)
     reg = PSY.get_regulated_bus_number(d)
     if iszero(reg)
         return PSY.get_to(PSY.get_arc(d))
     end
     if !haskey(bus_by_number, reg)
         error(
-            "TapTransformer $(PSY.get_name(d)) regulates bus number $(reg), which does \
+            "TwoWindingTransformer $(PSY.get_name(d)) regulates bus number $(reg), which does \
              not exist in the system. Fix the regulated_bus_number.",
         )
     end
     return bus_by_number[reg]
 end
 
-_regulated_buses(d::PSY.TapTransformer, bus_by_number) =
+_regulated_buses(d::PSY.TwoWindingTransformer, bus_by_number) =
     [("1", _tap_regulated_bus(d, bus_by_number))]
 
 # Dispatch entry: the VOLTAGE objective is pinned differently depending on how the
@@ -456,7 +461,7 @@ function _apply_tap_control_objective!(
     sys::PSY.System,
     devices::IS.FlattenIteratorWrapper{T},
     network_model::NetworkModel{N},
-) where {T <: PSY.TapTransformer, N}
+) where {T <: PSY.TwoWindingTransformer, N}
     return _apply_tap_control_objective!(
         regulated_voltage_form(N),
         container,
@@ -475,7 +480,7 @@ function _apply_tap_control_objective!(
     sys::PSY.System,
     devices::IS.FlattenIteratorWrapper{T},
     network_model::NetworkModel,
-) where {T <: PSY.TapTransformer}
+) where {T <: PSY.TwoWindingTransformer}
     time_steps = get_time_steps(container)
     vm = get_variable(container, VoltageMagnitude, PSY.ACBus)
     qft = get_variable(container, FlowReactivePowerFromToVariable, T)
@@ -513,7 +518,7 @@ function _apply_tap_control_objective!(
     sys::PSY.System,
     devices::IS.FlattenIteratorWrapper{T},
     network_model::NetworkModel,
-) where {T <: PSY.TapTransformer}
+) where {T <: PSY.TwoWindingTransformer}
     time_steps = get_time_steps(container)
     qft = get_variable(container, FlowReactivePowerFromToVariable, T)
     pft = get_variable(container, FlowActivePowerFromToVariable, T)
@@ -546,7 +551,7 @@ function construct_device!(
     device_model::DeviceModel{T, VoltageControlTap},
     network_model::NetworkModel{N},
 ) where {
-    T <: PSY.TapTransformer,
+    T <: PSY.TwoWindingTransformer,
     N <: Union{ACPNetworkModel, ACRNetworkModel, IVRNetworkModel},
 }
     return construct_device!(
@@ -566,7 +571,7 @@ function construct_device!(
     device_model::DeviceModel{T, VoltageControlTap},
     network_model::NetworkModel{N},
 ) where {
-    T <: PSY.TapTransformer,
+    T <: PSY.TwoWindingTransformer,
     N <: Union{ACPNetworkModel, ACRNetworkModel, IVRNetworkModel},
 }
     return construct_device!(
@@ -587,7 +592,7 @@ function construct_device!(
     ::ArgumentConstructStage,
     device_model::DeviceModel{T, VoltageControlTap},
     network_model::NetworkModel,
-) where {T <: PSY.TapTransformer}
+) where {T <: PSY.TwoWindingTransformer}
     @debug "construct_device VoltageControlTap (ArgumentConstructStage)" _group =
         LOG_GROUP_BRANCH_CONSTRUCTIONS
     devices = get_available_components(device_model, sys)
@@ -627,7 +632,7 @@ function construct_device!(
     ::ModelConstructStage,
     device_model::DeviceModel{T, VoltageControlTap},
     network_model::NetworkModel{N},
-) where {T <: PSY.TapTransformer, N}
+) where {T <: PSY.TwoWindingTransformer, N}
     @debug "construct_device VoltageControlTap (ModelConstructStage)" _group =
         LOG_GROUP_BRANCH_CONSTRUCTIONS
     devices = get_available_components(device_model, sys)
@@ -666,7 +671,7 @@ function construct_device!(
     ::ArgumentConstructStage,
     device_model::DeviceModel{T, VoltageControlTap},
     network_model::NetworkModel,
-) where {T <: PSY.TapTransformer}
+) where {T <: PSY.TwoWindingTransformer}
     @debug "construct_device IVR VoltageControlTap (ArgumentConstructStage)" _group =
         LOG_GROUP_BRANCH_CONSTRUCTIONS
     devices = get_available_components(device_model, sys)
@@ -730,7 +735,7 @@ function construct_device!(
     ::ModelConstructStage,
     device_model::DeviceModel{T, VoltageControlTap},
     network_model::NetworkModel{N},
-) where {T <: PSY.TapTransformer, N}
+) where {T <: PSY.TwoWindingTransformer, N}
     @debug "construct_device IVR VoltageControlTap (ModelConstructStage)" _group =
         LOG_GROUP_BRANCH_CONSTRUCTIONS
     devices = get_available_components(device_model, sys)
@@ -768,7 +773,7 @@ function construct_device!(
     ::ArgumentConstructStage,
     ::DeviceModel{T, VoltageControlTap},
     ::NetworkModel{<:AbstractActivePowerModel},
-) where {T <: PSY.TapTransformer}
+) where {T <: PSY.TwoWindingTransformer}
     return
 end
 
@@ -778,6 +783,6 @@ function construct_device!(
     ::ModelConstructStage,
     ::DeviceModel{T, VoltageControlTap},
     ::NetworkModel{<:AbstractActivePowerModel},
-) where {T <: PSY.TapTransformer}
+) where {T <: PSY.TwoWindingTransformer}
     return
 end
