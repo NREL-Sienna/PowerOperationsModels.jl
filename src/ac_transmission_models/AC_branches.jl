@@ -1232,6 +1232,9 @@ function _branch_geometries(
 end
 
 ################################## ACP apparent-power rate constraints ######################
+# Apparent-power rating in system base (PSY.SU) so `rating^2` matches the per-unit flow
+# variables. Zero is a data error rather than "unlimited" as in MATPOWER-style data: `p² +
+# q² ≤ 0` would silently pin the branch to zero flow, deleting it from the network.
 function _directional_flow_rating(d::PSY.ACTransmission, ::DeviceModel)
     rating = _branch_rating(d)
     iszero(rating) && error(

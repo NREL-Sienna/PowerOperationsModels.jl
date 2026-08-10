@@ -117,7 +117,7 @@ Solvers: `HiGHS` (LP/MILP), `Ipopt` (NLP), `SCS` (SDP) — helpers `HiGHS_optimi
 
 - Status: `IOM.ModelBuildStatus.BUILT`, `IOM.RunStatus.SUCCESSFULLY_FINALIZED` (not `_FINISHED`).
 - Results: `res = IOM.OptimizationProblemOutputs(model)` (not `OptimizationProblemResults`); `read_variable(res, "VarType__DeviceType"; table_format = TableFormat.WIDE)`. Keys use `"__"` delimiter (e.g. `"FlowActivePowerVariable__Line"`, `"VoltageAngle__ACBus"`). Base power: `IOM.get_model_base_power(res)`.
-- Units gotcha: `FlowActivePowerVariable` output is MW (natural units, `convert_output_to_natural_units=true`); `VoltageAngle` is unitless. Native DC ohm law (pu): `p_pu == -imag(get_series_admittance(line, PSY.SU)) * (va_from - va_to - shift)`.
+- Units gotcha: `FlowActivePowerVariable` output is MW (natural units, `convert_output_to_natural_units=true`); `VoltageAngle` is unitless. Native DC ohm law (pu): `p_pu == b * (va_from - va_to - shift)` with the DC susceptance `b = PNM.get_series_susceptance(branch, PSY.SU)` (= `1/(tap*x)`, tap-divided for transformers) — not the r-inclusive π-model susceptance.
 - Template helper `get_thermal_dispatch_template_network(NetworkModel(<Formulation>))` and reduction kwargs `NetworkModel(DCPNetworkModel; reduce_radial_branches=true, reduce_degree_two_branches=true)` come from `test/test_utils/`.
 - Reduction test systems: `c_sys5`/`c_sys14` reduce nothing (assert build+solve only). Use `case11_network_reductions` (purpose-built ~4 series arcs) or matpower cases for real reductions — but those lack forecast data, so a full `DecisionModel` `build!` errors; for white-box reduction tests build `NetworkReductionData` directly via `PNM.Ybus(sys; network_reductions=[...])` + `deepcopy(PNM.get_network_reduction_data(ybus))`.
 

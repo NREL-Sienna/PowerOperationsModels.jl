@@ -97,7 +97,7 @@ _add_static_branch_btheta_expression!(
 ) = nothing
 
 # StaticBranch under DCP carries its flow as the BThetaBranchFlow expression
-# (`-b * (va_fr - va_to - shift)`), so it must be built here — in the network's own
+# (`b * (va_fr - va_to - shift)`), so it must be built here — in the network's own
 # ArgumentConstructStage, right after `VoltageAngle` is created — rather than from the
 # branch's own ArgumentConstructStage, which build_problem.jl runs BEFORE this one (branch
 # arguments, then network arguments, then device Model stage, then network Model stage
