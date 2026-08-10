@@ -156,7 +156,7 @@ function search_for_reduced_branch_expression!(
     ::Type{T},
     ::Type{U},
 ) where {T <: ExpressionType, U <: VariableType}
-    wired_arcs = get!(tracker.expression_dict, (T, U), Set{Tuple{Int, Int}}())
+    wired_arcs = get!(Set{Tuple{Int, Int}}, tracker.expression_dict, (T, U))
     already_wired = arc_tuple in wired_arcs
     if !already_wired
         push!(wired_arcs, arc_tuple)
@@ -316,17 +316,17 @@ function get_branch_argument_constraint_axis(
     constraint_map_by_type = get_constraint_map_by_type(reduced_branch_tracker)
     name_axis = get_name_to_arc_map_entries(net_reduction_data, T)
     arc_tuples_with_constraints =
-        get!(constraint_tracker, U, Set{Tuple{Int, Int}}())
+        get!(Set{Tuple{Int, Int}}, constraint_tracker, U)
     constraint_map = get!(
-        constraint_map_by_type,
-        U,
         Dict{
             Type{<:IS.InfrastructureSystemsComponent},
             IOM.SortedDict{String, Tuple{Tuple{Int, Int}, String}},
-        }(),
+        },
+        constraint_map_by_type,
+        U,
     )
     constraint_submap =
-        get!(constraint_map, T, IOM.SortedDict{String, Tuple{Tuple{Int, Int}, String}}())
+        get!(IOM.SortedDict{String, Tuple{Tuple{Int, Int}, String}}, constraint_map, T)
     for (branch_name, name_axis_tuple) in name_axis
         arc_tuple = name_axis_tuple[1]
         if !(arc_tuple in arc_tuples_with_constraints)
