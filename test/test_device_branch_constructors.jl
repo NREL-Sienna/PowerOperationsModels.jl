@@ -616,7 +616,17 @@ end
           IOM.ModelBuildStatus.BUILT
     @test check_variable_bounded(
         model_m,
+        FlowActivePowerFromToVariable,
+        TwoWindingTransformer,
+    )
+    @test check_variable_bounded(
+        model_m,
         FlowReactivePowerFromToVariable,
+        TwoWindingTransformer,
+    )
+    @test check_variable_bounded(
+        model_m,
+        FlowActivePowerToFromVariable,
         TwoWindingTransformer,
     )
     @test check_variable_bounded(
