@@ -1594,6 +1594,17 @@ end
     @test lim.min ≈ -rb
 end
 
+@testset "emergency limits: TwoWindingTransformer rating_b resolves through its circuit" begin
+    c_sys14 = PSB.build_system(PSITestSystems, "c_sys14")
+    transformer = first(PSY.get_components(PSY.TwoWindingTransformer, c_sys14))
+    circuit = PSY.get_circuit(transformer)
+
+    @test POM._branch_rating_b(transformer) === nothing
+    PSY.set_rating_b!(circuit, 0.9 * PSY.SU)
+    @test POM._branch_rating_b(transformer) ≈ PSY.get_rating_b(circuit, PSY.SU)
+    @test POM._branch_rating_b(transformer) ≈ 0.9
+end
+
 # Attach a single outage (monitoring every branch) to every branch of the system,
 # so every branch is both an outaged and a monitored component.
 function _attach_all_branch_outages!(sys)
