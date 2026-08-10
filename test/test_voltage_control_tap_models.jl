@@ -313,37 +313,9 @@ end
     @test POM.validate_template(model) === nothing
 end
 
-@testset "_tap_flow_coefficients ground truth (hand-computed)" begin
-    # No shift: cs=1, sn=0. Hand-computed shunt sums and coupling coefficients.
-    c0 = POM._tap_flow_coefficients(1.0, -2.0, 0.1, 0.3, 0.2, 0.4, 0.0)
-    @test c0.cs == 1.0
-    @test c0.sn == 0.0
-    @test c0.gg_fr == 1.1
-    @test c0.bb_fr == -1.7
-    @test c0.gg_to == 1.2
-    @test c0.bb_to == -1.6
-    @test c0.a_cos == -1.0   # -g*cs + b*sn
-    @test c0.a_sin == 2.0    # -b*cs - g*sn
-    @test c0.c_cos == -1.0   # -g*cs - b*sn
-    @test c0.d_sin == -2.0   # b*cs - g*sn
-
-    # Nonzero shift = π/6: cs=√3/2, sn=1/2 exercises the trig.
-    cs = cos(pi / 6)
-    sn = sin(pi / 6)
-    cS = POM._tap_flow_coefficients(1.0, -2.0, 0.1, 0.3, 0.2, 0.4, pi / 6)
-    @test cS.cs ≈ cs
-    @test cS.sn ≈ sn
-    @test cS.gg_fr == 1.1
-    @test cS.bb_fr == -1.7
-    @test cS.gg_to == 1.2
-    @test cS.bb_to == -1.6
-    @test cS.a_cos ≈ -1.0 * cs + (-2.0) * sn
-    @test cS.a_sin ≈ -(-2.0) * cs - 1.0 * sn
-    @test cS.c_cos ≈ -1.0 * cs - (-2.0) * sn
-    @test cS.d_sin ≈ (-2.0) * cs - 1.0 * sn
-    # ACR's e_sin sign relationship the constraint body relies on.
-    @test -cS.d_sin ≈ -(-2.0) * cs + 1.0 * sn
-end
+# The `_tap_flow_coefficients` hand-computed ground truth lives in
+# `test_native_transformer_tap.jl`: it exercises only `AC_branches.jl`, which is included,
+# so it must not sit behind this file's `DISABLED_TESTS` entry.
 
 @testset "ACR NetworkFlowConstraint coefficients equal _tap_flow_coefficients" begin
     # Ground-truth: the built ACR to-from flow constraint (ptf/qtf) must use exactly the
@@ -388,14 +360,17 @@ end
     t = 1
     for d in Iterators.take(PSY.get_components(PSY.TwoWindingTransformer, sys), 3)
         name = PSY.get_name(d)
-        geom = POM._branch_geometry(d)
-        adm = geom.adm
+        # Read the π-model and endpoints straight from PNM/PSY rather than through
+        # `_branch_geometry`, which is reduction-keyed and takes the reduction data.
+        # c_sys14 reduces nothing, so the device's own arc is the retained arc.
+        adm = PNM.branch_admittance(d)
         coef = POM._tap_flow_coefficients(
             adm.g, adm.b, adm.g_fr, adm.b_fr, adm.g_to, adm.b_to, adm.shift,
         )
         e_sin = -coef.d_sin
-        fr = geom.from_name
-        to = geom.to_name
+        arc = PSY.get_arc(PSY.get_circuit(d))
+        fr = PSY.get_name(PSY.get_from(arc))
+        to = PSY.get_name(PSY.get_to(arc))
 
         # Arbitrary evaluation point for the (nonlinear) constraint functions.
         vals = Dict{JuMP.VariableRef, Float64}(
@@ -419,8 +394,9 @@ end
         @test isapprox(got_ptf, want_ptf; atol = 1e-10)
 
         vv_fr = vals[vr[fr, t]]^2 + vals[vi[fr, t]]^2
+        # From side: only the series term is tap-referred, the magnetizing shunt is not.
         rhs_qft =
-            -coef.bb_fr / tt^2 * vv_fr + (-coef.a_sin) / tt * cosprod +
+            -(coef.b / tt^2 + coef.b_fr) * vv_fr + (-coef.a_sin) / tt * cosprod +
             coef.a_cos / tt * sinprod
         want_qft = vals[qft[name, t]] - rhs_qft
         got_qft = JuMP.value(lookup, JuMP.constraint_object(con_qft[name, t]).func)

@@ -1,3 +1,13 @@
+#########################################################################################
+# `TapControl` coverage. Disabled in `runtests.jl` until
+# `ac_transmission_models/transformer_models.jl` is included again and the `TapControl`
+# formulation exists.
+#
+# The tap physics that DOES ship today — `StaticBranch` under DCP, whose susceptance is
+# tap-divided (`b_dc = 1/(tap*x)`) — is covered by `test_native_transformer_tap.jl`, which
+# runs. Do not duplicate it here.
+#########################################################################################
+
 @testset "TapControl models transformer tap ratio under DCP (c_sys14)" begin
     sys = PSB.build_system(PSITestSystems, "c_sys14")
     template = get_thermal_dispatch_template_network(NetworkModel(DCPNetworkModel))
@@ -49,6 +59,14 @@ end
 
     static_obj = _solve_obj(StaticBranch)
     tap_obj = _solve_obj(TapControl)
-    # The tap ratio changes the network physics, so the optima must differ.
-    @test !isapprox(static_obj, tap_obj; rtol = 1e-8)
+    # `StaticBranch` under DCP now takes its susceptance from `PNM.get_series_susceptance`,
+    # which is already tap-divided (`1/(tap*x)`), so a FIXED tap is modelled identically by
+    # both formulations and the two optima must AGREE. This testset previously asserted the
+    # opposite, from when the DC Ohm's law used the tap-free π susceptance and StaticBranch
+    # ignored the tap entirely.
+    #
+    # Before re-enabling: decide whether `TapControl` still earns its place under DCP at
+    # all, given StaticBranch subsumes the fixed-tap case. If it survives only to carry a
+    # variable tap, this comparison should be replaced by a test that moves the tap.
+    @test isapprox(static_obj, tap_obj; rtol = 1e-8)
 end
