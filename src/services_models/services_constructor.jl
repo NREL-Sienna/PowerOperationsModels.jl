@@ -132,6 +132,8 @@ function construct_service!(
     return
 end
 
+# PSY6-PORT-DISABLED: PSY.ConstantReserve removed on jd/schema_matching
+#=
 # ConstantReserve has no requirement time series, so its argument stage skips the
 # parameter add. The model stage is the shared `SR <: PSY.AbstractReserve` method below.
 function construct_service!(
@@ -165,6 +167,7 @@ function construct_service!(
     end
     return
 end
+=#
 
 # Shared RangeReserve model stage for both `PSY.Reserve` and `PSY.ConstantReserve`;
 # the inner `add_constraints!` calls resolve per service type.
@@ -390,6 +393,8 @@ function construct_service!(
 end
 =#
 
+# PSY6-PORT-DISABLED: PSY.ConstantReserveGroup removed on jd/schema_matching
+#=
 """
     Constructs a service for ConstantReserveGroup.
 """
@@ -441,6 +446,7 @@ function construct_service!(
     add_constraint_dual!(container, sys, model)
     return
 end
+=#
 
 function construct_service!(
     container::OptimizationContainer,
@@ -520,6 +526,8 @@ function construct_service!(
     return
 end
 
+# PSY6-PORT-DISABLED: PSY.ReserveNonSpinning removed on jd/schema_matching
+#=
 function construct_service!(
     container::OptimizationContainer,
     sys::PSY.System,
@@ -596,6 +604,7 @@ function construct_service!(
     add_constraint_dual!(container, sys, model)
     return
 end
+=#
 
 function construct_service!(
     container::OptimizationContainer,

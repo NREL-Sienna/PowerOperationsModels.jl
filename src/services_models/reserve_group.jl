@@ -1,3 +1,5 @@
+# PSY6-PORT-DISABLED: PSY.ConstantReserveGroup removed on jd/schema_matching
+#=
 function get_default_time_series_names(
     ::Type{PSY.ConstantReserveGroup{T}},
     ::Type{GroupReserve}) where {T <: PSY.ReserveDirection}
@@ -9,6 +11,7 @@ function get_default_attributes(
     ::Type{GroupReserve}) where {T <: PSY.ReserveDirection}
     return Dict{String, Any}()
 end
+=#
 
 ############################### Reserve Variables` #########################################
 """
@@ -32,6 +35,8 @@ function check_activeservice_variables(
 end
 
 ################################## Reserve Requirement Constraint ##########################
+# PSY6-PORT-DISABLED: PSY.ConstantReserveGroup removed on jd/schema_matching
+#=
 """
 This function creates the requirement constraint that will be attained by the appropriate services
 """
@@ -65,6 +70,7 @@ function add_constraints!(
 
     return
 end
+=#
 
 # Collect the group's contributing reserve variables into one bucket per time step, so the
 # constraint loop above indexes straight in rather than re-scanning per `(group, t)`. Services

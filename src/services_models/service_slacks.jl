@@ -1,8 +1,10 @@
+# PSY6-PORT-DISABLED: PSY.ReserveNonSpinning removed on jd/schema_matching
+# (dropped from this Union; original: `T <: Union{PSY.Reserve, PSY.ReserveNonSpinning}`)
 function add_reserve_slacks!(
     container::OptimizationContainer,
     ::Type{T},
     service_names::Vector{String},
-) where {T <: Union{PSY.Reserve, PSY.ReserveNonSpinning}}
+) where {T <: PSY.Reserve}
     time_steps = get_time_steps(container)
     # Dense 2D container keyed `[service_name, time]`, built once per service type over all
     # the type's services (`use_slacks` is per type). Lower bound 0, penalty in objective.

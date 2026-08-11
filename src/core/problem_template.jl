@@ -251,8 +251,9 @@ function _populate_contributing_devices!(
             # A reserve or interface with no available provider can never meet its requirement,
             # so error rather than let it silently force slacks or go infeasible.
             # ConstantReserveGroup aggregates other services, so its empty map is by design.
-            if !(service_type <: PSY.ConstantReserveGroup) &&
-               isempty(get_contributing_devices_map(service_model, service_name))
+            # PSY6-PORT-DISABLED: PSY.ConstantReserveGroup removed on jd/schema_matching
+            # (dropped from this condition; original: `!(service_type <: PSY.ConstantReserveGroup) &&`)
+            if isempty(get_contributing_devices_map(service_model, service_name))
                 error(
                     "Service \"$(service_name)\" of type $(typeof(service)) has no available contributing devices/branches. Assign available contributing devices/branches to it in the system data, or remove its service model from the template.",
                 )
@@ -283,6 +284,8 @@ function _modify_device_model!(
     return
 end
 
+# PSY6-PORT-DISABLED: PSY.ReserveNonSpinning removed on jd/schema_matching
+#=
 function _modify_device_model!(
     ::Dict{Symbol, DeviceModel},
     ::ServiceModel{<:PSY.ReserveNonSpinning, <:AbstractReservesFormulation},
@@ -290,6 +293,7 @@ function _modify_device_model!(
 )
     return
 end
+=#
 
 function _modify_device_model!(
     ::Dict{Symbol, DeviceModel},
@@ -312,7 +316,9 @@ function _add_services_to_device_model!(template::PowerOperationsProblemTemplate
     devices_template = get_device_models(template)
     for (service_key, service_model) in service_models
         S = get_component_type(service_model)
-        (S <: PSY.AGC || S <: PSY.ConstantReserveGroup) && continue
+        # PSY6-PORT-DISABLED: PSY.ConstantReserveGroup removed on jd/schema_matching
+        # (dropped from this disjunction; original: `S <: PSY.AGC || S <: PSY.ConstantReserveGroup`)
+        S <: PSY.AGC && continue
         contributing_devices = get_contributing_devices(service_model)
         isempty(contributing_devices) && continue
         _modify_device_model!(devices_template, service_model, contributing_devices)

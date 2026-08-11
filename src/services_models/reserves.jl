@@ -11,11 +11,14 @@ get_variable_upper_bound(::Type{ActivePowerReserveVariable}, r::Union{PSY.Reserv
 get_variable_lower_bound(::Type{ActivePowerReserveVariable}, ::PSY.Reserve, ::PSY.Device, ::Type) = 0.0
 
 ############################### ActivePowerReserveVariable, ReserveNonSpinning #########################################
+# PSY6-PORT-DISABLED: PSY.ReserveNonSpinning removed on jd/schema_matching
+#=
 get_variable_binary(::Type{ActivePowerReserveVariable}, ::Type{<:PSY.ReserveNonSpinning}, ::Type{<:AbstractReservesFormulation}) = false
 function get_variable_upper_bound(::Type{ActivePowerReserveVariable}, r::PSY.ReserveNonSpinning, d::PSY.Device, ::Type{<:AbstractReservesFormulation})
     return PSY.get_max_output_fraction(r) * PSY.get_max_active_power(d, PSY.SU)
 end
 get_variable_lower_bound(::Type{ActivePowerReserveVariable}, ::PSY.ReserveNonSpinning, ::PSY.Device, ::Type) = 0.0
+=#
 
 ############################### ServiceRequirementVariable, ReserveDemandCurve ################################
 
@@ -29,7 +32,8 @@ get_variable_lower_bound(::Type{ServiceRequirementVariable}, ::Union{PSY.Reserve
 _get_requirement(service) = PSY.get_requirement(service, PSY.SU)
 
 get_multiplier_value(::Type{RequirementTimeSeriesParameter}, d::PSY.Reserve, ::Type{<:AbstractReservesFormulation}) = _get_requirement(d)
-get_multiplier_value(::Type{RequirementTimeSeriesParameter}, d::PSY.ReserveNonSpinning, ::Type{<:AbstractReservesFormulation}) = _get_requirement(d)
+# PSY6-PORT-DISABLED: PSY.ReserveNonSpinning removed on jd/schema_matching
+# get_multiplier_value(::Type{RequirementTimeSeriesParameter}, d::PSY.ReserveNonSpinning, ::Type{<:AbstractReservesFormulation}) = _get_requirement(d)
 
 get_parameter_multiplier(::Type{<:VariableValueParameter}, d::Type{<:PSY.AbstractReserve}, ::Type{<:AbstractReservesFormulation}) = 1.0
 get_initial_parameter_value(::Type{<:VariableValueParameter}, d::Type{<:PSY.AbstractReserve}, ::Type{<:AbstractReservesFormulation}) = 0.0
@@ -53,12 +57,15 @@ function get_initial_conditions_service_model(
     return ServiceModel(T, D)
 end
 
+# PSY6-PORT-DISABLED: PSY.VariableReserveNonSpinning removed on jd/schema_matching
+#=
 function get_initial_conditions_service_model(
     ::IOM.AbstractOptimizationModel,
     ::ServiceModel{T, D},
 ) where {T <: PSY.VariableReserveNonSpinning, D <: AbstractReservesFormulation}
     return ServiceModel(T, D)
 end
+=#
 
 function get_default_time_series_names(
     ::Type{<:PSY.Reserve},
@@ -69,6 +76,8 @@ function get_default_time_series_names(
     )
 end
 
+# PSY6-PORT-DISABLED: PSY.ReserveNonSpinning removed on jd/schema_matching
+#=
 function get_default_time_series_names(
     ::Type{<:PSY.ReserveNonSpinning},
     ::Type{NonSpinningReserve},
@@ -77,6 +86,7 @@ function get_default_time_series_names(
         RequirementTimeSeriesParameter => "requirement",
     )
 end
+=#
 
 function get_default_time_series_names(
     ::Type{T},
@@ -92,12 +102,15 @@ function get_default_attributes(
     return Dict{String, Any}()
 end
 
+# PSY6-PORT-DISABLED: PSY.ReserveNonSpinning removed on jd/schema_matching
+#=
 function get_default_attributes(
     ::Type{<:PSY.ReserveNonSpinning},
     ::Type{<:AbstractReservesFormulation},
 )
     return Dict{String, Any}()
 end
+=#
 
 """
 Add variables for ServiceRequirementVariable for StepWiseCostReserve
@@ -268,6 +281,8 @@ function add_constraints!(
     return
 end
 
+# PSY6-PORT-DISABLED: PSY.ConstantReserve removed on jd/schema_matching
+#=
 function add_constraints!(
     container::OptimizationContainer,
     T::Type{RequirementConstraint},
@@ -302,6 +317,7 @@ function add_constraints!(
 
     return
 end
+=#
 
 function add_to_objective_function!(
     container::OptimizationContainer,
@@ -461,6 +477,8 @@ function add_constraints!(
     return
 end
 
+# PSY6-PORT-DISABLED: PSY.VariableReserveNonSpinning removed on jd/schema_matching
+#=
 function add_constraints!(
     container::OptimizationContainer,
     T::Type{ReservePowerConstraint},
@@ -510,6 +528,7 @@ function add_constraints!(
     end
     return
 end
+=#
 
 function _add_reserve_power_constraint_device!(
     cons,
@@ -658,7 +677,9 @@ function add_reserves_proportional_cost!(
     contributing_names::Vector{String};
     skip_devices = Set{String}(),
 ) where {
-    T <: Union{PSY.Reserve, PSY.ReserveNonSpinning},
+    # PSY6-PORT-DISABLED: PSY.ReserveNonSpinning removed on jd/schema_matching
+    # (dropped from this Union; original: `T <: Union{PSY.Reserve, PSY.ReserveNonSpinning}`)
+    T <: PSY.Reserve,
     U <: ActivePowerReserveVariable,
     V <: AbstractReservesFormulation,
 }
