@@ -11,7 +11,7 @@
     end
 
     for item in res["service_formulations"]
-        if item["service_type"] == PSY.ConstantReserveNonSpinning &&
+        if item["service_type"] == PSY.OfflineReserve &&
            item["formulation"] == NonSpinningReserve
             found_valid_service = true
         end

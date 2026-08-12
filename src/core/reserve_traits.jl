@@ -9,9 +9,9 @@ Trait axis selecting how a reserve contribution is scaled into an aggregation:
 `deployed_fraction`).
 """
 abstract type ReserveScale end
-"Reserve aggregation that uses the raw multiplier (1.0). Was Total / Assignment."
+"Reserve aggregation that uses the raw multiplier (1.0)."
 struct UnscaledReserve <: ReserveScale end
-"Reserve aggregation that scales the multiplier by deployed_fraction. Was Served / Deployment."
+"Reserve aggregation that scales the multiplier by `deployed_fraction`."
 struct DeployedReserve <: ReserveScale end
 
 """
@@ -19,7 +19,59 @@ Trait axis selecting which side of a storage device or hybrid PCC a reserve vari
 on: [`DischargeSide`](@ref) (outflow) or [`ChargeSide`](@ref) (inflow).
 """
 abstract type ReserveSide end
-"Discharge / outflow side of a storage or hybrid PCC. Was Out (PCC) / Discharge (storage)."
+"Discharge / outflow side of a storage or hybrid PCC."
 struct DischargeSide <: ReserveSide end
-"Charge / inflow side of a storage or hybrid PCC. Was In (PCC) / Charge (storage)."
+"Charge / inflow side of a storage or hybrid PCC."
 struct ChargeSide <: ReserveSide end
+
+# ── Reserve-type predicate helpers ────────────────────────────────────────────────────
+# The reserve tree distinguishes reserves by state (direction parameter, demand curve,
+# attached series) rather than by struct type; these centralize that branch logic in one
+# dispatch-based place (no `isa`).
+
+"""
+Direction of a reserve. `OfflineReserve` (non-spinning) has no direction type parameter and is
+upward-only in every US market, so it maps to [`PSY.ReserveUp`](@ref).
+"""
+_reserve_direction(::PSY.Reserve{T}) where {T <: PSY.ReserveDirection} = T
+_reserve_direction(::PSY.OfflineReserve) = PSY.ReserveUp
+
+"Whether a reserve is non-spinning: `OfflineReserve` vs everything else under `AbstractReserve`."
+_is_offline(::PSY.OfflineReserve) = true
+_is_offline(::PSY.AbstractReserve) = false
+
+"""
+Whether a reserve's `requirement` is scaled by an attached requirement time series.
+
+Resolves the series name from the `ServiceModel`'s `time_series_names` (a user can override the
+name there), and deliberately does not pin the series' concrete `TimeSeriesData` type
+(`Deterministic` in recurrent solves, `SingleTimeSeries` otherwise). Returns `false` when the
+model declares no requirement series name (the formulation carries no requirement parameter).
+"""
+function _has_ts_requirement(model::ServiceModel, s::PSY.AbstractReserve)
+    ts_names = get_time_series_names(model)
+    haskey(ts_names, RequirementTimeSeriesParameter) || return false
+    return PSY.has_time_series(s; name = ts_names[RequirementTimeSeriesParameter])
+end
+
+# ── ORDC (operating-reserve-demand-curve) predicates ─────────────────────────────────
+# A demand curve lives on a reserve's `variable` field ("is this an ORDC" is
+# `PSY.has_demand_curve`), so "static vs time-varying" is a runtime inspection of the curve
+# (union-splits cleanly over the two `variable` members; reserves are few and read at build,
+# so the cost is negligible).
+
+"Whether a reserve's ORDC curve is time-varying. Dispatches on the value-curve type (no `isa`)."
+_ordc_is_ts(s::PSY.AbstractReserve) =
+    _value_curve_is_ts(PSY.get_value_curve(PSY.get_variable(s)))
+_value_curve_is_ts(::PSY.TimeSeriesPiecewiseIncrementalCurve) = true
+_value_curve_is_ts(::PSY.PiecewiseIncrementalCurve) = false
+
+"""
+Meta string identifying one service inside the device-side reserve containers
+(ancillary-service variables, `TotalReserveOffering` expressions, coverage constraints).
+Always derive it from the service INSTANCE: a `ServiceModel`'s type parameter can be
+partially applied (`OnlineReserve{ReserveUp}`, a `UnionAll`) while the containers are
+written with the fully concrete instance type, and the two spellings do not match.
+"""
+_service_container_meta(service::PSY.Service) =
+    "$(typeof(service))_$(PSY.get_name(service))"

@@ -1,12 +1,12 @@
 function get_default_time_series_names(
-    ::Type{PSY.ConstantReserveGroup{T}},
-    ::Type{GroupReserve}) where {T <: PSY.ReserveDirection}
+    ::Type{PSY.GroupReserve{T}},
+    ::Type{GroupRangeReserve}) where {T <: PSY.ReserveDirection}
     return Dict{String, Any}()
 end
 
 function get_default_attributes(
-    ::Type{PSY.ConstantReserveGroup{T}},
-    ::Type{GroupReserve}) where {T <: PSY.ReserveDirection}
+    ::Type{PSY.GroupReserve{T}},
+    ::Type{GroupRangeReserve}) where {T <: PSY.ReserveDirection}
     return Dict{String, Any}()
 end
 
@@ -40,8 +40,8 @@ function add_constraints!(
     ::Type{RequirementConstraint},
     service::SR,
     contributing_services::Vector{<:PSY.Service},
-    model::ServiceModel{SR, GroupReserve},
-) where {SR <: PSY.ConstantReserveGroup}
+    model::ServiceModel{SR, GroupRangeReserve},
+) where {SR <: PSY.GroupReserve}
     time_steps = get_time_steps(container)
     service_name = PSY.get_name(service)
     # Dense container keyed `[group_name, time]`, built per type; fill this group's row.

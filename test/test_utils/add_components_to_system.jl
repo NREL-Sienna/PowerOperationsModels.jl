@@ -166,7 +166,7 @@ function add_reserve_product_without_requirement_time_series!(
         "Down" => ReserveDown,
     )
     as_direction = AS_DIRECTION_MAP[direction]
-    reserve_instance = VariableReserve{as_direction}(;
+    reserve_instance = OnlineReserve{as_direction}(;
         name = name,
         available = true,
         time_frame = 0.0,

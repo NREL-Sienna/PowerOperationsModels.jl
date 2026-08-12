@@ -3,7 +3,7 @@
 # reads each service's contributing devices from the nested per-service map
 # (`get_contributing_devices(model, service_name)`), and builds. Reserve variable and
 # constraint containers are shared per `(entry type, service type)`, with each service
-# filling its own slice. `GroupReserve` is deferred to last.
+# filling its own slice. `GroupRangeReserve` is deferred to last.
 #
 # TODO(services stability): See issue #216.
 
@@ -32,7 +32,7 @@ function construct_services!(
 
     groupservice = nothing
     for (key, service_model) in services_template
-        if get_formulation(service_model) === GroupReserve  # constructed last
+        if get_formulation(service_model) === GroupRangeReserve  # constructed last
             groupservice = key
             continue
         end
@@ -72,7 +72,7 @@ function construct_services!(
 
     groupservice = nothing
     for (key, service_model) in services_template
-        if get_formulation(service_model) === GroupReserve  # constructed last
+        if get_formulation(service_model) === GroupRangeReserve  # constructed last
             groupservice = key
             continue
         end
@@ -99,6 +99,8 @@ function construct_services!(
     return
 end
 
+# One argument stage covers static and time-series-scaled reserves: the requirement
+# time-series parameter is added only for services that carry a requirement series.
 function construct_service!(
     container::OptimizationContainer,
     sys::PSY.System,
@@ -107,10 +109,16 @@ function construct_service!(
     devices_template::Dict{Symbol, DeviceModel},
     incompatible_device_types::Set{<:DataType},
     ::NetworkModel{<:AbstractNetworkModel},
-) where {SR <: PSY.Reserve}
+) where {SR <: PSY.AbstractReserve}
     services = _services_with_contributors(model, sys)
     isempty(services) && return
-    add_parameters!(container, RequirementTimeSeriesParameter, services, model)
+    # A service with a zero requirement imposes no demand: its demand-side model is skipped, so it
+    # needs no requirement parameter either. It is still built as supply below (its
+    # `ActivePowerReserveVariable` awards, wired into the device-side expressions).
+    demand_services = _demand_services(model, services)
+    ts_services = [s for s in demand_services if _has_ts_requirement(model, s)]
+    isempty(ts_services) ||
+        add_parameters!(container, RequirementTimeSeriesParameter, ts_services, model)
     for service in services
         contributing_devices = get_contributing_devices(model, PSY.get_name(service))
         add_service_variables!(
@@ -132,42 +140,8 @@ function construct_service!(
     return
 end
 
-# ConstantReserve has no requirement time series, so its argument stage skips the
-# parameter add. The model stage is the shared `SR <: PSY.AbstractReserve` method below.
-function construct_service!(
-    container::OptimizationContainer,
-    sys::PSY.System,
-    ::ArgumentConstructStage,
-    model::ServiceModel{SR, RangeReserve},
-    devices_template::Dict{Symbol, DeviceModel},
-    incompatible_device_types::Set{<:DataType},
-    ::NetworkModel{<:AbstractNetworkModel},
-) where {SR <: PSY.ConstantReserve}
-    services = _services_with_contributors(model, sys)
-    isempty(services) && return
-    for service in services
-        contributing_devices = get_contributing_devices(model, PSY.get_name(service))
-        add_service_variables!(
-            container,
-            ActivePowerReserveVariable,
-            service,
-            contributing_devices,
-            RangeReserve,
-        )
-        add_to_expression!(
-            container,
-            ActivePowerReserveVariable,
-            service,
-            model,
-            devices_template,
-        )
-        add_feedforward_arguments!(container, model, service)
-    end
-    return
-end
-
-# Shared RangeReserve model stage for both `PSY.Reserve` and `PSY.ConstantReserve`;
-# the inner `add_constraints!` calls resolve per service type.
+# Shared RangeReserve model stage for every `OnlineReserve`/`OfflineReserve`;
+# the inner `add_constraints!` calls branch on the attached requirement series.
 function construct_service!(
     container::OptimizationContainer,
     sys::PSY.System,
@@ -179,45 +153,50 @@ function construct_service!(
 ) where {SR <: PSY.AbstractReserve}
     services = _services_with_contributors(model, sys)
     isempty(services) && return
-    service_names = PSY.get_name.(services)
-    # Dense service-indexed containers are built once per type, then filled per service.
-    add_constraints_container!(
-        container,
-        RequirementConstraint,
-        SR,
-        service_names,
-        get_time_steps(container),
-    )
-    get_use_slacks(model) && add_reserve_slacks!(container, SR, service_names)
-    for service in services
-        contributing_devices = get_contributing_devices(model, PSY.get_name(service))
-        add_constraints!(
+    # Only services that actually impose a demand get requirement rows; the containers are sized to
+    # that subset so a skipped service leaves no empty rows behind.
+    demand_services = _demand_services(model, services)
+    if !isempty(demand_services)
+        demand_names = PSY.get_name.(demand_services)
+        # Dense service-indexed containers are built once per type, then filled per service.
+        add_constraints_container!(
             container,
             RequirementConstraint,
-            service,
-            contributing_devices,
-            model,
+            SR,
+            demand_names,
+            get_time_steps(container),
         )
-        add_constraints!(
-            container,
-            ParticipationFractionConstraint,
-            service,
-            contributing_devices,
-            model,
-        )
-        add_to_objective_function!(container, service, model)
+        get_use_slacks(model) && add_reserve_slacks!(container, SR, demand_names)
+    end
+    for service in services
+        contributing_devices = get_contributing_devices(model, PSY.get_name(service))
+        if _has_reserve_demand(model, service)
+            add_constraints!(
+                container,
+                RequirementConstraint,
+                service,
+                contributing_devices,
+                model,
+            )
+            add_constraints!(
+                container,
+                ParticipationFractionConstraint,
+                service,
+                contributing_devices,
+                model,
+            )
+            add_to_objective_function!(container, service, model)
+        else
+            # Supply-only: no requirement of its own (it may serve a GroupReserve). Price any
+            # per-resource offers, but add no requirement constraint and no flat reserve cost.
+            _log_skipped_reserve_demand(sys, service, model)
+            add_reserve_offer_costs!(container, service, model)
+        end
         add_feedforward_constraints!(container, model, service)
     end
     add_constraint_dual!(container, sys, model)
     return
 end
-
-_maybe_process_stepwise(
-    container,
-    model,
-    services::Vector{<:PSY.ReserveDemandTimeSeriesCurve},
-) = process_stepwise_cost_reserve_parameters!(container, model, services)
-_maybe_process_stepwise(container, model, services) = nothing
 
 function construct_service!(
     container::OptimizationContainer,
@@ -227,19 +206,26 @@ function construct_service!(
     devices_template::Dict{Symbol, DeviceModel},
     incompatible_device_types::Set{<:DataType},
     ::NetworkModel{<:AbstractNetworkModel},
-) where {SR <: PSY.Reserve}
+) where {SR <: PSY.AbstractReserve}
     services = _services_with_contributors(model, sys)
     isempty(services) && return
-    add_reserve_variables!(
-        container,
-        ServiceRequirementVariable,
-        services,
-        StepwiseCostReserve(),
-    )
-    # Dense `(service, time)` cost-expression container, built once over all services.
-    add_expressions!(container, ProductionCostExpression, services, model)
-    # Slope/breakpoint PWL cost params, built once over all services.
-    _maybe_process_stepwise(container, model, services)
+    # A service with no demand curve imposes no demand: it gets no ServiceRequirementVariable, no
+    # cost expression, and no PWL parameters. It is still built as supply below (its
+    # `ActivePowerReserveVariable` awards, wired into the device-side expressions), so it can serve
+    # a GroupReserve. Sizing these containers to the demand subset keeps them free of empty rows.
+    demand_services = _demand_services(model, services)
+    if !isempty(demand_services)
+        add_reserve_variables!(
+            container,
+            ServiceRequirementVariable,
+            demand_services,
+            StepwiseCostReserve(),
+        )
+        # Dense `(service, time)` cost-expression container, built once over the demand services.
+        add_expressions!(container, ProductionCostExpression, demand_services, model)
+        # Slope/breakpoint PWL cost params for the time-series-backed ORDCs (no-op otherwise).
+        process_stepwise_cost_reserve_parameters!(container, model, demand_services)
+    end
     for service in services
         contributing_devices = get_contributing_devices(model, PSY.get_name(service))
         add_service_variables!(
@@ -268,27 +254,37 @@ function construct_service!(
     devices_template::Dict{Symbol, DeviceModel},
     incompatible_device_types::Set{<:DataType},
     ::NetworkModel{<:AbstractNetworkModel},
-) where {SR <: PSY.Reserve}
+) where {SR <: PSY.AbstractReserve}
     services = _services_with_contributors(model, sys)
     isempty(services) && return
-    # Dense service-indexed requirement container, built once per type, filled per service.
-    add_constraints_container!(
-        container,
-        RequirementConstraint,
-        SR,
-        PSY.get_name.(services),
-        get_time_steps(container),
-    )
-    for service in services
-        contributing_devices = get_contributing_devices(model, PSY.get_name(service))
-        add_constraints!(
+    demand_services = _demand_services(model, services)
+    if !isempty(demand_services)
+        # Dense service-indexed requirement container, sized to the demand subset.
+        add_constraints_container!(
             container,
             RequirementConstraint,
-            service,
-            contributing_devices,
-            model,
+            SR,
+            PSY.get_name.(demand_services),
+            get_time_steps(container),
         )
-        add_to_objective_function!(container, service, model)
+    end
+    for service in services
+        contributing_devices = get_contributing_devices(model, PSY.get_name(service))
+        if _has_reserve_demand(model, service)
+            add_constraints!(
+                container,
+                RequirementConstraint,
+                service,
+                contributing_devices,
+                model,
+            )
+            add_to_objective_function!(container, service, model)
+        else
+            # Supply-only: no demand curve of its own (it may serve a GroupReserve). Price any
+            # per-resource offers; emit no requirement equality and no demand-side objective term.
+            _log_skipped_reserve_demand(sys, service, model)
+            add_reserve_offer_costs!(container, service, model)
+        end
         add_feedforward_constraints!(container, model, service)
     end
     add_constraint_dual!(container, sys, model)
@@ -391,17 +387,17 @@ end
 =#
 
 """
-    Constructs a service for ConstantReserveGroup.
+    Constructs a service for GroupRangeReserve.
 """
 function construct_service!(
     container::OptimizationContainer,
     sys::PSY.System,
     ::ArgumentConstructStage,
-    model::ServiceModel{SR, GroupReserve},
+    model::ServiceModel{SR, GroupRangeReserve},
     ::Dict{Symbol, DeviceModel},
     ::Set{<:DataType},
     ::NetworkModel{<:AbstractNetworkModel},
-) where {SR <: PSY.ConstantReserveGroup}
+) where {SR <: PSY.GroupReserve}
     for service in get_available_components(model, sys)
         contributing_services = PSY.get_contributing_services(service)
         # check if variables exist
@@ -414,11 +410,11 @@ function construct_service!(
     container::OptimizationContainer,
     sys::PSY.System,
     ::ModelConstructStage,
-    model::ServiceModel{SR, GroupReserve},
+    model::ServiceModel{SR, GroupRangeReserve},
     ::Dict{Symbol, DeviceModel},
     ::Set{<:DataType},
     ::NetworkModel{<:AbstractNetworkModel},
-) where {SR <: PSY.ConstantReserveGroup}
+) where {SR <: PSY.GroupReserve}
     groups = collect(get_available_components(model, sys))
     # Dense group-indexed requirement container, built once over all groups of the type.
     add_constraints_container!(
@@ -453,7 +449,11 @@ function construct_service!(
 ) where {SR <: PSY.Reserve}
     services = _services_with_contributors(model, sys)
     isempty(services) && return
-    add_parameters!(container, RequirementTimeSeriesParameter, services, model)
+    # Only services carrying a requirement series get the parameter (a curve-only ORDC of the
+    # same type has none).
+    ts_services = [s for s in services if _has_ts_requirement(model, s)]
+    isempty(ts_services) ||
+        add_parameters!(container, RequirementTimeSeriesParameter, ts_services, model)
     for service in services
         contributing_devices = get_contributing_devices(model, PSY.get_name(service))
         add_service_variables!(
@@ -528,10 +528,14 @@ function construct_service!(
     devices_template::Dict{Symbol, DeviceModel},
     incompatible_device_types::Set{<:DataType},
     ::NetworkModel{<:AbstractNetworkModel},
-) where {SR <: PSY.ReserveNonSpinning}
+) where {SR <: PSY.OfflineReserve}
     services = _services_with_contributors(model, sys)
     isempty(services) && return
-    add_parameters!(container, RequirementTimeSeriesParameter, services, model)
+    # Only services carrying a requirement series get the parameter (a curve-only ORDC of the
+    # same type has none).
+    ts_services = [s for s in services if _has_ts_requirement(model, s)]
+    isempty(ts_services) ||
+        add_parameters!(container, RequirementTimeSeriesParameter, ts_services, model)
     for service in services
         contributing_devices = get_contributing_devices(model, PSY.get_name(service))
         add_service_variables!(
@@ -554,7 +558,7 @@ function construct_service!(
     devices_template::Dict{Symbol, DeviceModel},
     incompatible_device_types::Set{<:DataType},
     ::NetworkModel{<:AbstractNetworkModel},
-) where {SR <: PSY.ReserveNonSpinning}
+) where {SR <: PSY.OfflineReserve}
     services = _services_with_contributors(model, sys)
     isempty(services) && return
     service_names = PSY.get_name.(services)

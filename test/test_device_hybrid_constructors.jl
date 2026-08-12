@@ -28,7 +28,7 @@ function _build_hybrid_test_system(;
         energy_target = energy_target,
     )
     if with_reserves
-        for s in PSY.get_components(PSY.VariableReserve, sys)
+        for s in PSY.get_components(PSY.OnlineReserve, sys)
             s_name = PSY.get_name(s)
             any(occursin(prefix, s_name) for prefix in _NON_HYBRID_RESERVES) && continue
             PSY.add_service!(hybrid, s, sys)
@@ -55,7 +55,7 @@ function _build_hybrid_template(
         # each distinct type once. (The per-name `_NON_HYBRID_RESERVES` exclusion still
         # governs which reserves are attached to the hybrid in `_build_hybrid_test_system`.)
         modeled_types = Set{DataType}()
-        for service in PSY.get_components(PSY.VariableReserve, sys)
+        for service in PSY.get_components(PSY.OnlineReserve, sys)
             T = typeof(service)
             T in modeled_types && continue
             push!(modeled_types, T)

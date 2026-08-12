@@ -334,12 +334,12 @@ _vom_offer_direction(::Type{<:AbstractControllablePowerLoadFormulation}) =
     DecrementalOffer()
 
 #################################################################################
-# Section 7: Service-specific PWL (ReserveDemandCurve, StepwiseCostReserve)
+# Section 7: Service-specific PWL (ORDC on a reserve, StepwiseCostReserve)
 #################################################################################
 
 """
 Add the delta PWL objective terms for an operating reserve demand curve (ORDC) service
-(`StepwiseCostReserve` over `ReserveDemandCurve` / `ReserveDemandTimeSeriesCurve`).
+(`StepwiseCostReserve` over an `OnlineReserve`/`OfflineReserve` carrying a demand curve).
 """
 function add_pwl_term_delta!(
     container::OptimizationContainer,
@@ -348,7 +348,7 @@ function add_pwl_term_delta!(
     ::Type{U},
     ::Type{V},
 ) where {
-    T <: Union{PSY.ReserveDemandCurve, PSY.ReserveDemandTimeSeriesCurve},
+    T <: PSY.AbstractReserve,
     U <: VariableType,
     V <: AbstractServiceFormulation,
 }

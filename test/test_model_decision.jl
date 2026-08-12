@@ -360,7 +360,7 @@ end
     )
     set_service_model!(
         template,
-        ServiceModel(VariableReserveNonSpinning, NonSpinningReserve),
+        ServiceModel(OfflineReserve, NonSpinningReserve),
     )
 
     UC = DecisionModel(template, c_sys5; optimizer = HiGHS_optimizer)
@@ -375,14 +375,14 @@ end
     # `(service_name, device_name, time)`.
     service_key = IOM.VariableKey(
         ActivePowerReserveVariable,
-        PSY.VariableReserveNonSpinning,
+        PSY.OfflineReserve,
     )
     @test service_key in keys(vars)
     # That container flattens to `"service_name__device_name"` result columns
     # (WIDE format one column per flattened pair).
     result = read_variable(
         res,
-        "ActivePowerReserveVariable__VariableReserveNonSpinning";
+        "ActivePowerReserveVariable__OfflineReserve";
         table_format = TableFormat.WIDE,
     )
     @test any(startswith(string(n), "NonSpinningReserve__") for n in names(result))

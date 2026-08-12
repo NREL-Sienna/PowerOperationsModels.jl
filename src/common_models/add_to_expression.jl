@@ -1987,7 +1987,9 @@ function add_to_expression!(
     T <: ActivePowerRangeExpressionUB,
     U <: VariableType,
     V <: PSY.Component,
-    X <: PSY.Reserve{PSY.ReserveUp},
+    # OfflineReserve (non-spin) is upward-only and has no direction param, so it routes to the
+    # same upper-bound expression as a ReserveUp reserve.
+    X <: Union{PSY.Reserve{PSY.ReserveUp}, PSY.OfflineReserve},
     W <: AbstractReservesFormulation,
 }
     service_name = PSY.get_name(service)
@@ -2485,7 +2487,7 @@ function add_to_expression!(
     service::V,
     model::ServiceModel{V, W},
     devices_template::Dict{Symbol, DeviceModel},
-) where {U <: VariableType, V <: PSY.Reserve, W <: AbstractReservesFormulation}
+) where {U <: VariableType, V <: PSY.AbstractReserve, W <: AbstractReservesFormulation}
     contributing_devices_map = get_contributing_devices_map(model, PSY.get_name(service))
     for (device_type, devices) in contributing_devices_map
         device_model = get(devices_template, Symbol(device_type), nothing)
@@ -2656,7 +2658,7 @@ function add_cost_to_expression!(
     time_period::Int,
 ) where {
     S <: CostExpressions,
-    T <: Union{PSY.ReserveDemandCurve, PSY.ReserveDemandTimeSeriesCurve},
+    T <: PSY.AbstractReserve,
 }
     if has_container_key(container, S, T, PSY.get_name(component))
         device_cost_expression = get_expression(container, S, T, PSY.get_name(component))
@@ -2985,7 +2987,7 @@ function add_to_expression!(
     time_period::Int,
 ) where {
     S <: CostExpressions,
-    T <: Union{PSY.ReserveDemandCurve, PSY.ReserveDemandTimeSeriesCurve},
+    T <: PSY.AbstractReserve,
 }
     if has_container_key(container, S, T)
         device_cost_expression = get_expression(container, S, T)
