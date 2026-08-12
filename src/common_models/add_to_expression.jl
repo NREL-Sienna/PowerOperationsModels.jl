@@ -2490,7 +2490,10 @@ function add_to_expression!(
 ) where {U <: VariableType, V <: PSY.AbstractReserve, W <: AbstractReservesFormulation}
     contributing_devices_map = get_contributing_devices_map(model, PSY.get_name(service))
     for (device_type, devices) in contributing_devices_map
-        device_model = get(devices_template, Symbol(device_type), nothing)
+        # Template keys are `nameof(D)` (IOM `set_model!`). `Symbol(T)` would qualify the
+        # name whenever the type is not visible from Main (every parallel test worker),
+        # silently skipping the whole service-device wiring on a key miss.
+        device_model = get(devices_template, nameof(device_type), nothing)
         device_model === nothing && continue
         expression_type = get_expression_type_for_reserve(U, device_type, V)
         add_to_expression!(container, expression_type, U, service, devices, model)
