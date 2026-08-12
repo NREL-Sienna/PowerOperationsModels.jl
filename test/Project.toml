@@ -33,7 +33,7 @@ TimerOutputs = "a759f4b9-e2f1-59dc-863e-4aeb61b1ea8f"
 UUIDs = "cf7118a7-6976-5b1a-9a39-7adc72f591a4"
 
 [sources]
-InfrastructureOptimizationModels = {rev = "main", url = "https://github.com/Sienna-Platform/InfrastructureOptimizationModels.jl"}
+InfrastructureOptimizationModels = {rev = "jd/network-sources", url = "https://github.com/Sienna-Platform/InfrastructureOptimizationModels.jl"}
 InfrastructureSystems = {rev = "IS4", url = "https://github.com/Sienna-Platform/InfrastructureSystems.jl"}
 PowerNetworkMatrices = {rev = "psy6", url = "https://github.com/Sienna-Platform/PowerNetworkMatrices.jl"}
 PowerSystemCaseBuilder = {rev = "psy6", url = "https://github.com/Sienna-Platform/PowerSystemCaseBuilder.jl"}
