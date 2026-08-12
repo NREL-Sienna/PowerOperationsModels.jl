@@ -14,7 +14,8 @@ import PowerNetworkMatrices
 import PowerNetworkMatrices: PTDF, VirtualPTDF
 # Brought into namespace so `NetworkReductionSpec(RadialReduction())` resolves unqualified
 # after `using PowerOperationsModels` (re-export to POM users)
-import PowerNetworkMatrices: RadialReduction, DegreeTwoReduction, WardReduction
+import PowerNetworkMatrices:
+    RadialReduction, DegreeTwoReduction, WardReduction, ZeroImpedanceBranchReduction
 import PowerSystems
 import PowerSystems: get_component
 import PrettyTables
@@ -978,6 +979,7 @@ export VirtualPTDF
 export RadialReduction
 export DegreeTwoReduction
 export WardReduction
+export ZeroImpedanceBranchReduction
 
 # Other utilities
 export get_name

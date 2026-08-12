@@ -7,6 +7,10 @@ build means one reduction, so every matrix derived from it agrees by constructio
 """
 Build the network from the system, applying `reductions` and honoring the build's
 reduction exceptions.
+
+A zero-impedance branch reduction is always applied first. Include a
+`ZeroImpedanceBranchReduction` to override its parameters; it replaces that step rather than
+adding one, so its position in the vector is irrelevant. More than one errors.
 """
 struct NetworkReductionSpec <: IOM.AbstractNetworkSource
     reductions::Vector{PNM.NetworkReduction}
@@ -48,15 +52,18 @@ _source_reductions(source::PrebuiltCoreSource) =
 
 """
 The reductions an already-applied `NetworkReductionData` was built with, in the order
-`Ybus` must re-apply them (PNM rejects any reduction after Ward). The zero-impedance
-reduction is omitted because `Ybus` auto-applies it and rejects it inside
-`network_reductions`; a non-default one is therefore not reproducible from this vector,
-which `_prebuilt_ybus` detects by comparing the rebuilt bus reduction map.
+`Ybus` must re-apply them (PNM rejects any reduction after Ward). The zero-impedance entry is
+included so a non-default one round-trips.
 """
 function _applied_reductions(reduction::PNM.NetworkReductionData)
     container = PNM.get_reductions(reduction)
     reductions = PNM.NetworkReduction[]
-    for field in (:radial_reduction, :degree_two_reduction, :ward_reduction)
+    for field in (
+        :zero_impedance_reduction,
+        :radial_reduction,
+        :degree_two_reduction,
+        :ward_reduction,
+    )
         _push_applied_reduction!(reductions, getfield(container, field))
     end
     return reductions
@@ -84,10 +91,13 @@ function _build_ybus(
     sys::PSY.System,
     exceptions::Vector{Int},
 )
+    reductions, zero_impedance_reduction =
+        PNM.split_zero_impedance_reduction(source.reductions)
     return PNM.Ybus(
         sys;
-        network_reductions = source.reductions,
+        network_reductions = reductions,
         irreducible_buses = exceptions,
+        zero_impedance_reduction = zero_impedance_reduction,
     )
 end
 

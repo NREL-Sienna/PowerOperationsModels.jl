@@ -273,9 +273,8 @@ end
 
 # A prebuilt source fixed the reduction before the build, so its Ybus is reproduced from
 # the source's own reduction rather than from the model. The result is checked against
-# that reduction: anything the spec cannot reproduce (a non-default zero-impedance
-# threshold, say) must fail loudly rather than hand downstream code a Ybus describing a
-# different network than the matrices do.
+# that reduction: anything the spec cannot reproduce must fail loudly rather than hand
+# downstream code a Ybus describing a different network than the matrices do.
 function _prebuilt_ybus(
     source::IOM.AbstractNetworkSource,
     reduction::PNM.NetworkReductionData,

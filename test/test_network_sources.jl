@@ -287,3 +287,67 @@ end
     # model covers must never reach the registry.
     @test !haskey(registered, IS.get_uuid(uncovered_outage))
 end
+
+_zibr(rt) = POM.PNM.ZeroImpedanceBranchReduction(;
+    resistance_tolerance = rt,
+    susceptance_threshold = 0.0,
+)
+_reductions(y) = POM.PNM.get_reductions(POM.PNM.get_network_reduction_data(y))
+_bus_map(y) = POM.PNM.get_bus_reduction_map(POM.PNM.get_network_reduction_data(y))
+
+@testset "ZeroImpedanceBranchReduction is accepted in the spec and reaches the Ybus" begin
+    sys = PSB.build_system(PSITestSystems, "case11_network_reductions")
+    # PNM rejects a ZeroImpedanceBranchReduction inside `network_reductions`.
+    zibr = _zibr(0.002)
+    ybus = POM._build_ybus(POM.NetworkReductionSpec(zibr), sys, Int[])
+    @test POM.PNM.get_zero_impedance_reduction(_reductions(ybus)) == zibr
+end
+
+@testset "The zero-impedance setting selects, rather than merely toggling" begin
+    sys = PSB.build_system(PSITestSystems, "case11_network_reductions")
+    n(rt) =
+        length(_bus_map(POM._build_ybus(POM.NetworkReductionSpec(_zibr(rt)), sys, Int[])))
+
+    # The smallest branch resistance here is 0.00064, and the default tolerance is 0.0, so
+    # the default and 0.0005 must both merge nothing while 0.002 merges only some.
+    @test length(_bus_map(POM._build_ybus(POM.NetworkReductionSpec(), sys, Int[]))) == 11
+    @test n(0.0005) == 11
+    @test n(0.002) == 7
+end
+
+@testset "More than one ZeroImpedanceBranchReduction is rejected" begin
+    sys = PSB.build_system(PSITestSystems, "case11_network_reductions")
+    spec = POM.NetworkReductionSpec(_zibr(0.001), _zibr(0.002))
+    @test_throws IS.ConflictingInputsError POM._build_ybus(spec, sys, Int[])
+end
+
+@testset "The zero-impedance entry composes with other reductions, in either order" begin
+    sys = PSB.build_system(PSITestSystems, "case11_network_reductions")
+    zibr = _zibr(0.001)
+    radial = POM.PNM.RadialReduction()
+    first_ybus = POM._build_ybus(POM.NetworkReductionSpec(zibr, radial), sys, Int[])
+    last_ybus = POM._build_ybus(POM.NetworkReductionSpec(radial, zibr), sys, Int[])
+
+    for y in (first_ybus, last_ybus)
+        @test POM.PNM.has_radial_reduction(_reductions(y))
+        @test POM.PNM.get_zero_impedance_reduction(_reductions(y)) == zibr
+    end
+    @test _bus_map(first_ybus) == _bus_map(last_ybus)
+end
+
+@testset "A non-default zero-impedance setting round-trips through a prebuilt source" begin
+    sys = PSB.build_system(PSITestSystems, "case11_network_reductions")
+    zibr = _zibr(0.002)
+    ybus = POM._build_ybus(POM.NetworkReductionSpec(zibr), sys, Int[])
+    core = POM.PNM.VirtualFactorCore(
+        ybus;
+        tol = POM.PTDF_ZERO_TOL,
+        system_uuid = IS.get_uuid(sys),
+    )
+    source = POM.PrebuiltCoreSource(core)
+
+    @test zibr in POM._source_reductions(source)
+
+    rebuilt = POM._source_ybus(source, sys, Int[])
+    @test _bus_map(rebuilt) == _bus_map(core)
+end
