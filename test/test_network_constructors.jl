@@ -16,16 +16,11 @@ function _reduced_ptdf_duals_template()
     sys = build_system(PSITestSystems, "case11_network_reductions")
     add_load_time_series_data!(sys)
     nr = NetworkReduction[RadialReduction(), DegreeTwoReduction()]
-    ptdf = PTDF(sys; network_reductions = nr)
 
     template = PowerOperationsProblemTemplate(
         NetworkModel(PTDFNetworkModel;
-            network_matrix = ptdf,
+            network_source = NetworkReductionSpec(nr),
             duals = [CopperPlateBalanceConstraint],
-            reduce_radial_branches = PNM.has_radial_reduction(ptdf.network_reduction_data),
-            reduce_degree_two_branches = PNM.has_degree_two_reduction(
-                ptdf.network_reduction_data,
-            ),
             use_slacks = false),
     )
     # Mirror the filter shape from issue #1594: a voltage threshold that selects

@@ -16,7 +16,7 @@ function _show_method(
     table = [
         "Network Model" string(get_network_formulation(network_model))
         "Slacks" get_use_slacks(network_model)
-        "PTDF" !isnothing(get_network_matrix(network_model))
+        "Network Data" !isnothing(get_network_data(network_model))
         "Duals" isempty(get_duals(network_model)) ? "None" : string.(get_duals(network_model))
         "HVDC Network Model" isnothing(get_hvdc_network_model(network_model)) ? "None" : replace(string(get_hvdc_network_model(network_model)), r"[()]" => "")
     ]

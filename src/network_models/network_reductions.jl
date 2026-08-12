@@ -337,28 +337,6 @@ function get_branch_argument_constraint_axis(
     return collect(keys(constraint_submap))
 end
 
-# Verify a user-provided contingency matrix was built with the same network reduction
-# as the active reduction (derived from the network matrix). Equality of the bus
-# reduction map is the decisive check: it fixes the reduced bus/arc numbering
-# the post-contingency builder uses to index `modf_matrix[arc, outage_spec]`.
-function _validate_provided_modf_reduction!(
-    modf::PNM.VirtualMODF,
-    network_reduction::PNM.NetworkReductionData,
-)
-    if PNM.get_bus_reduction_map(modf.network_reduction_data) !=
-       PNM.get_bus_reduction_map(network_reduction)
-        throw(
-            IS.ConflictingInputsError(
-                "The provided contingency matrix was built with a different network \
-                reduction than the active reduction derived from the network \
-                matrix. Rebuild the MODF with a consistent network reduction, \
-                or omit it so it is recalculated automatically.",
-            ),
-        )
-    end
-    return
-end
-
 """
 Drop outages from each outage-aware-branch `DeviceModel` whose UUID isn't
 registered on `modf_matrix`; without this they'd `KeyError` downstream in

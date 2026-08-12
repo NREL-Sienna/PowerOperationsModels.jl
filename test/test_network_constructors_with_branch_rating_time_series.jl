@@ -100,10 +100,7 @@ end
             initial_date = "2024-01-01",
         )
         template = get_thermal_dispatch_template_network(
-            NetworkModel(
-                PTDFNetworkModel;
-                network_matrix = PTDF_ref[sys],
-            ),
+            NetworkModel(PTDFNetworkModel),
         )
 
         set_device_model!(template, line_device_model)
@@ -190,10 +187,7 @@ end
             )
 
             template = get_thermal_dispatch_template_network(
-                NetworkModel(
-                    PTDFNetworkModel;
-                    network_matrix = PTDF(sys),
-                ),
+                NetworkModel(PTDFNetworkModel),
             )
             set_device_model!(template, line_device_model)
             set_device_model!(template, PSY.MonitoredLine, StaticBranch)
@@ -277,10 +271,7 @@ end
             )
 
             template = get_thermal_dispatch_template_network(
-                NetworkModel(
-                    PTDFNetworkModel;
-                    network_matrix = PTDF(sys),
-                ),
+                NetworkModel(PTDFNetworkModel),
             )
             set_device_model!(template, line_device_model)
             set_device_model!(template, PSY.MonitoredLine, StaticBranch)
@@ -363,10 +354,7 @@ end
             )
 
             template = get_thermal_dispatch_template_network(
-                NetworkModel(
-                    PTDFNetworkModel;
-                    network_matrix = PTDF(sys),
-                ),
+                NetworkModel(PTDFNetworkModel),
             )
             set_device_model!(template, line_device_model)
             ps_model = DecisionModel(template, sys; optimizer = HiGHS_optimizer)
@@ -454,14 +442,10 @@ end
                 initial_date = "2024-01-01",
             )
             nr = NetworkReduction[DegreeTwoReduction()]
-            ptdf = PTDF(sys; network_reductions = nr)
             template = get_thermal_dispatch_template_network(
                 NetworkModel(
                     PTDFNetworkModel;
-                    #network_matrix = ptdf,
-                    reduce_degree_two_branches = PNM.has_degree_two_reduction(
-                        ptdf.network_reduction_data,
-                    ),
+                    network_source = NetworkReductionSpec(nr),
                 ),
             )
             set_device_model!(template, line_device_model)
@@ -788,7 +772,7 @@ end
           IS.get_time_series_uuid(PSY.Deterministic, line_b, "branch_rating")
 
     template = get_thermal_dispatch_template_network(
-        NetworkModel(PTDFNetworkModel; network_matrix = PTDF(sys)),
+        NetworkModel(PTDFNetworkModel),
     )
     set_device_model!(
         template,

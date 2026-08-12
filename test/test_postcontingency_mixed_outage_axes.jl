@@ -1,7 +1,7 @@
 # Ported from PowerSimulations.jl PR #1579 (MODF SCUC migration), adapted to
 # POM / PS6 APIs. Exercises the Phase-4 `_build_device_model_outages!` planned
 # vs. unplanned outage-axis selection and the
-# `_add_outage_monitored_irreducible_buses!` bus-pinning (N3) logic.
+# `_pin_outage_buses!` bus-pinning (N3) logic.
 #
 # Adaptation notes:
 #   * internal symbols are namespaced `POM.` / `IOM.` / `PNM.`; expression and
@@ -55,7 +55,6 @@
             NetworkModel(
                 PTDFNetworkModel;
                 use_slacks = false,
-                contingency_matrix = PNM.VirtualMODF(sys),
             ),
         )
         set_device_model!(
@@ -132,7 +131,7 @@
 end
 
 @testset "Outage pinning includes outaged-component buses (N3)" begin
-    # Regression: `_add_outage_monitored_irreducible_buses!` must pin both the
+    # Regression: `_pin_outage_buses!` must pin both the
     # MONITORED components' buses AND the OUTAGED (associated) components'
     # buses. If only the monitored set is pinned, a degree-two reduction
     # between the outaged arc's endpoints can collapse the contingency arc out
@@ -163,8 +162,10 @@ end
         )
     branch_models[nameof(PSY.Line)] = dm
 
-    irreducible_buses = Set{Int64}()
-    POM._add_outage_monitored_irreducible_buses!(irreducible_buses, sys, branch_models)
+    irreducible_buses = Set{Int}()
+    for m in values(branch_models)
+        POM._pin_outage_buses!(irreducible_buses, m, sys)
+    end
 
     monitored_arc = PSY.get_arc(monitored_only_line)
     outaged_arc = PSY.get_arc(outaged_line)
@@ -199,11 +200,13 @@ end
     branch_models = IOM.BranchModelContainer()
     dm = DeviceModel(PSY.Line, POM.StaticBranch)
     # Even if an outage dict were present, StaticBranch is not outage-aware so
-    # `_add_outage_monitored_irreducible_buses!` skips it.
+    # `_pin_outage_buses!` skips it.
     branch_models[nameof(PSY.Line)] = dm
 
-    irreducible_buses = Set{Int64}()
-    POM._add_outage_monitored_irreducible_buses!(irreducible_buses, sys, branch_models)
+    irreducible_buses = Set{Int}()
+    for m in values(branch_models)
+        POM._pin_outage_buses!(irreducible_buses, m, sys)
+    end
 
     @test isempty(irreducible_buses)
 end

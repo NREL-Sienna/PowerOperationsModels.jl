@@ -287,7 +287,7 @@ function _add_time_series_parameters!(
     end
     time_steps = get_time_steps(container)
 
-    net_reduction_data = network_model.network_reduction
+    net_reduction_data = get_network_reduction(network_model)
     reduced_branch_tracker = get_reduced_branch_tracker(network_model)
     all_branch_maps_by_type = PNM.get_all_branch_maps_by_type(net_reduction_data)
 

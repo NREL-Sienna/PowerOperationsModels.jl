@@ -43,7 +43,7 @@ end
     template = get_thermal_dispatch_template_network(
         NetworkModel(
             PTDFNetworkModel;
-            network_matrix = PNM.VirtualPTDF(c_sys5),
+            network_source = PrebuiltMatrixSource(PNM.VirtualPTDF(c_sys5)),
         ),
     )
     set_device_model!(template, PSY.Line, POM.SecurityConstrainedStaticBranch)
@@ -78,7 +78,7 @@ end
         IOM.get_expression(container, POM.ActivePowerBalance, PSY.ACBus).data
     time_steps = IOM.get_time_steps(container)
 
-    net_reduction_data = network_model.network_reduction
+    net_reduction_data = IOM.get_network_reduction(network_model)
     name_to_arc_maps = PNM.get_name_to_arc_maps(net_reduction_data)
     all_branch_maps_by_type = PNM.get_all_branch_maps_by_type(net_reduction_data)
 
@@ -158,8 +158,8 @@ end
 # MOI-count / objective-value magic numbers, which differ under POM/PS6.
 
 @testset "Security Constrained branch formulation Network DC-PF with VirtualPTDF + auto-MODF" begin
-    # Exercises the VirtualPTDF + auto-constructed MODF code path: contingency_matrix
-    # is intentionally omitted so it must be auto-built during instantiate.
+    # Exercises the prebuilt-VirtualPTDF code path with a derived MODF: the contingency
+    # matrix is always derived from the source's factorization core during instantiate.
     c_sys5 = PSB.build_system(PSITestSystems, "c_sys5")
     all_branches = collect(get_components(PSY.ACTransmission, c_sys5))
     for line_name in ["1", "2", "3"]
@@ -174,8 +174,7 @@ end
     template = get_thermal_dispatch_template_network(
         NetworkModel(
             PTDFNetworkModel;
-            network_matrix = PNM.VirtualPTDF(c_sys5),
-            # contingency_matrix intentionally omitted — exercises auto-construction
+            network_source = PrebuiltMatrixSource(PNM.VirtualPTDF(c_sys5)),
         ),
     )
     set_device_model!(template, PSY.Line, POM.SecurityConstrainedStaticBranch)
@@ -194,7 +193,7 @@ end
     @test build!(ps_model; output_dir = mktempdir(; cleanup = true)) ==
           IOM.ModelBuildStatus.BUILT
 
-    # MODF should have been auto-populated during build
+    # MODF should have been derived during build
     nm = IOM.get_network_model(IOM.get_template(ps_model))
     @test !isnothing(IOM.get_contingency_matrix(nm))
 
@@ -211,7 +210,10 @@ end
     c_sys14 = PSB.build_system(PSB.PSITestSystems, "c_sys14")
 
     template = get_thermal_dispatch_template_network(
-        NetworkModel(PTDFNetworkModel; network_matrix = PNM.VirtualPTDF(c_sys14)),
+        NetworkModel(
+            PTDFNetworkModel;
+            network_source = PrebuiltMatrixSource(PNM.VirtualPTDF(c_sys14)),
+        ),
     )
     set_device_model!(template, PSY.Line, POM.StaticBranch)
     set_device_model!(template, PSY.TwoWindingTransformer, POM.StaticBranch)
@@ -231,7 +233,7 @@ end
         IOM.get_expression(container, POM.ActivePowerBalance, PSY.ACBus).data
     time_steps = IOM.get_time_steps(container)
 
-    net_reduction_data = network_model.network_reduction
+    net_reduction_data = IOM.get_network_reduction(network_model)
     modeled_branch_types = network_model.modeled_branch_types
 
     n_checked = 0
@@ -300,8 +302,7 @@ end
     template = get_thermal_dispatch_template_network(
         NetworkModel(
             PTDFNetworkModel;
-            network_matrix = PNM.VirtualPTDF(c_sys14),
-            contingency_matrix = PNM.VirtualMODF(c_sys14),
+            network_source = PrebuiltMatrixSource(PNM.VirtualPTDF(c_sys14)),
         ),
     )
     set_device_model!(template, PSY.Line, POM.SecurityConstrainedStaticBranch)
@@ -331,7 +332,7 @@ end
     nodal_balance =
         IOM.get_expression(container, POM.ActivePowerBalance, PSY.ACBus).data
 
-    net_reduction_data = network_model.network_reduction
+    net_reduction_data = IOM.get_network_reduction(network_model)
     modeled_branch_types = network_model.modeled_branch_types
     name_to_arc_maps = PNM.get_name_to_arc_maps(net_reduction_data)
     n_checked = 0
@@ -393,11 +394,7 @@ end
     end
 
     auto_template = get_thermal_dispatch_template_network(
-        NetworkModel(
-            PTDFNetworkModel;
-            network_matrix = PNM.PTDF(c_sys5),
-            contingency_matrix = PNM.VirtualMODF(c_sys5),
-        ),
+        NetworkModel(PTDFNetworkModel),
     )
     set_device_model!(auto_template, PSY.Line, POM.SecurityConstrainedStaticBranch)
     set_device_model!(
@@ -465,7 +462,7 @@ end
     outage_uuid_str = string(outage_uuid)
 
     template = get_thermal_dispatch_template_network(
-        NetworkModel(PTDFNetworkModel; contingency_matrix = PNM.VirtualMODF(sys)),
+        NetworkModel(PTDFNetworkModel),
     )
     set_device_model!(template, PSY.Line, POM.SecurityConstrainedStaticBranch)
     set_device_model!(
@@ -553,7 +550,7 @@ end
     outage_uuid = string(IS.get_uuid(outage))
 
     template = get_thermal_dispatch_template_network(
-        NetworkModel(PTDFNetworkModel; contingency_matrix = PNM.VirtualMODF(sys)),
+        NetworkModel(PTDFNetworkModel),
     )
     set_device_model!(template, PSY.Line, POM.SecurityConstrainedStaticBranch)
     ps_model = DecisionModel(template, sys; optimizer = HiGHS_optimizer)
@@ -627,7 +624,7 @@ end
     ]
         @testset "$label" begin
             template = get_thermal_dispatch_template_network(
-                NetworkModel(NetFormulation; contingency_matrix = PNM.VirtualMODF(sys)),
+                NetworkModel(NetFormulation),
             )
             set_device_model!(template, PSY.Line, POM.SecurityConstrainedStaticBranch)
             set_device_model!(
@@ -775,7 +772,7 @@ end
     @test !isempty(con_ub.data)
     @test !isempty(con_lb.data)
 
-    net_reduction_data = network_model.network_reduction
+    net_reduction_data = IOM.get_network_reduction(network_model)
     name_to_arc_map = PNM.get_name_to_arc_maps(net_reduction_data)[PSY.Line]
     all_branch_maps_by_type = PNM.get_all_branch_maps_by_type(net_reduction_data)
 
@@ -957,11 +954,7 @@ end
             PSY.add_supplemental_attribute!(sys, component, transition_data)
         end
         template = get_thermal_dispatch_template_network(
-            NetworkModel(
-                PTDFNetworkModel;
-                network_matrix = PNM.PTDF(sys),
-                contingency_matrix = PNM.VirtualMODF(sys),
-            ),
+            NetworkModel(PTDFNetworkModel),
         )
         set_device_model!(template, PSY.Line, POM.SecurityConstrainedStaticBranch)
         set_device_model!(
@@ -1036,11 +1029,7 @@ end
             PSY.add_supplemental_attribute!(sys, component_parallel, transition_data)
         end
         template = get_thermal_dispatch_template_network(
-            NetworkModel(
-                PTDFNetworkModel;
-                network_matrix = PNM.PTDF(sys),
-                contingency_matrix = PNM.VirtualMODF(sys),
-            ),
+            NetworkModel(PTDFNetworkModel),
         )
         set_device_model!(template, PSY.Line, POM.SecurityConstrainedStaticBranch)
         set_device_model!(
@@ -1113,16 +1102,10 @@ end
             PSY.add_supplemental_attribute!(sys, component, transition_data)
         end
         nr = NetworkReduction[DegreeTwoReduction()]
-        ptdf = PNM.PTDF(sys; network_reductions = nr)
-        modf = PNM.VirtualMODF(sys; network_reductions = nr)
         template = get_thermal_dispatch_template_network(
             NetworkModel(
                 PTDFNetworkModel;
-                network_matrix = ptdf,
-                contingency_matrix = modf,
-                reduce_degree_two_branches = PNM.has_degree_two_reduction(
-                    ptdf.network_reduction_data,
-                ),
+                network_source = NetworkReductionSpec(nr),
             ),
         )
         set_device_model!(template, PSY.Line, POM.SecurityConstrainedStaticBranch)
@@ -1234,16 +1217,10 @@ end
             PSY.add_supplemental_attribute!(sys, outaged_component, transition_data)
         end
         nr = NetworkReduction[DegreeTwoReduction()]
-        ptdf = PNM.PTDF(sys; network_reductions = nr)
-        modf = PNM.VirtualMODF(sys; network_reductions = nr)
         template = get_thermal_dispatch_template_network(
             NetworkModel(
                 PTDFNetworkModel;
-                network_matrix = ptdf,
-                contingency_matrix = modf,
-                reduce_degree_two_branches = PNM.has_degree_two_reduction(
-                    ptdf.network_reduction_data,
-                ),
+                network_source = NetworkReductionSpec(nr),
             ),
         )
         set_device_model!(template, PSY.Line, POM.SecurityConstrainedStaticBranch)
@@ -1365,7 +1342,7 @@ end
     # HiGHS returns the dual values directly.
     c_sys5 = _attach_all_branch_outages!(PSB.build_system(PSITestSystems, "c_sys5"))
     template = get_thermal_dispatch_template_network(
-        NetworkModel(PTDFNetworkModel; network_matrix = PNM.PTDF(c_sys5)),
+        NetworkModel(PTDFNetworkModel),
     )
     set_device_model!(
         template,
@@ -1401,7 +1378,7 @@ end
     c_sys5 = _attach_all_branch_outages!(PSB.build_system(PSITestSystems, "c_sys5"))
     template =
         PowerOperationsProblemTemplate(
-            NetworkModel(PTDFNetworkModel; network_matrix = PNM.PTDF(c_sys5)),
+            NetworkModel(PTDFNetworkModel),
         )
     set_device_model!(template, PSY.PowerLoad, StaticPowerLoad)
     set_device_model!(template, PSY.ThermalStandard, ThermalStandardUnitCommitment)
@@ -1433,16 +1410,15 @@ end
     _test_post_contingency_line_duals(IOM.get_optimization_container(ps_model))
 end
 
-# Local re-implementation of PSI's internal `_retained_buses(nrd)` helper, which
-# POM does not export. Definition matches PSI exactly:
-#   _retained_buses(nrd) = Set(keys(PNM.get_bus_reduction_map(nrd)))
+# The buses a reduction retained: the representatives, i.e. the keys of its bus
+# reduction map.
 _sc_retained_buses(nrd) = Set(keys(PNM.get_bus_reduction_map(nrd)))
 
-@testset "SC PTDF/MODF reductions are reconciled to a cohesive bus set" begin
-    # Regression: PTDF/MODF supplied with only [Radial, DegreeTwo] (no pre-baked
-    # irreducible buses) plus many monitored components can reduce to different
-    # bus sets. POM must reconcile them onto one cohesive reduction so `build!`
-    # succeeds without the caller replicating the irreducible-bus computation.
+@testset "SC PTDF and MODF reduce to one bus set" begin
+    # Regression: a [Radial, DegreeTwo] reduction plus many monitored components used
+    # to be able to reduce the PTDF and the MODF onto different bus sets. Both now wrap
+    # one factorization core built from one Ybus, so they cannot diverge and the caller
+    # never replicates the irreducible-bus computation.
     sys = PSB.build_system(PSB.PSITestSystems, "test_RTS_GMLC_sys")
     all_lines = collect(get_components(PSY.Line, sys))
     @test length(all_lines) > 1
@@ -1460,16 +1436,10 @@ _sc_retained_buses(nrd) = Set(keys(PNM.get_bus_reduction_map(nrd)))
     end
 
     nr = NetworkReduction[RadialReduction(), DegreeTwoReduction()]
-    # Caller provides matrices WITHOUT pre-baking irreducible buses.
-    ptdf = PNM.PTDF(sys; network_reductions = nr)
-    modf = PNM.VirtualMODF(sys; network_reductions = nr)
     template = get_thermal_dispatch_template_network(
         NetworkModel(
             PTDFNetworkModel;
-            network_matrix = ptdf,
-            contingency_matrix = modf,
-            reduce_radial_branches = true,
-            reduce_degree_two_branches = true,
+            network_source = NetworkReductionSpec(nr),
         ),
     )
     set_device_model!(template, PSY.Line, POM.SecurityConstrainedStaticBranch)
@@ -1505,7 +1475,7 @@ end
 
     function _build_sc_slack_model(use_slacks)
         template = get_thermal_dispatch_template_network(
-            NetworkModel(PTDFNetworkModel; network_matrix = PNM.PTDF(c_sys5)),
+            NetworkModel(PTDFNetworkModel),
         )
         set_device_model!(
             template,
@@ -1645,7 +1615,7 @@ end
 
     function _build_sc(use_slacks)
         template = get_thermal_dispatch_template_network(
-            NetworkModel(PTDFNetworkModel; network_matrix = PNM.PTDF(c_sys5)),
+            NetworkModel(PTDFNetworkModel),
         )
         set_device_model!(
             template,
@@ -1750,8 +1720,7 @@ end
     template = get_thermal_dispatch_template_network(
         NetworkModel(
             PTDFNetworkModel;
-            network_matrix = PNM.VirtualPTDF(c_sys14),
-            contingency_matrix = PNM.VirtualMODF(c_sys14),
+            network_source = PrebuiltMatrixSource(PNM.VirtualPTDF(c_sys14)),
         ),
     )
     set_device_model!(

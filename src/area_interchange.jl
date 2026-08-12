@@ -180,7 +180,7 @@ function add_constraints!(
     )
 
     area_ex_var = get_variable(container, FlowActivePowerVariable, PSY.AreaInterchange)
-    net_reduction_data = network_model.network_reduction
+    net_reduction_data = get_network_reduction(network_model)
     # Memoize the PTDF orientation sign per (type, name): a degree-two series
     # member whose native from→to is `:ToFrom` relative to the merged arc
     # contributes with a flipped sign to the area sum.

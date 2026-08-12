@@ -5,7 +5,7 @@ const DC_NETWORK_MODELS_FOR_TESTING = [PTDFNetworkModel, DCPNetworkModel]
     limits = PSY.get_flow_limits(PSY.get_component(MonitoredLine, system, "1"), PSY.SU)
     for model in DC_NETWORK_MODELS_FOR_TESTING
         template = get_thermal_dispatch_template_network(
-            NetworkModel(model; network_matrix = PTDF(system)),
+            NetworkModel(model),
         )
         model_m = DecisionModel(template, system; optimizer = HiGHS_optimizer)
         @test build!(model_m; output_dir = mktempdir(; cleanup = true)) ==
@@ -51,7 +51,7 @@ end
     set_rating!(PSY.get_component(Line, system, "2"), 1.5 * PSY.SU)
     for model in DC_NETWORK_MODELS_FOR_TESTING
         template = get_thermal_dispatch_template_network(
-            NetworkModel(model; network_matrix = PTDF(system)),
+            NetworkModel(model),
         )
         set_device_model!(template, DeviceModel(Line, StaticBranch))
         set_device_model!(template, DeviceModel(MonitoredLine, StaticBranchUnbounded))
@@ -178,7 +178,7 @@ end
 
     for model in DC_NETWORK_MODELS_FOR_TESTING
         template = get_template_dispatch_with_network(
-            NetworkModel(model; network_matrix = PTDF(system)),
+            NetworkModel(model),
         )
         set_device_model!(
             template,
@@ -550,7 +550,7 @@ end
     #     remove_component!(system, line)
     #
     #     template = get_template_dispatch_with_network(
-    #         NetworkModel(PTDFNetworkModel; network_matrix = PTDF(system)),
+    #         NetworkModel(PTDFNetworkModel),
     #     )
     #     set_device_model!(template, DeviceModel(TwoWindingTransformer, PhaseAngleControl))
     #     model_m = DecisionModel(template, system; optimizer = HiGHS_optimizer)
@@ -862,7 +862,7 @@ end
     # Test with DC Power Flow Model
     for net_model in DC_NETWORK_MODELS_FOR_TESTING
         template = get_template_dispatch_with_network(
-            NetworkModel(net_model; network_matrix = PTDF(system)),
+            NetworkModel(net_model),
         )
         # Set device model for ThreeWindingTransformer
         set_device_model!(template, DeviceModel(ThreeWindingTransformer, StaticBranch))
@@ -915,7 +915,7 @@ _bus_merged_away(nrd, b) = any(b in s for s in values(PNM.get_bus_reduction_map(
         ml = PSY.get_component(MonitoredLine, sys, "1")
         PSY.set_r!(ml, 0.0 * PSY.SU)
         PSY.set_x!(ml, 1e-5 * PSY.SU)
-        # No `network_matrix` provided, so a VirtualPTDF is built and the reduction runs.
+        # The default network source builds a VirtualPTDF, so the reduction runs.
         template = get_thermal_dispatch_template_network(NetworkModel(PTDFNetworkModel))
         set_device_model!(
             template,

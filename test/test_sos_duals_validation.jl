@@ -59,7 +59,6 @@ end
     template = PowerOperationsProblemTemplate(
         NetworkModel(
             PTDFNetworkModel;
-            network_matrix = PTDF(sys),
             duals = [CopperPlateBalanceConstraint],
         ),
     )

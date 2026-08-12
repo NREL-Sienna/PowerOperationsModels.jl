@@ -165,7 +165,7 @@ function add_variables!(
     U <: PSY.ACTransmission,
     F <: AbstractBranchFormulation}
     time_steps = get_time_steps(container)
-    net_reduction_data = network_model.network_reduction
+    net_reduction_data = get_network_reduction(network_model)
     branch_names = get_branch_argument_variable_axis(net_reduction_data, devices)
     reduced_branch_tracker = get_reduced_branch_tracker(network_model)
     all_branch_maps_by_type = PNM.get_all_branch_maps_by_type(net_reduction_data)
@@ -513,7 +513,7 @@ function add_constraints!(
     V <: AbstractActivePowerModel,
 }
     time_steps = get_time_steps(container)
-    net_reduction_data = network_model.network_reduction
+    net_reduction_data = get_network_reduction(network_model)
     reduced_branch_tracker = get_reduced_branch_tracker(network_model)
     branch_names = get_branch_argument_constraint_axis(
         net_reduction_data,
@@ -574,7 +574,7 @@ function add_constraints!(
     V <: AbstractPTDFNetworkModel,
 }
     time_steps = get_time_steps(container)
-    net_reduction_data = network_model.network_reduction
+    net_reduction_data = get_network_reduction(network_model)
     reduced_branch_tracker = get_reduced_branch_tracker(network_model)
     branch_names = get_branch_argument_constraint_axis(
         net_reduction_data,
@@ -665,7 +665,7 @@ function add_flow_rate_constraint_with_parameters!(
     V <: AbstractPTDFNetworkModel,
 }
     time_steps = get_time_steps(container)
-    net_reduction_data = network_model.network_reduction
+    net_reduction_data = get_network_reduction(network_model)
     reduced_branch_tracker = get_reduced_branch_tracker(network_model)
 
     # POM's `get_branch_argument_constraint_axis` already performs per-arc claim
@@ -821,7 +821,7 @@ function add_expressions!(
 ) where {B <: PSY.ACTransmission}
     time_steps = get_time_steps(container)
     ptdf = get_network_matrix(network_model)
-    net_reduction_data = network_model.network_reduction
+    net_reduction_data = get_network_reduction(network_model)
     branch_names = get_branch_argument_variable_axis(net_reduction_data, devices)
     # `collect` to a Vector so the spawn loop below can index it for multi-threading.
     name_to_arc_map = collect(PNM.get_name_to_arc_map(net_reduction_data, B))
@@ -877,7 +877,7 @@ function add_constraints!(
     time_steps = get_time_steps(container)
     branch_flow_expr = get_expression(container, PTDFBranchFlow, T)
     flow_variables = get_variable(container, FlowActivePowerVariable, T)
-    net_reduction_data = network_model.network_reduction
+    net_reduction_data = get_network_reduction(network_model)
     reduced_branch_tracker = get_reduced_branch_tracker(network_model)
     branches = get_branch_argument_constraint_axis(
         net_reduction_data,

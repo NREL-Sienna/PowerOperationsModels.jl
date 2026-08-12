@@ -1125,6 +1125,12 @@ end
     end
 end
 
+# Which kind of reduction entry a branch resolved to. Dispatched rather than type-checked
+# so a new PNM entry kind is a missing method instead of a silently wrong branch.
+_reduced_entry_kind(::PSY.ACTransmission) = :single
+_reduced_entry_kind(::PNM.BranchesSeries) = :series
+_reduced_entry_kind(::PNM.BranchesParallel) = :parallel
+
 @testset "Test bad data for interfaces with reductions" begin
     sys_rts_da = build_system(PSISystems, "modified_RTS_GMLC_DA_sys")
     transform_single_time_series!(sys_rts_da, Hour(24), Hour(1))
@@ -1149,15 +1155,31 @@ end
         violation_penalty = 1000.0,
         direction_mapping = Dict("CA-1" => -1, "C35" => -1),
     )
-    # Order matters: compute the ptdf before adding the service so the interface lines
-    # are reduced (to test the bad-data checking).
-    ptdf = PTDF(sys_rts_da; network_reductions = NetworkReduction[DegreeTwoReduction()])
+    #=
+    Built before the series interface exists, so its degree-two reduction merges "CA-1"
+    and "C35" into one BranchesSeries entry. That merged-chain-inside-an-interface state
+    is what makes conflicting per-segment direction data ambiguous, and it is the ONLY
+    state the series-chain direction validations can fire from.
+
+    A build-time reduction can no longer produce it: PNM's DegreeTwoReduction protects the
+    arc buses of every TransmissionInterface contributing device, so the bus the chain
+    would eliminate is pinned and both lines stay separate direct entries. Two independent
+    contributors with opposite signs is valid data, so there is nothing left to reject.
+    The state is only reachable from a reduction that predates the interface, which is
+    what this matrix is kept for — and that route is rejected by the source's own
+    reduction-reproducibility guard. Do not "restore" a `build!`-returns-FAILED assertion
+    on the spec source below without first removing that PNM protection.
+    =#
+    pre_service_ptdf = PNM.VirtualPTDF(
+        sys_rts_da;
+        tol = POM.PTDF_ZERO_TOL,
+        network_reductions = PNM.NetworkReduction[PNM.DegreeTwoReduction()],
+    )
     add_service!(sys_rts_da, interface_series_chain, [series_chain_1, series_chain_2])
     template = PowerOperationsProblemTemplate(
         NetworkModel(
             AreaPTDFNetworkModel;
-            network_matrix = ptdf,
-            reduce_degree_two_branches = true,
+            network_source = NetworkReductionSpec(PNM.DegreeTwoReduction()),
             use_slacks = true,
         ),
     )
@@ -1175,6 +1197,7 @@ end
         template,
         ServiceModel(TransmissionInterface, ConstantMaxInterfaceFlow),
     )
+    spec_network_model = get_network_model(template)
     ps_model = DecisionModel(
         template,
         sys_rts_da;
@@ -1185,8 +1208,24 @@ end
     @test build!(ps_model; output_dir = mktempdir(; cleanup = true)) ==
           IOM.ModelBuildStatus.BUILT
 
-    # Bad direction data for interface on series chain:
+    # Bad direction data for interface on series chain: only reachable from a reduction
+    # that predates the interface, and that reduction is now rejected outright because it
+    # describes a network the system no longer has.
     PSY.set_direction_mapping!(interface_series_chain, Dict("CA-1" => 1, "C35" => -1))
+    stale_source = PrebuiltMatrixSource(pre_service_ptdf)
+    @test_throws IS.ConflictingInputsError POM._source_ybus(
+        stale_source,
+        sys_rts_da,
+        Int[],
+    )
+    set_network_model!(
+        template,
+        NetworkModel(
+            AreaPTDFNetworkModel;
+            network_source = stale_source,
+            use_slacks = true,
+        ),
+    )
     ps_model = DecisionModel(
         template,
         sys_rts_da;
@@ -1199,6 +1238,7 @@ end
         console_level = Logging.AboveMaxLevel,
         output_dir = mktempdir(; cleanup = true),
     ) == IOM.ModelBuildStatus.FAILED
+    set_network_model!(template, spec_network_model)
 
     # Bad direction data for interface on double circuit:
     PSY.set_direction_mapping!(interface_series_chain, Dict("CA-1" => 1, "C35" => 1))
@@ -1232,21 +1272,26 @@ end
         output_dir = mktempdir(; cleanup = true),
     ) == IOM.ModelBuildStatus.FAILED
 
-    # Only including part of a series chain in an interface:
+    # Only including part of a series chain in an interface: there is no merged chain to
+    # partially specify, because the remaining contributor's endpoints pin the bus the
+    # merge would eliminate. Asserting that structural fact — rather than a rejection that
+    # can no longer fire — is what keeps the requirement covered.
     push!(PSY.get_services(double_circuit_1), interface_double_circuit)
     pop!(PSY.get_services(series_chain_1))
-    ps_model = DecisionModel(
-        template,
-        sys_rts_da;
-        resolution = Hour(1),
-        optimizer = HiGHS_optimizer,
-        store_variable_names = true,
+    partial_reduction = PNM.get_network_reduction_data(
+        PNM.Ybus(
+            sys_rts_da;
+            network_reductions = PNM.NetworkReduction[PNM.DegreeTwoReduction()],
+        ),
     )
-    @test build!(
-        ps_model;
-        console_level = Logging.AboveMaxLevel,
-        output_dir = mktempdir(; cleanup = true),
-    ) == IOM.ModelBuildStatus.FAILED
+    PNM.populate_branch_maps_by_type!(partial_reduction)
+    partial_name_to_arc = PNM.get_name_to_arc_maps(partial_reduction)[Line]
+    partial_maps = PNM.get_all_branch_maps_by_type(partial_reduction)
+    for name in ("CA-1", "C35")
+        arc, bucket = partial_name_to_arc[name]
+        @test bucket == "direct_branch_map"
+        @test _reduced_entry_kind(partial_maps[bucket][Line][arc]) == :single
+    end
 end
 
 @testset "GroupReserve requirement sums only its contributing services" begin
