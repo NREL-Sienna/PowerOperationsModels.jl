@@ -25,12 +25,10 @@ function _services_with_contributors(
     ]
 end
 
-# Available groups of the type that reference at least one contributing service AND impose a
-# demand under this formulation. A group is device-less by design, so `_services_with_contributors`
-# (device-map filter) cannot apply; a demand-less group is skipped like a degenerate service.
-# Comprehensions keep the eltype CONCRETE (`GroupReserve{ReserveUp, NaturalUnit}`): a bare
-# `PSY.GroupReserve[]` accumulator would canonicalize container keys to the direction-less
-# wrapper, which readers keyed by the model's `GroupReserve{Dir}` could never find.
+# Groups are device-less, so the device-map filter above cannot apply. The comprehensions
+# keep the eltype concrete (e.g. `GroupReserve{ReserveUp, NaturalUnit}`): a bare
+# `PSY.GroupReserve[]` accumulator would canonicalize container keys direction-less,
+# unreachable by readers keyed on `GroupReserve{Dir}`.
 function _groups_with_demand(model::ServiceModel, sys::PSY.System)
     candidates = [
         g for g in get_available_components(model, sys) if
