@@ -2413,6 +2413,74 @@ function add_to_expression!(
     return
 end
 
+# Load up-reserve is committed shed: LB = P - Σ r_up, constrained >= 0. Generators route
+# ReserveUp to the UB expression, so `V <: PSY.ElectricLoad` cannot shadow them.
+function add_to_expression!(
+    container::OptimizationContainer,
+    ::Type{T},
+    ::Type{U},
+    service::X,
+    devices::Union{Vector{V}, IS.FlattenIteratorWrapper{V}},
+    model::ServiceModel{X, W},
+) where {
+    T <: ActivePowerRangeExpressionLB,
+    U <: VariableType,
+    V <: PSY.ElectricLoad,
+    X <: PSY.Reserve{PSY.ReserveUp},
+    W <: AbstractReservesFormulation,
+}
+    service_name = PSY.get_name(service)
+    variable = get_variable(container, U, X)
+    if !has_container_key(container, T, V)
+        add_expressions!(container, T, devices, model)
+    end
+    expression = get_expression(container, T, V)
+    time_steps = get_time_steps(container)
+    for d in devices, t in time_steps
+        name = PSY.get_name(d)
+        add_proportional_to_jump_expression!(
+            expression[name, t],
+            variable[(service_name, name, t)],
+            -1.0,
+        )
+    end
+    return
+end
+
+# Load down-reserve is committed extra consumption: UB = P + Σ r_down, constrained by the
+# load's forecast.
+function add_to_expression!(
+    container::OptimizationContainer,
+    ::Type{T},
+    ::Type{U},
+    service::X,
+    devices::Union{Vector{V}, IS.FlattenIteratorWrapper{V}},
+    model::ServiceModel{X, W},
+) where {
+    T <: ActivePowerRangeExpressionUB,
+    U <: VariableType,
+    V <: PSY.ElectricLoad,
+    X <: PSY.Reserve{PSY.ReserveDown},
+    W <: AbstractReservesFormulation,
+}
+    service_name = PSY.get_name(service)
+    variable = get_variable(container, U, X)
+    if !has_container_key(container, T, V)
+        add_expressions!(container, T, devices, model)
+    end
+    expression = get_expression(container, T, V)
+    time_steps = get_time_steps(container)
+    for d in devices, t in time_steps
+        name = PSY.get_name(d)
+        add_proportional_to_jump_expression!(
+            expression[name, t],
+            variable[(service_name, name, t)],
+            1.0,
+        )
+    end
+    return
+end
+
 function add_to_expression!(
     container::OptimizationContainer,
     ::Type{T},
