@@ -11,14 +11,6 @@ discovering subnetworks, applying network reductions, etc.
 # Helper functions (moved from IOM)
 #################################################################################
 
-function _make_subnetworks_from_subnetwork_axes(ptdf::PNM.PTDF)
-    subnetworks = Dict{Int, Set{Int}}()
-    for (ref_bus, ptdf_axes) in ptdf.subnetwork_axes
-        subnetworks[ref_bus] = Set(ptdf_axes[1])
-    end
-    return subnetworks
-end
-
 function _make_subnetworks_from_subnetwork_axes(ptdf::PNM.VirtualPTDF)
     subnetworks = Dict{Int, Set{Int}}()
     for (ref_bus, ptdf_axes) in ptdf.subnetwork_axes
@@ -176,13 +168,37 @@ function _get_unmodeled_branch_types(
     return unmodeled
 end
 
+_is_default_source(::IOM.DefaultNetworkSource) = true
+_is_default_source(::IOM.AbstractNetworkSource) = false
+
+# A formulation that never consults the reduction would compute the requested one and then
+# ignore it, so accepting a source silently discards the caller's input. Erroring restores
+# the guarantee the dedicated CopperPlate/AreaBalance methods used to give by construction.
+function _validate_network_source(
+    ::Type{T},
+    source::IOM.AbstractNetworkSource,
+) where {T <: AbstractNetworkModel}
+    honors_network_reduction(T) && return
+    _is_default_source(source) && return
+    throw(
+        IS.ConflictingInputsError(
+            "$(T) aggregates the power balance and resolves injections by area or reference \
+            bus, so it never consults a network reduction. The supplied \
+            $(nameof(typeof(source))) would be computed and then ignored. Drop \
+            `network_source` from the NetworkModel, or pick a formulation that models \
+            individual buses.",
+        ),
+    )
+end
+
 function _validate_network_and_branches(
-    model::NetworkModel,
+    model::NetworkModel{T},
     branch_models::BranchModelContainer,
     sys::PSY.System,
-)
+) where {T <: AbstractNetworkModel}
     unmodeled = _get_unmodeled_branch_types(branch_models, sys)
     IOM._check_branch_network_compatibility(model, unmodeled)
+    _validate_network_source(T, get_network_source(model))
     return
 end
 

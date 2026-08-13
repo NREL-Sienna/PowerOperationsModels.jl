@@ -5,9 +5,15 @@ dispatch instead of an isnothing check, and a family cannot accidentally read a
 matrix it never derived.
 
 The reduction data is a deepcopy: POM extends it with `populate_branch_maps_by_type!`
-and must never write into a core that the caller may have supplied or shared. The
-copy may only ever be EXTENDED — its bus and arc mapping must stay identical to the
-core's, because the MODF is indexed with arcs resolved through this copy.
+and must never write into a core that the caller may have supplied or shared. That
+function only ever accumulates — it never clears — so sharing it would leak one
+template's branch maps into the next build off the same core. The copy may only ever be
+EXTENDED: its bus and arc mapping must stay identical to the core's, because the MODF is
+indexed with arcs resolved through this copy.
+
+Consequence: `PNM.get_network_reduction_data(matrix)` and `get_reduction(network_data)`
+are the same reduction but not the same object, and only the latter carries the branch
+maps. Read the reduction off the container, never off the matrix.
 =#
 
 """Ybus-only families: no factorization, no sensitivity matrices."""
@@ -30,8 +36,10 @@ struct PTDFNetworkData{P, M} <: IOM.AbstractNetworkData
     reduction::PNM.NetworkReductionData
 end
 
-# The no-contingency constructors omit the field rather than storing `nothing`, so
-# `has_contingency_matrix` is a dispatched predicate on a concrete type.
+# The no-contingency constructors omit the argument, storing this singleton in
+# `contingency_matrix`. It is the type parameter, not the field's presence, that
+# `has_contingency_matrix` dispatches on. A named sentinel rather than `nothing` because
+# `nothing` already means "not instantiated yet" on IOM's `network_data` field.
 struct NoContingencyMatrix end
 
 DCPNetworkData(ybus::PNM.Ybus, reduction::PNM.NetworkReductionData) =

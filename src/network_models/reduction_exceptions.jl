@@ -38,29 +38,20 @@ function _push_component_buses!(buses::Set{Int}, bus::PSY.ACBus)
     return
 end
 
-# AreaInterchange <: PSY.Branch but connects two Areas, not two buses; it has no
-# arc, so the PSY.Branch method above would error on PSY.get_arc. Not reachable
-# today (modeled_branch_types entries are filtered to <: PSY.ACTransmission
-# before reaching _push_component_buses!, and AreaInterchange isn't one), but
-# guard it explicitly so a future caller can't hit that MethodError.
+# AreaInterchange <: PSY.Branch but connects Areas, so it has no arc and the PSY.Branch
+# method above would error on PSY.get_arc. Reachable: `_pin_outage_buses!` iterates
+# `get_associated_components` unfiltered.
 function _push_component_buses!(::Set{Int}, ::PSY.AreaInterchange)
     return
 end
 
-# Fallback for monitored/outaged component types with no bus-pinning rule. Reached
-# from `_pin_outage_buses!`, which iterates the raw
-# `PSY.get_monitored_components(outage)` UUIDs (unfiltered — unlike the
-# template-validation path), so any non-{Branch, ThreeWindingTransformer,
-# StaticInjection, ACBus} monitored type lands here. Warn and skip rather than
-# MethodError so this PTDF-side protected set stays reconcilable with PNM's
-# `VirtualMODF` collector (`_accumulate_protected_buses!(::PSY.Component)`, which also
-# warn-skips). The consequence is real, hence the explicit message.
+# Warn-skip instead of MethodError so this set stays reconcilable with PNM's
+# `_accumulate_protected_buses!(::PSY.Component)`, which also warn-skips.
 function _push_component_buses!(::Set{Int}, c::PSY.Component)
     @warn "Outage-monitored component $(typeof(c)) ($(PSY.get_name(c))) has no \
-           reduction-protection rule; its bus is not pinned and may be reduced away, \
-           so the contingency it participates in will not be enforced. This mirrors \
-           PNM's VirtualMODF _accumulate_protected_buses! warn-skip; if this type \
-           should be protected, add a _push_component_buses! method for it." maxlog = 5
+           reduction-protection rule; its bus is not pinned and may be reduced away, so \
+           its contingency will not be enforced. Add a _push_component_buses! method \
+           for this type if it should be protected." maxlog = 5
     return
 end
 

@@ -134,7 +134,7 @@ end
 
     @test POM.get_core(source) === core
     @test POM._source_reductions(source) ==
-          POM._applied_reductions(POM.PNM.get_network_reduction_data(core))
+          POM.PNM.get_applied_reductions(POM.PNM.get_network_reduction_data(core))
     @test POM.PNM.RadialReduction() in POM._source_reductions(source)
     @test !hasmethod(POM._build_ybus, Tuple{typeof(source), PSY.System, Vector{Int}})
 end
@@ -350,4 +350,92 @@ end
 
     rebuilt = POM._source_ybus(source, sys, Int[])
     @test _bus_map(rebuilt) == _bus_map(core)
+end
+
+# AreaBalanceNetworkModel requires a system with Areas; CopperPlate does not.
+_aggregated_case(::Type{POM.CopperPlateNetworkModel}) =
+    (PSB.build_system(PSITestSystems, "c_sys5"), false)
+function _aggregated_case(::Type{POM.AreaBalanceNetworkModel})
+    sys = PSB.build_system(PSISystems, "two_area_pjm_DA")
+    transform_single_time_series!(sys, Hour(24), Hour(1))
+    return (sys, true)
+end
+
+function _aggregated_template(formulation, needs_interchange)
+    template = get_thermal_dispatch_template_network(NetworkModel(formulation))
+    if needs_interchange
+        set_device_model!(template, PSY.AreaInterchange, StaticBranch)
+    end
+    return template
+end
+
+function _aggregated_template(formulation, needs_interchange, source)
+    template = get_thermal_dispatch_template_network(
+        NetworkModel(formulation; network_source = source),
+    )
+    if needs_interchange
+        set_device_model!(template, PSY.AreaInterchange, StaticBranch)
+    end
+    return template
+end
+
+@testset "Aggregated formulations reject a network source they cannot honor" begin
+    source = POM.NetworkReductionSpec(POM.PNM.RadialReduction())
+    for formulation in (POM.CopperPlateNetworkModel, POM.AreaBalanceNetworkModel)
+        @test !POM.honors_network_reduction(formulation)
+        @test_throws IS.ConflictingInputsError POM._validate_network_source(
+            formulation,
+            source,
+        )
+        # Assert the message, not just the type: AreaBalance also throws
+        # ConflictingInputsError on a system with no Areas, so a type-only check could
+        # pass for the wrong reason.
+        @test_throws "computed and then ignored" POM._validate_network_source(
+            formulation,
+            source,
+        )
+        # The default source is what these formulations always used.
+        @test isnothing(
+            POM._validate_network_source(formulation, IOM.DefaultNetworkSource()),
+        )
+    end
+end
+
+@testset "The aggregated guard blocks a build, and the default source still builds" begin
+    source = POM.NetworkReductionSpec(POM.PNM.RadialReduction())
+    for formulation in (POM.CopperPlateNetworkModel, POM.AreaBalanceNetworkModel)
+        sys, needs_interchange = _aggregated_case(formulation)
+
+        # `build!` traps the error and reports FAILED rather than propagating it.
+        rejected = DecisionModel(
+            _aggregated_template(formulation, needs_interchange, source),
+            sys;
+            optimizer = HiGHS_optimizer,
+        )
+        @test build!(rejected; output_dir = mktempdir(; cleanup = true)) ==
+              IOM.ModelBuildStatus.FAILED
+
+        accepted = DecisionModel(
+            _aggregated_template(formulation, needs_interchange),
+            sys;
+            optimizer = HiGHS_optimizer,
+        )
+        @test build!(accepted; output_dir = mktempdir(; cleanup = true)) ==
+              IOM.ModelBuildStatus.BUILT
+    end
+end
+
+@testset "Bus-level formulations still accept a network source" begin
+    sys = PSB.build_system(PSITestSystems, "c_sys5")
+    # Falsifiable: if the guard keyed on something broader than the trait, this would throw.
+    @test POM.honors_network_reduction(POM.PTDFNetworkModel)
+    @test POM.honors_network_reduction(POM.DCPNetworkModel)
+    net = NetworkModel(
+        POM.PTDFNetworkModel;
+        network_source = POM.NetworkReductionSpec(POM.PNM.RadialReduction()),
+    )
+    template = get_thermal_dispatch_template_network(net)
+    model = DecisionModel(template, sys; optimizer = HiGHS_optimizer)
+    @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
+          IOM.ModelBuildStatus.BUILT
 end

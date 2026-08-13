@@ -36,8 +36,8 @@ end
 Reuse a factorization core the caller already built — the cheapest reuse, since the
 PTDF and MODF wrappers are derived from it without re-factorizing the ABA matrix.
 """
-struct PrebuiltCoreSource <: IOM.AbstractNetworkSource
-    core::PNM.VirtualFactorCore
+struct PrebuiltCoreSource{C <: PNM.VirtualFactorCore} <: IOM.AbstractNetworkSource
+    core::C
 end
 
 get_matrix(source::PrebuiltMatrixSource) = source.matrix
@@ -46,38 +46,9 @@ get_core(source::PrebuiltCoreSource) = source.core
 _source_reductions(source::NetworkReductionSpec) = source.reductions
 _source_reductions(::IOM.DefaultNetworkSource) = PNM.NetworkReduction[]
 _source_reductions(source::PrebuiltMatrixSource) =
-    _applied_reductions(PNM.get_network_reduction_data(get_matrix(source)))
+    PNM.get_applied_reductions(PNM.get_network_reduction_data(get_matrix(source)))
 _source_reductions(source::PrebuiltCoreSource) =
-    _applied_reductions(PNM.get_network_reduction_data(get_core(source)))
-
-"""
-The reductions an already-applied `NetworkReductionData` was built with, in the order
-`Ybus` must re-apply them (PNM rejects any reduction after Ward). The zero-impedance entry is
-included so a non-default one round-trips.
-"""
-function _applied_reductions(reduction::PNM.NetworkReductionData)
-    container = PNM.get_reductions(reduction)
-    reductions = PNM.NetworkReduction[]
-    for field in (
-        :zero_impedance_reduction,
-        :radial_reduction,
-        :degree_two_reduction,
-        :ward_reduction,
-    )
-        _push_applied_reduction!(reductions, getfield(container, field))
-    end
-    return reductions
-end
-
-_push_applied_reduction!(::Vector{PNM.NetworkReduction}, ::Nothing) = nothing
-
-function _push_applied_reduction!(
-    reductions::Vector{PNM.NetworkReduction},
-    reduction::PNM.NetworkReduction,
-)
-    push!(reductions, reduction)
-    return
-end
+    PNM.get_applied_reductions(PNM.get_network_reduction_data(get_core(source)))
 
 "The user-supplied irreducible bus set an already-applied reduction was built with."
 _source_irreducible_buses(reduction::PNM.NetworkReductionData) =
