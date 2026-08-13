@@ -36,6 +36,13 @@ upward-only in every US market, so it maps to `PSY.ReserveUp`.
 _reserve_direction(::PSY.Reserve{T}) where {T <: PSY.ReserveDirection} = T
 _reserve_direction(::PSY.OfflineReserve) = PSY.ReserveUp
 
+"""
+Upward reserve products a device can supply: up-direction reserves plus `OfflineReserve`
+(non-spinning is upward-only). Excludes `GroupReserve` - devices serve a group's members,
+never the group itself.
+"""
+const UP_RESERVE = Union{PSY.Reserve{PSY.ReserveUp}, PSY.OfflineReserve}
+
 "Whether a reserve is non-spinning: `OfflineReserve` vs everything else under `AbstractReserve`."
 _is_offline(::PSY.OfflineReserve) = true
 _is_offline(::PSY.AbstractReserve) = false

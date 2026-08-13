@@ -39,8 +39,9 @@ variable_cost(cost::PSY.OperationalCost, ::Type{ShiftDownActivePowerVariable}, :
 
 ########################### Reserve provision, ElectricLoad ################################
 # The inverse of a generator: up reserve is shed (P - r_up >= 0), down reserve is extra
-# consumption (P + r_down <= forecast). Loads do not provide OfflineReserve.
-get_expression_type_for_reserve(::Type{ActivePowerReserveVariable}, ::Type{<:PSY.ElectricLoad}, ::Type{<:PSY.Reserve{PSY.ReserveUp}}) = ActivePowerRangeExpressionLB
+# consumption (P + r_down <= forecast). OfflineReserve (non-spin) is upward-only, so a
+# load provides it as committed shed like any up reserve.
+get_expression_type_for_reserve(::Type{ActivePowerReserveVariable}, ::Type{<:PSY.ElectricLoad}, ::Type{<:UP_RESERVE}) = ActivePowerRangeExpressionLB
 get_expression_type_for_reserve(::Type{ActivePowerReserveVariable}, ::Type{<:PSY.ElectricLoad}, ::Type{<:PSY.Reserve{PSY.ReserveDown}}) = ActivePowerRangeExpressionUB
 
 ######################################################

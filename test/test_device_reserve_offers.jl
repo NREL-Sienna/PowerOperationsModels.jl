@@ -488,6 +488,59 @@ end
     end
 end
 
+@testset "OfflineReserve as ORDC: load and generator supply" begin
+    sys = build_reserve_market_system()
+    thermals = collect(get_components(ThermalStandard, sys))
+    il = get_component(PSY.InterruptiblePowerLoad, sys, _MKT_LOAD)
+    nspin = OfflineReserve(;
+        name = "NSPIN",
+        available = true,
+        time_frame = 30.0,
+        variable = _mkt_curve([0.0, 100.0, 200.0], [65.0, 11.0]),
+    )
+    add_service!(sys, nspin, vcat(PSY.Device[thermals...], il))
+    # Every participant carries an offer: an un-offered contributor supplies for free and
+    # would crowd out the load's priced block.
+    for (i, g) in enumerate(thermals)
+        PSY.set_service_bid!(
+            sys, g, nspin, _mkt_offer_ts(nspin, 30.0, 6.0 + i), IS.NaturalUnit(),
+        )
+    end
+    nspin_offer = 8.0
+    PSY.set_service_bid!(
+        sys, il, nspin, _mkt_offer_ts(nspin, nspin_offer, 3.0), IS.NaturalUnit(),
+    )
+
+    template = _reserve_market_template()
+    set_service_model!(template, ServiceModel(OfflineReserve, StepwiseCostReserve))
+    model = DecisionModel(
+        template, sys;
+        optimizer = HiGHS_optimizer, store_variable_names = true,
+    )
+    @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
+          IOM.ModelBuildStatus.BUILT
+    @test solve!(model) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
+
+    res = IOM.OptimizationProblemOutputs(model)
+    demand = read_variable(
+        res, "ServiceRequirementVariable__OfflineReserve";
+        table_format = TableFormat.WIDE,
+    )
+    awards = read_variable(
+        res, "ActivePowerReserveVariable__OfflineReserve";
+        table_format = TableFormat.WIDE,
+    )
+    load_col = "NSPIN__$(_MKT_LOAD)"
+    @test load_col in names(awards)
+    for t in 1:24
+        @test demand[t, "NSPIN"] > 1.0
+        # The load's cheapest-in-stack block clears in full and stays offer-bounded: its
+        # non-spin award rides the same shed-headroom (LB) routing as any up reserve.
+        @test awards[t, load_col] <= nspin_offer + 1e-3
+        @test awards[t, load_col] >= nspin_offer - 1e-2
+    end
+end
+
 #################################################################################
 # Load reserve provision (PowerLoadDispatch)
 #################################################################################
