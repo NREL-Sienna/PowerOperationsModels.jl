@@ -1987,9 +1987,7 @@ function add_to_expression!(
     T <: ActivePowerRangeExpressionUB,
     U <: VariableType,
     V <: PSY.Component,
-    # OfflineReserve (non-spin) is upward-only and has no direction param, so it routes to the
-    # same upper-bound expression as a ReserveUp reserve.
-    X <: Union{PSY.Reserve{PSY.ReserveUp}, PSY.OfflineReserve},
+    X <: UP_RESERVE,
     W <: AbstractReservesFormulation,
 }
     service_name = PSY.get_name(service)
@@ -2426,7 +2424,7 @@ function add_to_expression!(
     T <: ActivePowerRangeExpressionLB,
     U <: VariableType,
     V <: PSY.ElectricLoad,
-    X <: PSY.Reserve{PSY.ReserveUp},
+    X <: UP_RESERVE,
     W <: AbstractReservesFormulation,
 }
     service_name = PSY.get_name(service)

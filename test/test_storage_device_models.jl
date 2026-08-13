@@ -319,6 +319,74 @@ end =#
     moi_tests(model, 434, 0, 526, 286, 125, false)
 end
 
+@testset "OfflineReserve (non-spin) as ORDC supplied by storage" begin
+    sys = PSB.build_system(PSITestSystems, "c_sys5_bat"; add_reserves = false)
+    nspin = OfflineReserve(;
+        name = "NSPIN",
+        available = true,
+        time_frame = 30.0,
+        sustained_time = 3600.0,
+        variable = make_market_bid_curve(
+            [0.0, 20.0, 40.0], [60.0, 10.0], 0.0; power_units = IS.NaturalUnit(),
+        ),
+    )
+    bat = get_component(EnergyReservoirStorage, sys, "Bat")
+    thermals = collect(get_components(ThermalStandard, sys))
+    add_service!(sys, nspin, vcat(PSY.Device[thermals...], bat))
+
+    template = get_thermal_dispatch_template_network(CopperPlateNetworkModel)
+    set_device_model!(
+        template,
+        DeviceModel(
+            EnergyReservoirStorage,
+            StorageDispatchWithReserves;
+            attributes = Dict{String, Any}(
+                "reservation" => true,
+                "cycling_limits" => false,
+                "energy_target" => false,
+                "complete_coverage" => true,
+                "regularization" => false,
+            ),
+        ),
+    )
+    set_device_model!(template, RenewableDispatch, FixedOutput)
+    set_service_model!(template, ServiceModel(OfflineReserve, StepwiseCostReserve))
+
+    model = DecisionModel(template, sys; optimizer = HiGHS_optimizer)
+    @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
+          ModelBuildStatus.BUILT
+
+    # The up-side SOC coverage rows must exist for the non-spin product (it routes as an
+    # upward reserve), including the complete-coverage family.
+    container = IOM.get_optimization_container(model)
+    meta = POM._service_container_meta(nspin)
+    @test IOM.has_container_key(
+        container, ReserveCoverageConstraint, EnergyReservoirStorage,
+        "$(meta)_discharge",
+    )
+    @test IOM.has_container_key(
+        container, POM.ReserveCompleteCoverageConstraint, EnergyReservoirStorage,
+        "$(OfflineReserve{IS.NaturalUnit})_discharge",
+    )
+
+    # Balance rows carry charge + discharge - award: the award term is wired, not skipped.
+    con = IOM.get_constraints(model)[IOM.ConstraintKey(
+        StorageTotalReserveConstraint, OfflineReserve, "NSPIN_$EnergyReservoirStorage",
+    )]
+    @test all(
+        length(JuMP.constraint_object(con[n, t]).func.terms) == 3
+        for n in axes(con)[1], t in axes(con)[2]
+    )
+
+    @test solve!(model) == RunStatus.SUCCESSFULLY_FINALIZED
+    res = IOM.OptimizationProblemOutputs(model)
+    demand = read_variable(
+        res, "ServiceRequirementVariable__OfflineReserve";
+        table_format = TableFormat.WIDE,
+    )
+    @test all(demand[t, "NSPIN"] > 1.0 for t in 1:24)
+end
+
 @testset "Test Storage Energy Target Constraint" begin
     template = get_thermal_dispatch_template_network(CopperPlateNetworkModel)
     device_model = DeviceModel(
