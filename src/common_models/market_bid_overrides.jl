@@ -348,7 +348,7 @@ function add_pwl_term_delta!(
     ::Type{U},
     ::Type{V},
 ) where {
-    T <: RESERVE_PRODUCT_TYPES,
+    T <: PSY.AbstractReserve,
     U <: VariableType,
     V <: AbstractServiceFormulation,
 }
