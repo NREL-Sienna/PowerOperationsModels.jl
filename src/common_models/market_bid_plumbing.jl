@@ -110,7 +110,7 @@ get_offer_curves(::IOM.IncrementalOffer, op_cost::PSY.OfferCurveCost) =
 # service-side direction trait (`_reserve_offer_direction`) is decremental.
 get_offer_curves(
     ::IOM.OfferDirection,
-    service::PSY.AbstractReserve,
+    service::RESERVE_PRODUCT_TYPES,
 ) = PSY.get_variable(service)
 
 #################################################################################

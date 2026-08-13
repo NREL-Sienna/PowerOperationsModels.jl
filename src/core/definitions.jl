@@ -112,4 +112,10 @@ const IGNORABLE_FILES = [
 ]
 const OUTPUTS_DIR = "outputs"
 
+# Any reserve product that carries demand-side state (requirement / demand curve): the
+# device-backed reserve tree plus service-aggregating groups (`PSY.GroupReserve <: Service`,
+# outside that tree). `AbstractReserve` keeps the union OPEN to future reserve subtypes.
+# Signature-position only - never use as a field type or container eltype.
+const RESERVE_PRODUCT_TYPES = Union{PSY.AbstractReserve, PSY.GroupReserve}
+
 IS.@scoped_enum(COMPACT_PWL_STATUS, VALID = 1, INVALID = 2, UNDETERMINED = 3)

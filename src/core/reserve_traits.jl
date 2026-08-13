@@ -60,8 +60,8 @@ end
 # (union-splits cleanly over the two `variable` members; reserves are few and read at build,
 # so the cost is negligible).
 
-"Whether a reserve's ORDC curve is time-varying. Dispatches on the value-curve type (no `isa`)."
-_ordc_is_ts(s::PSY.AbstractReserve) =
+"Whether a reserve's or group's ORDC curve is time-varying. Dispatches on the value-curve type (no `isa`)."
+_ordc_is_ts(s::RESERVE_PRODUCT_TYPES) =
     _value_curve_is_ts(PSY.get_value_curve(PSY.get_variable(s)))
 _value_curve_is_ts(::PSY.TimeSeriesPiecewiseIncrementalCurve) = true
 _value_curve_is_ts(::PSY.PiecewiseIncrementalCurve) = false
