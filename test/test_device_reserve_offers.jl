@@ -320,6 +320,173 @@ end
     @test POM._cost_offers_reserve(mbc, reserve) == true
 end
 
+#################################################################################
+# End-to-end energy + reserve co-clearing: an elastic reserve (demand curve under
+# StepwiseCostReserve), an elastic group (GroupStepwiseCostReserve) over two supply-only
+# sub-services, and per-resource offers from both generators and a controllable load. The
+# load's cheap block into GROUP_SUB_A is deliberately the cheapest in the stack, so it must
+# clear in full and stay bounded by its offered quantity, not its consumption.
+#################################################################################
+
+const _MKT_INIT_TIMES =
+    [DateTime("2024-01-01T00:00:00"), DateTime("2024-01-02T00:00:00")]
+const _MKT_LOAD = "IloadBus4"
+
+_mkt_offer_ts(svc, mw, price) = Deterministic(
+    PSY.get_name(svc),
+    Dict(
+        it => [IS.PiecewiseStepData([0.0, mw], [price]) for _ in 1:24] for
+        it in _MKT_INIT_TIMES
+    ),
+    Hour(1),
+)
+
+_mkt_curve(x, y) = make_market_bid_curve(x, y, 0.0; power_units = IS.NaturalUnit())
+
+function build_reserve_market_system(; load_offer_mw = 10.0, load_offer_price = 4.0)
+    sys = deepcopy(PSB.build_system(PSITestSystems, "c_sys5_il"; add_reserves = false))
+    thermals = collect(get_components(ThermalStandard, sys))
+    il = get_component(PSY.InterruptiblePowerLoad, sys, _MKT_LOAD)
+
+    elastic = OnlineReserve{ReserveUp}(;
+        name = "ELASTIC_UP",
+        available = true,
+        time_frame = 5.0,
+        variable = _mkt_curve([0.0, 200.0, 400.0], [80.0, 15.0]),
+    )
+    add_service!(sys, elastic, thermals)
+
+    sub_a = OnlineReserve{ReserveUp}(;
+        name = "GROUP_SUB_A", available = true, time_frame = 3600.0, requirement = 0.0)
+    sub_b = OnlineReserve{ReserveUp}(;
+        name = "GROUP_SUB_B", available = true, time_frame = 3600.0, requirement = 0.0)
+    add_service!(sys, sub_a, vcat(PSY.Device[thermals...], il))
+    add_service!(sys, sub_b, thermals)
+
+    group = GroupReserve{ReserveUp}(;
+        name = "UP_GROUP",
+        available = true,
+        requirement = 0.0,
+        variable = _mkt_curve([0.0, 150.0, 300.0], [70.0, 12.0]),
+        contributing_services = Service[sub_a, sub_b],
+    )
+    add_service!(sys, group)
+
+    # Generators: energy at each unit's own marginal cost, flat AS offers into all three
+    # up-products with per-unit prices.
+    for (i, g) in enumerate(thermals)
+        pmax = PSY.get_max_active_power(g, PSY.NU)
+        energy_slope = PSY.get_proportional_term(
+            PSY.get_value_curve(PSY.get_variable(get_operation_cost(g))),
+        )
+        set_operation_cost!(
+            g,
+            MarketBidCost(;
+                no_load_cost = LinearCurve(0.0),
+                start_up = (hot = 0.0, warm = 0.0, cold = 0.0),
+                shut_down = LinearCurve(0.0),
+                incremental_offer_curves = _mkt_curve([0.0, pmax], [energy_slope]),
+            ),
+        )
+        for (svc, mw, price) in (
+            (elastic, 30.0, 8.0 + i),
+            (sub_a, 25.0, 5.0 + i),
+            (sub_b, 20.0, 6.0 + i),
+        )
+            PSY.set_service_bid!(
+                sys,
+                g,
+                svc,
+                _mkt_offer_ts(svc, mw, price),
+                IS.NaturalUnit(),
+            )
+        end
+    end
+
+    # Load: consumption valued at VOLL (consumes at forecast), plus one cheap block into
+    # GROUP_SUB_A - the cheapest offer in the whole stack.
+    pmax_il = PSY.get_max_active_power(il, PSY.NU)
+    set_operation_cost!(
+        il,
+        MarketBidCost(;
+            no_load_cost = LinearCurve(0.0),
+            start_up = (hot = 0.0, warm = 0.0, cold = 0.0),
+            shut_down = LinearCurve(0.0),
+            decremental_offer_curves = _mkt_curve([0.0, pmax_il], [5000.0]),
+        ),
+    )
+    PSY.set_service_bid!(
+        sys, il, sub_a, _mkt_offer_ts(sub_a, load_offer_mw, load_offer_price),
+        IS.NaturalUnit(),
+    )
+    return sys
+end
+
+function _reserve_market_template()
+    template = get_thermal_standard_uc_template()
+    set_device_model!(template, PSY.InterruptiblePowerLoad, PowerLoadDispatch)
+    # ONE up-reserve model: the elastic service carries its curve; the curve-less,
+    # zero-requirement sub-services fall through to supply-only under the skip-gate.
+    set_service_model!(
+        template,
+        ServiceModel(OnlineReserve{ReserveUp}, StepwiseCostReserve),
+    )
+    set_service_model!(
+        template,
+        ServiceModel(GroupReserve{ReserveUp}, GroupStepwiseCostReserve),
+    )
+    return template
+end
+
+@testset "Combined clearing: elastic reserve + elastic group + gen/load offers" begin
+    sys = build_reserve_market_system()
+    model = DecisionModel(
+        _reserve_market_template(), sys;
+        optimizer = HiGHS_optimizer, store_variable_names = true,
+    )
+    @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
+          IOM.ModelBuildStatus.BUILT
+    @test solve!(model) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
+
+    container = IOM.get_optimization_container(model)
+    # Per-resource offer machinery fired for both device classes.
+    @test IOM.has_container_key(
+        container, POM.PiecewiseLinearBlockReserveOffer, ThermalStandard,
+    )
+    @test IOM.has_container_key(
+        container, POM.PiecewiseLinearBlockReserveOffer, PSY.InterruptiblePowerLoad,
+    )
+
+    res = IOM.OptimizationProblemOutputs(model)
+    elastic_dem = read_variable(
+        res, "ServiceRequirementVariable__OnlineReserve__ReserveUp";
+        table_format = TableFormat.WIDE,
+    )
+    group_dem = read_variable(
+        res, "ServiceRequirementVariable__GroupReserve__ReserveUp";
+        table_format = TableFormat.WIDE,
+    )
+    awards = read_variable(
+        res, "ActivePowerReserveVariable__OnlineReserve__ReserveUp";
+        table_format = TableFormat.WIDE,
+    )
+    sub_cols = [c for c in names(awards) if startswith(c, "GROUP_SUB_")]
+    load_col = "GROUP_SUB_A__$(_MKT_LOAD)"
+    @test load_col in names(awards)
+
+    load_offer = 10.0
+    for t in 1:24
+        # Both elastic demands clear.
+        @test elastic_dem[t, "ELASTIC_UP"] > 1.0
+        @test group_dem[t, "UP_GROUP"] > 1.0
+        # Group aggregation: member awards cover the group demand.
+        @test sum(awards[t, c] for c in sub_cols) ≈ group_dem[t, "UP_GROUP"] atol = 1e-3
+        # The load's award is bounded by its offered quantity, not its ~100 MW consumption,
+        # and the cheapest block clears in full.
+        @test awards[t, load_col] <= load_offer + 1e-3
+        @test awards[t, load_col] >= load_offer - 1e-2
+    end
+end
 
 #################################################################################
 # Load reserve provision (PowerLoadDispatch)
