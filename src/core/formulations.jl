@@ -437,6 +437,13 @@ with the `PSY.GroupReserve` component type.
 struct GroupRangeReserve <: AbstractReservesFormulation end
 
 """
+Group analogue of [`StepwiseCostReserve`](@ref): one elastic demand curve (the `PSY.GroupReserve`'s
+`variable`) is met by the summed awards of its contributing services - one demand, one clearing
+price, with offers and caps living on the members. Ignores the group's `requirement`.
+"""
+struct GroupStepwiseCostReserve <: AbstractReservesFormulation end
+
+"""
 Struct for to add reserves to be larger than a specified requirement
 """
 struct RangeReserve <: AbstractReservesFormulation end

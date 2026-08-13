@@ -10,6 +10,18 @@ function get_default_attributes(
     return Dict{String, Any}()
 end
 
+function get_default_time_series_names(
+    ::Type{PSY.GroupReserve{T}},
+    ::Type{GroupStepwiseCostReserve}) where {T <: PSY.ReserveDirection}
+    return Dict{String, Any}()
+end
+
+function get_default_attributes(
+    ::Type{PSY.GroupReserve{T}},
+    ::Type{GroupStepwiseCostReserve}) where {T <: PSY.ReserveDirection}
+    return Dict{String, Any}()
+end
+
 # ── Formulation-pairing guards ────────────────────────────────────────────────────────
 # A `PSY.GroupReserve` aggregates other services, so only group formulations can model it,
 # and group formulations can model nothing else. These fallbacks fire inside the
@@ -17,13 +29,15 @@ end
 # model fails at DECLARATION with an actionable message instead of a cryptic dispatch error
 # (or a silent no-op) at build time. The valid direction-applied pairs above are more
 # specific and win.
+const _GROUP_FORMULATIONS = Union{GroupRangeReserve, GroupStepwiseCostReserve}
 
 function _throw_group_pairing_error(D::Type, B::Type)
     throw(
         ArgumentError(
             "ServiceModel($(D), $(B)) is invalid: `PSY.GroupReserve` aggregates other \
-            services and must use a group formulation (e.g. GroupRangeReserve), and group \
-            formulations apply only to `PSY.GroupReserve`.",
+            services and must use a group formulation (GroupRangeReserve or \
+            GroupStepwiseCostReserve), and group formulations apply only to \
+            `PSY.GroupReserve`.",
         ),
     )
 end
@@ -57,32 +71,36 @@ get_default_attributes(
 
 get_default_time_series_names(
     ::Type{D},
-    ::Type{GroupRangeReserve},
-) where {D <: PSY.AbstractReserve} = _throw_group_pairing_error(D, GroupRangeReserve)
+    ::Type{B},
+) where {D <: PSY.AbstractReserve, B <: _GROUP_FORMULATIONS} =
+    _throw_group_pairing_error(D, B)
 
 get_default_attributes(
     ::Type{D},
-    ::Type{GroupRangeReserve},
-) where {D <: PSY.AbstractReserve} = _throw_group_pairing_error(D, GroupRangeReserve)
+    ::Type{B},
+) where {D <: PSY.AbstractReserve, B <: _GROUP_FORMULATIONS} =
+    _throw_group_pairing_error(D, B)
 
 # Disambiguates the two guards' intersection (`GroupReserve <: AbstractReserve`) and gives
 # the bare-type declaration an actionable message.
-_throw_group_direction_error(D::Type) = throw(
+_throw_group_direction_error(D::Type, B::Type) = throw(
     ArgumentError(
-        "ServiceModel($(D), GroupRangeReserve) needs the reserve direction applied, \
-        e.g. `ServiceModel(GroupReserve{ReserveUp}, GroupRangeReserve)`.",
+        "ServiceModel($(D), $(B)) needs the reserve direction applied, \
+        e.g. `ServiceModel(GroupReserve{ReserveUp}, $(B))`.",
     ),
 )
 
 get_default_time_series_names(
     ::Type{D},
-    ::Type{GroupRangeReserve},
-) where {D <: PSY.GroupReserve} = _throw_group_direction_error(D)
+    ::Type{B},
+) where {D <: PSY.GroupReserve, B <: _GROUP_FORMULATIONS} =
+    _throw_group_direction_error(D, B)
 
 get_default_attributes(
     ::Type{D},
-    ::Type{GroupRangeReserve},
-) where {D <: PSY.GroupReserve} = _throw_group_direction_error(D)
+    ::Type{B},
+) where {D <: PSY.GroupReserve, B <: _GROUP_FORMULATIONS} =
+    _throw_group_direction_error(D, B)
 
 ############################### Reserve Variables` #########################################
 """
@@ -135,6 +153,42 @@ function add_constraints!(
         end
         constraint[service_name, t] =
             JuMP.@constraint(jump_model, resource_expression >= requirement)
+    end
+
+    return
+end
+
+################################ Group Stepwise (elastic) clearing ##########################
+"""
+Clearing constraint for [`GroupStepwiseCostReserve`](@ref): the summed member awards cover the
+group's `ServiceRequirementVariable` (the demand bought along the group's curve). Its dual is
+the group clearing price.
+"""
+function add_constraints!(
+    container::OptimizationContainer,
+    ::Type{RequirementConstraint},
+    service::SR,
+    contributing_services::Vector{<:PSY.Service},
+    model::ServiceModel{SR, GroupStepwiseCostReserve},
+) where {SR <: PSY.GroupReserve}
+    time_steps = get_time_steps(container)
+    service_name = PSY.get_name(service)
+    constraint = get_constraint(container, RequirementConstraint, SR)
+    requirement_variable = get_variable(container, ServiceRequirementVariable, SR)
+
+    member_vars = _group_member_variables(container, contributing_services, time_steps)
+    jump_model = get_jump_model(container)
+
+    for t in time_steps
+        vars = member_vars[t]
+        resource_expression = IOM.get_hinted_aff_expr(length(vars))
+        for var in vars
+            JuMP.add_to_expression!(resource_expression, var)
+        end
+        constraint[service_name, t] = JuMP.@constraint(
+            jump_model,
+            resource_expression >= requirement_variable[service_name, t]
+        )
     end
 
     return

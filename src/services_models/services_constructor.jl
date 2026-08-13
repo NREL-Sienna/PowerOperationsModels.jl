@@ -3,9 +3,15 @@
 # reads each service's contributing devices from the nested per-service map
 # (`get_contributing_devices(model, service_name)`), and builds. Reserve variable and
 # constraint containers are shared per `(entry type, service type)`, with each service
-# filling its own slice. `GroupRangeReserve` is deferred to last.
+# filling its own slice. Group formulations are deferred to last (their members must exist).
 #
 # TODO(services stability): See issue #216.
+
+# Group formulations aggregate other services' award variables, so they construct after
+# every non-group service model.
+_is_deferred_group_formulation(::Type{GroupRangeReserve}) = true
+_is_deferred_group_formulation(::Type{GroupStepwiseCostReserve}) = true
+_is_deferred_group_formulation(::Type) = false
 
 # Collect the type's available services that have at least one modeled contributing device.
 # The concrete element type keeps `add_parameters!` / `add_service_variables!` dispatch happy.
@@ -19,6 +25,23 @@ function _services_with_contributors(
     ]
 end
 
+# Available groups of the type that reference at least one contributing service AND impose a
+# demand under this formulation. A group is device-less by design, so `_services_with_contributors`
+# (device-map filter) cannot apply; a demand-less group is skipped like a degenerate service.
+# Comprehensions keep the eltype CONCRETE (`GroupReserve{ReserveUp, NaturalUnit}`): a bare
+# `PSY.GroupReserve[]` accumulator would canonicalize container keys to the direction-less
+# wrapper, which readers keyed by the model's `GroupReserve{Dir}` could never find.
+function _groups_with_demand(model::ServiceModel, sys::PSY.System)
+    candidates = [
+        g for g in get_available_components(model, sys) if
+        !isempty(PSY.get_contributing_services(g))
+    ]
+    for g in candidates
+        _has_reserve_demand(model, g) || _log_skipped_reserve_demand(sys, g, model)
+    end
+    return [g for g in candidates if _has_reserve_demand(model, g)]
+end
+
 function construct_services!(
     container::OptimizationContainer,
     sys::PSY.System,
@@ -30,10 +53,10 @@ function construct_services!(
     isempty(services_template) && return
     incompatible_device_types = get_incompatible_devices(devices_template)
 
-    groupservice = nothing
+    deferred_groups = Symbol[]
     for (key, service_model) in services_template
-        if get_formulation(service_model) === GroupRangeReserve  # constructed last
-            groupservice = key
+        if _is_deferred_group_formulation(get_formulation(service_model))
+            push!(deferred_groups, key)  # constructed last
             continue
         end
         isempty(get_contributing_devices_map(service_model)) && continue
@@ -47,15 +70,17 @@ function construct_services!(
             network_model,
         )
     end
-    groupservice === nothing || construct_service!(
-        container,
-        sys,
-        stage,
-        services_template[groupservice],
-        devices_template,
-        incompatible_device_types,
-        network_model,
-    )
+    for key in deferred_groups
+        construct_service!(
+            container,
+            sys,
+            stage,
+            services_template[key],
+            devices_template,
+            incompatible_device_types,
+            network_model,
+        )
+    end
     return
 end
 
@@ -70,10 +95,10 @@ function construct_services!(
     isempty(services_template) && return
     incompatible_device_types = get_incompatible_devices(devices_template)
 
-    groupservice = nothing
+    deferred_groups = Symbol[]
     for (key, service_model) in services_template
-        if get_formulation(service_model) === GroupRangeReserve  # constructed last
-            groupservice = key
+        if _is_deferred_group_formulation(get_formulation(service_model))
+            push!(deferred_groups, key)  # constructed last
             continue
         end
         isempty(get_contributing_devices_map(service_model)) && continue
@@ -87,15 +112,17 @@ function construct_services!(
             network_model,
         )
     end
-    groupservice === nothing || construct_service!(
-        container,
-        sys,
-        stage,
-        services_template[groupservice],
-        devices_template,
-        incompatible_device_types,
-        network_model,
-    )
+    for key in deferred_groups
+        construct_service!(
+            container,
+            sys,
+            stage,
+            services_template[key],
+            devices_template,
+            incompatible_device_types,
+            network_model,
+        )
+    end
     return
 end
 
@@ -433,6 +460,69 @@ function construct_service!(
             contributing_services,
             model,
         )
+    end
+    add_constraint_dual!(container, sys, model)
+    return
+end
+
+"""
+    Constructs a service for GroupStepwiseCostReserve: the group's demand curve is cleared by
+    the summed awards of its contributing services.
+"""
+function construct_service!(
+    container::OptimizationContainer,
+    sys::PSY.System,
+    ::ArgumentConstructStage,
+    model::ServiceModel{SR, GroupStepwiseCostReserve},
+    ::Dict{Symbol, DeviceModel},
+    ::Set{<:DataType},
+    ::NetworkModel{<:AbstractNetworkModel},
+) where {SR <: PSY.GroupReserve}
+    groups = _groups_with_demand(model, sys)
+    isempty(groups) && return
+    # Dense (group, time) container: the delta-PWL block constraint reads axes(variables).
+    add_reserve_variables!(
+        container,
+        ServiceRequirementVariable,
+        groups,
+        GroupStepwiseCostReserve(),
+    )
+    add_expressions!(container, ProductionCostExpression, groups, model)
+    # Slope/breakpoint PWL cost params for time-series-backed group curves (no-op otherwise).
+    process_stepwise_cost_reserve_parameters!(container, model, groups)
+    for group in groups
+        check_activeservice_variables(container, PSY.get_contributing_services(group))
+    end
+    return
+end
+
+function construct_service!(
+    container::OptimizationContainer,
+    sys::PSY.System,
+    ::ModelConstructStage,
+    model::ServiceModel{SR, GroupStepwiseCostReserve},
+    ::Dict{Symbol, DeviceModel},
+    ::Set{<:DataType},
+    ::NetworkModel{<:AbstractNetworkModel},
+) where {SR <: PSY.GroupReserve}
+    groups = _groups_with_demand(model, sys)
+    isempty(groups) && return
+    add_constraints_container!(
+        container,
+        RequirementConstraint,
+        SR,
+        PSY.get_name.(groups),
+        get_time_steps(container),
+    )
+    for group in groups
+        add_constraints!(
+            container,
+            RequirementConstraint,
+            group,
+            PSY.get_contributing_services(group),
+            model,
+        )
+        add_to_objective_function!(container, group, model)
     end
     add_constraint_dual!(container, sys, model)
     return

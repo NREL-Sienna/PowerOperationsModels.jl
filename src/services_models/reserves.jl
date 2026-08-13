@@ -12,10 +12,12 @@ end
 get_variable_lower_bound(::Type{ActivePowerReserveVariable}, ::PSY.AbstractReserve, ::PSY.Device, ::Type) = 0.0
 
 ############################### ServiceRequirementVariable (ORDC / StepwiseCostReserve) ################################
-# Only created on the StepwiseCostReserve construct path, so the formulation gates these to ORDC reserves.
-get_variable_binary(::Type{ServiceRequirementVariable}, ::Type{<:PSY.AbstractReserve}, ::Type{<:AbstractReservesFormulation}) = false
-get_variable_upper_bound(::Type{ServiceRequirementVariable}, ::PSY.AbstractReserve, d::PSY.Component, ::Type{<:AbstractReservesFormulation}) = PSY.get_max_active_power(d, PSY.SU)
-get_variable_lower_bound(::Type{ServiceRequirementVariable}, ::PSY.AbstractReserve, ::PSY.Component, ::Type{<:AbstractReservesFormulation}) = 0.0
+# Only created on the StepwiseCostReserve / GroupStepwiseCostReserve construct paths, so the
+# formulation gates these to curve-bearing reserves and groups (`GroupReserve <: Service`, hence
+# the Union).
+get_variable_binary(::Type{ServiceRequirementVariable}, ::Type{<:RESERVE_PRODUCT_TYPES}, ::Type{<:AbstractReservesFormulation}) = false
+get_variable_upper_bound(::Type{ServiceRequirementVariable}, ::RESERVE_PRODUCT_TYPES, d::PSY.Component, ::Type{<:AbstractReservesFormulation}) = PSY.get_max_active_power(d, PSY.SU)
+get_variable_lower_bound(::Type{ServiceRequirementVariable}, ::RESERVE_PRODUCT_TYPES, ::PSY.Component, ::Type{<:AbstractReservesFormulation}) = 0.0
 
 # Reserve requirement in system units; the getter is units-aware for every reserve type.
 _get_requirement(service) = PSY.get_requirement(service, PSY.SU)
@@ -46,6 +48,18 @@ _has_reserve_demand(
     service::PSY.AbstractReserve,
 ) = PSY.has_demand_curve(service)
 
+# Group formulations mirror the service ones: `GroupRangeReserve` is driven by the group's
+# scalar requirement, `GroupStepwiseCostReserve` by its demand curve (`requirement` ignored).
+_has_reserve_demand(
+    ::ServiceModel{<:PSY.GroupReserve, GroupRangeReserve},
+    group::PSY.GroupReserve,
+) = !iszero(_get_requirement(group))
+
+_has_reserve_demand(
+    ::ServiceModel{<:PSY.GroupReserve, GroupStepwiseCostReserve},
+    group::PSY.GroupReserve,
+) = PSY.has_demand_curve(group)
+
 "Services in `services` that impose a demand of their own under `model`'s formulation."
 _demand_services(model::ServiceModel, services::Vector{<:PSY.AbstractReserve}) =
     [s for s in services if _has_reserve_demand(model, s)]
@@ -65,12 +79,12 @@ _is_group_member(::PSY.System, ::PSY.GroupReserve) = false
 
 function _log_skipped_reserve_demand(
     sys::PSY.System,
-    service::PSY.AbstractReserve,
-    ::ServiceModel{<:PSY.AbstractReserve, F},
+    service::RESERVE_PRODUCT_TYPES,
+    ::ServiceModel{<:RESERVE_PRODUCT_TYPES, F},
 ) where {F <: AbstractReservesFormulation}
     name = PSY.get_name(service)
-    reason = F === StepwiseCostReserve ? "it has no operating reserve demand curve" :
-             "its requirement is zero"
+    reason = F in (StepwiseCostReserve, GroupStepwiseCostReserve) ?
+             "it has no operating reserve demand curve" : "its requirement is zero"
     if _is_group_member(sys, service)
         @debug "Service $(name) of type $(typeof(service)) is a GroupReserve member and $(reason); \
                 skipping its own demand-side model. It still contributes supply to its group." _group =
@@ -90,21 +104,31 @@ get_parameter_multiplier(::Type{<:VariableValueParameter}, d::Type{<:PSY.Abstrac
 get_initial_parameter_value(::Type{<:VariableValueParameter}, d::Type{<:PSY.AbstractReserve}, ::Type{<:AbstractReservesFormulation}) = 0.0
 
 objective_function_multiplier(::Type{ServiceRequirementVariable}, ::Type{StepwiseCostReserve}) = -1.0
+objective_function_multiplier(::Type{ServiceRequirementVariable}, ::Type{GroupStepwiseCostReserve}) = -1.0
 uses_compact_power(::PSY.AbstractReserve, ::StepwiseCostReserve)=false
-get_multiplier_value(::Type{<:AbstractPiecewiseLinearBreakpointParameter}, ::PSY.AbstractReserve, ::Type{<:AbstractReservesFormulation}) = 1.0
-get_multiplier_value(::Type{<:AbstractPiecewiseLinearSlopeParameter}, ::PSY.AbstractReserve, ::Type{<:AbstractReservesFormulation}) = 1.0
+uses_compact_power(::PSY.GroupReserve, ::GroupStepwiseCostReserve)=false
+get_multiplier_value(::Type{<:AbstractPiecewiseLinearBreakpointParameter}, ::RESERVE_PRODUCT_TYPES, ::Type{<:AbstractReservesFormulation}) = 1.0
+get_multiplier_value(::Type{<:AbstractPiecewiseLinearSlopeParameter}, ::RESERVE_PRODUCT_TYPES, ::Type{<:AbstractReservesFormulation}) = 1.0
 # Operating reserve demand curves (ORDC) are willingness-to-pay (concave), i.e. a decremental
 # offer.
 # Routes the reserve PWL cost path through IOM's OfferDirection dispatch; making
 # this incremental is a one-line change here. Mirrors `_onvar_offer_direction` /
 # `_vom_offer_direction` in market_bid_overrides.jl.
-_reserve_offer_direction(::PSY.AbstractReserve) = IOM.DecrementalOffer()
+_reserve_offer_direction(::RESERVE_PRODUCT_TYPES) = IOM.DecrementalOffer()
 #! format: on
 
 function get_initial_conditions_service_model(
     ::IOM.AbstractOptimizationModel,
     ::ServiceModel{T, D},
 ) where {T <: PSY.AbstractReserve, D <: AbstractReservesFormulation}
+    return ServiceModel(T, D)
+end
+
+# `GroupReserve <: Service`, so the `AbstractReserve` method cannot cover it.
+function get_initial_conditions_service_model(
+    ::IOM.AbstractOptimizationModel,
+    ::ServiceModel{T, D},
+) where {T <: PSY.GroupReserve, D <: AbstractReservesFormulation}
     return ServiceModel(T, D)
 end
 
@@ -150,7 +174,7 @@ function add_reserve_variables!(
     formulation,
 ) where {
     T <: ServiceRequirementVariable,
-    D <: PSY.AbstractReserve,
+    D <: RESERVE_PRODUCT_TYPES,
 }
     time_steps = get_time_steps(container)
     service_names = [PSY.get_name(s) for s in services]
@@ -605,15 +629,32 @@ function add_to_objective_function!(
     return
 end
 
+# The group's demand: price its ServiceRequirementVariable by the group demand curve (a
+# benefit, multiplier -1). No offer costs on the group itself - offers live on the
+# contributing services, priced by their own service models.
+function add_to_objective_function!(
+    container::OptimizationContainer,
+    service::S,
+    ::ServiceModel{S, GroupStepwiseCostReserve},
+) where {S <: PSY.GroupReserve}
+    add_reserves_variable_cost!(
+        container,
+        ServiceRequirementVariable,
+        service,
+        GroupStepwiseCostReserve,
+    )
+    return
+end
+
 function add_reserves_variable_cost!(
     container::OptimizationContainer,
     ::Type{U},
     service::T,
     ::Type{V},
 ) where {
-    T <: PSY.AbstractReserve,
+    T <: RESERVE_PRODUCT_TYPES,
     U <: VariableType,
-    V <: StepwiseCostReserve,
+    V <: Union{StepwiseCostReserve, GroupStepwiseCostReserve},
 }
     _add_reserves_variable_cost_to_objective!(container, U, service, V)
     return
@@ -622,9 +663,9 @@ end
 function _add_reserves_variable_cost_to_objective!(
     container::OptimizationContainer,
     ::Type{T},
-    component::PSY.AbstractReserve,
+    component::RESERVE_PRODUCT_TYPES,
     ::Type{U},
-) where {T <: VariableType, U <: StepwiseCostReserve}
+) where {T <: VariableType, U <: Union{StepwiseCostReserve, GroupStepwiseCostReserve}}
     component_name = PSY.get_name(component)
     @debug "PWL Variable Cost" _group = LOG_GROUP_COST_FUNCTIONS component_name
     # If array is full of tuples with zeros return 0.0
@@ -639,7 +680,7 @@ function _add_reserves_variable_cost_to_objective!(
         error(
             "Operating reserve demand curve $(component_name) has cost data of type \
             $(typeof(variable_cost)), \
-            but a `PSY.CostCurve` is required for the StepwiseCostReserve formulation.",
+            but a `PSY.CostCurve` is required for the $(U) formulation.",
         )
     end
 
@@ -677,7 +718,7 @@ function process_stepwise_cost_reserve_parameters!(
     container::OptimizationContainer,
     model::ServiceModel,
     services::Vector{D},
-) where {D <: PSY.AbstractReserve}
+) where {D <: RESERVE_PRODUCT_TYPES}
     # Only time-series-backed ORDCs need the per-timestep slope/breakpoint parameters.
     ts_services = [s for s in services if _ordc_is_ts(s)]
     isempty(ts_services) && return

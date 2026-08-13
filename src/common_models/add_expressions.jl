@@ -244,3 +244,27 @@ function add_expressions!(
     )
     return
 end
+
+# Group sibling of the reserve method above (`GroupReserve <: Service`, so it cannot share
+# the `V <: PSY.AbstractReserve` bound; a `Union` bound on `V` would be ambiguous against it).
+function add_expressions!(
+    container::OptimizationContainer,
+    ::Type{T},
+    services::U,
+    model::ServiceModel{V, W},
+) where {
+    T <: CostExpressions,
+    U <: Union{Vector{D}, IS.FlattenIteratorWrapper{D}},
+    V <: PSY.GroupReserve,
+    W <: AbstractReservesFormulation,
+} where {D <: PSY.Component}
+    time_steps = get_time_steps(container)
+    add_expression_container!(
+        container,
+        T,
+        D,
+        [PSY.get_name(s) for s in services],
+        time_steps,
+    )
+    return
+end

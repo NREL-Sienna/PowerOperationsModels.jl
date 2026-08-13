@@ -70,8 +70,8 @@ function add_parameters!(
         AbstractPiecewiseLinearSlopeParameter,
         AbstractPiecewiseLinearBreakpointParameter,
     },
-    U <: PSY.AbstractReserve,
-    V <: PSY.AbstractReserve,
+    U <: RESERVE_PRODUCT_TYPES,
+    V <: RESERVE_PRODUCT_TYPES,
     W <: AbstractServiceFormulation,
 }
     if get_rebuild_model(get_settings(container)) && has_container_key(container, T, U)
@@ -424,7 +424,7 @@ _get_time_series_name(
             DecrementalPiecewiseLinearBreakpointParameter,
         },
     },
-    service::PSY.AbstractReserve,
+    service::RESERVE_PRODUCT_TYPES,
     ::ServiceModel,
 ) = IS.get_name(IS.get_time_series_key(PSY.get_variable(service)))
 
@@ -590,8 +590,8 @@ _ordc_ts_data(ts::IS.DeterministicSingleTimeSeries) =
 function calc_additional_axes(
     ::OptimizationContainer,
     ::Type{P},
-    services::Vector{<:PSY.AbstractReserve},
-    ::ServiceModel{<:PSY.AbstractReserve, W},
+    services::Vector{<:RESERVE_PRODUCT_TYPES},
+    ::ServiceModel{<:RESERVE_PRODUCT_TYPES, W},
 ) where {
     P <: AbstractPiecewiseLinearSlopeParameter,
     W <: AbstractServiceFormulation,
@@ -605,8 +605,8 @@ end
 function calc_additional_axes(
     ::OptimizationContainer,
     ::Type{P},
-    services::Vector{<:PSY.AbstractReserve},
-    ::ServiceModel{<:PSY.AbstractReserve, W},
+    services::Vector{<:RESERVE_PRODUCT_TYPES},
+    ::ServiceModel{<:RESERVE_PRODUCT_TYPES, W},
 ) where {
     P <: AbstractPiecewiseLinearBreakpointParameter,
     W <: AbstractServiceFormulation,
@@ -809,8 +809,8 @@ function _add_parameters!(
         AbstractPiecewiseLinearSlopeParameter,
         AbstractPiecewiseLinearBreakpointParameter,
     },
-    U <: PSY.AbstractReserve,
-    V <: PSY.AbstractReserve,
+    U <: RESERVE_PRODUCT_TYPES,
+    V <: RESERVE_PRODUCT_TYPES,
     W <: AbstractServiceFormulation,
 }
     _add_objective_function_parameters!(container, T, services, model, W)
