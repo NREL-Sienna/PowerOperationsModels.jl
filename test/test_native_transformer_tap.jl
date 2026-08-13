@@ -2,8 +2,8 @@
 # Off-nominal transformer tap under the native network models.
 #
 # These testsets cover only code that ships in the current module: the DC susceptance
-# `b_dc = 1/(tap*x)` used by `BThetaBranchFlow`/`NetworkFlowConstraint`, and the tap-free
-# π coefficients in `_tap_flow_coefficients` (both in `ac_transmission_models/
+# `b_dc = 1/(tap*x)` used by `BThetaBranchFlow`/`NetworkFlowConstraint`, and the Ybus
+# two-port terms in `_pi_flow_terms` (both in `ac_transmission_models/
 # AC_branches.jl`). They deliberately do NOT touch `TapControl` / `VoltageControlTap`,
 # whose formulation files are not yet included — those live in
 # `test_native_tapcontrol.jl` / `test_voltage_control_tap_models.jl` and stay disabled
@@ -61,54 +61,33 @@
     @test tested_a_real_tap
 end
 
-@testset "_tap_flow_coefficients ground truth (hand-computed)" begin
-    # No shift: cs=1, sn=0. Hand-computed π terms and coupling coefficients.
-    c0 = POM._tap_flow_coefficients(1.0, -2.0, 0.1, 0.3, 0.2, 0.4, 0.0)
-    @test c0.cs == 1.0
-    @test c0.sn == 0.0
-    # From side is returned UNFOLDED (series and shunt separate) because the two get
-    # different tap treatment at the constraint site; see the composition asserts below.
-    @test c0.g == 1.0
-    @test c0.b == -2.0
-    @test c0.g_fr == 0.1
-    @test c0.b_fr == 0.3
-    # To side stays folded: neither half is tap-referred, matching PNM's `Y22 = Y_l + y_to`.
-    @test c0.gg_to == 1.2
-    @test c0.bb_to == -1.6
-    @test c0.a_cos == -1.0   # -g*cs + b*sn
-    @test c0.a_sin == 2.0    # -b*cs - g*sn
-    @test c0.c_cos == -1.0   # -g*cs - b*sn
-    @test c0.d_sin == -2.0   # b*cs - g*sn
+@testset "_tapped_admittance round-trips PNM.ybus_branch_entries" begin
+    function check_terms(y, ybus)
+        Y11, Y12, Y21, Y22 = ybus
+        @test isapprox(complex(y.g11, y.b11), Y11; rtol = 1e-10, atol = 1e-12)
+        @test isapprox(complex(y.g12, y.b12), Y12; rtol = 1e-10, atol = 1e-12)
+        @test isapprox(complex(y.g21, y.b21), Y21; rtol = 1e-10, atol = 1e-12)
+        @test isapprox(complex(y.g22, y.b22), Y22; rtol = 1e-10, atol = 1e-12)
+    end
 
-    # From-side composition exactly as the ACP/ACR constraint bodies build it:
-    #     g/tm^2 + g_fr      (the series is tap-referred; the magnetizing shunt is NOT)
-    # This mirrors PNM's Ybus stamp `Y11 = Y_series/abs2(tap) + y_shunt_from`. The folded
-    # convention `(g + g_fr)/tm^2` would give 0.704 / -1.088 instead, which is what made
-    # POM's AC solutions disagree with PowerFlows for off-nominal taps.
-    tm = 1.25                      # tm^2 == 1.5625, so 1/tm^2 == 0.64 exactly
-    @test c0.g / tm^2 + c0.g_fr ≈ 0.74     #  0.64 + 0.1
-    @test c0.b / tm^2 + c0.b_fr ≈ -0.98    # -1.28 + 0.3
-    # Continuity: at nominal tap the split form reproduces the folded value, so the
-    # convention only bites for off-nominal taps.
-    @test c0.g / 1.0^2 + c0.g_fr == 1.1
-    @test c0.b / 1.0^2 + c0.b_fr == -1.7
+    sys = PSB.build_system(PSITestSystems, "c_sys14")
+    for br in Iterators.flatten((
+        PSY.get_components(PSY.Line, sys),
+        PSY.get_components(PSY.TwoWindingTransformer, sys),
+    ))
+        adm = PNM.branch_admittance(br)
+        check_terms(POM._pi_flow_terms(adm, adm.tap), PNM.ybus_branch_entries(br))
+    end
 
-    # Nonzero shift = π/6: cs=√3/2, sn=1/2 exercises the trig.
-    cs = cos(pi / 6)
-    sn = sin(pi / 6)
-    cS = POM._tap_flow_coefficients(1.0, -2.0, 0.1, 0.3, 0.2, 0.4, pi / 6)
-    @test cS.cs ≈ cs
-    @test cS.sn ≈ sn
-    @test cS.g == 1.0
-    @test cS.b == -2.0
-    @test cS.g_fr == 0.1
-    @test cS.b_fr == 0.3
-    @test cS.gg_to == 1.2
-    @test cS.bb_to == -1.6
-    @test cS.a_cos ≈ -1.0 * cs + (-2.0) * sn
-    @test cS.a_sin ≈ -(-2.0) * cs - 1.0 * sn
-    @test cS.c_cos ≈ -1.0 * cs - (-2.0) * sn
-    @test cS.d_sin ≈ (-2.0) * cs - 1.0 * sn
-    # ACR's e_sin sign relationship the constraint body relies on.
-    @test -cS.d_sin ≈ -(-2.0) * cs + 1.0 * sn
+    tr = PSY.get_component(PSY.TwoWindingTransformer, sys, "Trans1")
+    circuit = PSY.get_circuit(tr)
+    for shift in (-pi / 5, 0.0, pi / 6)
+        PSY.set_α!(circuit, shift)
+        PSY.set_tap!(circuit, 1.0)
+        adm = PNM.branch_admittance(tr)
+        for tap in (0.9, 1.0, 1.1, 1.25)
+            PSY.set_tap!(circuit, tap)
+            check_terms(POM._pi_flow_terms(adm, tap), PNM.ybus_branch_entries(tr))
+        end
+    end
 end

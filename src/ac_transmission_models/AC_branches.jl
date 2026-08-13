@@ -1411,30 +1411,6 @@ function _add_flow_constraint_containers!(
     return cons_pft, cons_qft, cons_ptf, cons_qtf
 end
 
-# Pure, tap-free π-model coefficients shared by the polar (ACP) and rectangular (ACR)
-# Ohm's law, for both the fixed-tap StaticBranch path and the variable-tap VoltageControlTap
-# path. `cs`/`sn` are the phase-shift trig; `a_cos`/`a_sin`/`c_cos`/`d_sin` are the tm-free
-# coupling coefficients (each divided by the live tap at the constraint site — `tm` for
-# fixed tap, `TapRatioVariable[name, t]` for variable tap). ACR uses `e_sin = -d_sin`.
-function _tap_flow_coefficients(g, b, g_fr, b_fr, g_to, b_to, shift)
-    cs = cos(shift)
-    sn = sin(shift)
-    return (
-        cs = cs,
-        sn = sn,
-        g = g,
-        b = b,
-        g_fr = g_fr,
-        b_fr = b_fr,
-        gg_to = g + g_to,
-        bb_to = b + b_to,
-        a_cos = -g * cs + b * sn,
-        a_sin = -b * cs - g * sn,
-        c_cos = -g * cs - b * sn,
-        d_sin = b * cs - g * sn,
-    )
-end
-
 # Slack holders for the equality/limit rows. `_SlackPair` carries a metaed upper/lower pair
 # (equality relaxation, term `up - lo`); `_UpperSlack` carries a one-sided upper slack
 # (quadratic-limit relaxation, term `up`). The no-slack twins contribute a constant 0.0 so
@@ -1576,107 +1552,105 @@ function _current_magnitude_slacks(
     return _UpperSlack(get_variable(container, FlowActivePowerSlackUpperBound, T, meta))
 end
 
-# Polar (ACP) π-model Ohm's law for one branch, one time step. `coef` from
-# `_tap_flow_coefficients`; `tap` is the constant `tm` (fixed tap) or the
-# `TapRatioVariable` (variable tap). The constraints reduce term-for-term to the
-# fixed-tap StaticBranch form when `tap == tm`.
-function _add_tap_acp_flow!(
-    jump_model, cons_pft, cons_qft, cons_ptf, cons_qtf, pft, qft, ptf, qtf,
-    name, t, vmf, vmt, θ, coef, tap, p_ft_slack, q_ft_slack, p_tf_slack, q_tf_slack,
+function _voltage_products(
+    container::OptimizationContainer,
+    ::NetworkModel{ACPNetworkModel},
+    ::Type{<:PSY.ACTransmission},
+    ::String,
+    from_bus::String,
+    to_bus::String,
+    t::Int,
 )
-    cons_pft[name, t] = JuMP.@constraint(
-        jump_model,
-        pft[name, t] ==
-        (coef.g / tap^2 + coef.g_fr) * vmf^2 +
-        coef.a_cos / tap * vmf * vmt * cos(θ) +
-        coef.a_sin / tap * vmf * vmt * sin(θ) + p_ft_slack,
+    vm = get_variable(container, VoltageMagnitude, PSY.ACBus)
+    va = get_variable(container, VoltageAngle, PSY.ACBus)
+    vmf = vm[from_bus, t]
+    vmt = vm[to_bus, t]
+    θ = va[from_bus, t] - va[to_bus, t]
+    return (
+        v2_fr = vmf^2,
+        v2_to = vmt^2,
+        vv_cos = vmf * vmt * cos(θ),
+        vv_sin = vmf * vmt * sin(θ),
     )
-    cons_qft[name, t] = JuMP.@constraint(
-        jump_model,
-        qft[name, t] ==
-        -(coef.b / tap^2 + coef.b_fr) * vmf^2 +
-        (-coef.a_sin) / tap * vmf * vmt * cos(θ) +
-        coef.a_cos / tap * vmf * vmt * sin(θ) + q_ft_slack,
-    )
-    cons_ptf[name, t] = JuMP.@constraint(
-        jump_model,
-        ptf[name, t] ==
-        coef.gg_to * vmt^2 +
-        coef.c_cos / tap * vmt * vmf * cos(θ) +
-        coef.d_sin / tap * vmt * vmf * sin(θ) + p_tf_slack,
-    )
-    cons_qtf[name, t] = JuMP.@constraint(
-        jump_model,
-        qtf[name, t] ==
-        -coef.bb_to * vmt^2 +
-        coef.d_sin / tap * vmt * vmf * cos(θ) +
-        (-coef.c_cos) / tap * vmt * vmf * sin(θ) + q_tf_slack,
-    )
-    return
 end
 
-# Rectangular (ACR) π-model Ohm's law for one branch, one time step. Same coefficients as
-# ACP; the rectangular substitution replaces vmf²/vmf·vmt·cos/vmf·vmt·sin with the
-# pre-built bilinears `vsq_fr`/`vv_cos`/`vv_sin`. `e_sin = -d_sin` (rectangular sin sign).
-function _add_tap_acr_flow!(
-    jump_model, cons_pft, cons_qft, cons_ptf, cons_qtf, pft, qft, ptf, qtf,
-    name, t, vsq_fr, vsq_to, vv_cos, vv_sin, coef, tap,
-    p_ft_slack, q_ft_slack, p_tf_slack, q_tf_slack,
+function _voltage_products(
+    container::OptimizationContainer,
+    ::NetworkModel{ACRNetworkModel},
+    ::Type{<:PSY.ACTransmission},
+    ::String,
+    from_bus::String,
+    to_bus::String,
+    t::Int,
 )
-    e_sin = -coef.d_sin
-    cons_pft[name, t] = JuMP.@constraint(
-        jump_model,
-        pft[name, t] ==
-        (coef.g / tap^2 + coef.g_fr) * vsq_fr +
-        coef.a_cos / tap * vv_cos +
-        coef.a_sin / tap * vv_sin + p_ft_slack,
+    vr = get_variable(container, VoltageReal, PSY.ACBus)
+    vi = get_variable(container, VoltageImaginary, PSY.ACBus)
+    vr_fr = vr[from_bus, t]
+    vr_to = vr[to_bus, t]
+    vi_fr = vi[from_bus, t]
+    vi_to = vi[to_bus, t]
+    return (
+        v2_fr = vr_fr^2 + vi_fr^2,
+        v2_to = vr_to^2 + vi_to^2,
+        vv_cos = vr_fr * vr_to + vi_fr * vi_to,
+        vv_sin = vi_fr * vr_to - vr_fr * vi_to,
     )
-    cons_qft[name, t] = JuMP.@constraint(
-        jump_model,
-        qft[name, t] ==
-        -(coef.b / tap^2 + coef.b_fr) * vsq_fr +
-        (-coef.a_sin) / tap * vv_cos +
-        coef.a_cos / tap * vv_sin + q_ft_slack,
-    )
-    cons_ptf[name, t] = JuMP.@constraint(
-        jump_model,
-        ptf[name, t] ==
-        coef.gg_to * vsq_to +
-        coef.c_cos / tap * vv_cos -
-        e_sin / tap * vv_sin + p_tf_slack,
-    )
-    cons_qtf[name, t] = JuMP.@constraint(
-        jump_model,
-        qtf[name, t] ==
-        -coef.bb_to * vsq_to -
-        e_sin / tap * vv_cos -
-        coef.c_cos / tap * vv_sin + q_tf_slack,
-    )
-    return
 end
 
-"""
-Add full π-model rectangular AC Ohm's law constraints for ACBranch under ACRNetworkModel.
+function _voltage_products(
+    container::OptimizationContainer,
+    ::NetworkModel{LPACCNetworkModel},
+    ::Type{T},
+    name::String,
+    from_bus::String,
+    to_bus::String,
+    t::Int,
+) where {T <: PSY.ACTransmission}
+    va = get_variable(container, VoltageAngle, PSY.ACBus)
+    phi = get_variable(container, VoltageDeviation, PSY.ACBus)
+    cs = get_variable(container, CosineApproximation, T)
+    phi_fr = phi[from_bus, t]
+    phi_to = phi[to_bus, t]
+    return (
+        v2_fr = 1.0 + 2.0 * phi_fr,
+        v2_to = 1.0 + 2.0 * phi_to,
+        vv_cos = cs[name, t] + phi_fr + phi_to,
+        vv_sin = va[from_bus, t] - va[to_bus, t],
+    )
+end
 
-Four constraints per branch per time step (p_ft, q_ft, p_tf, q_tf) relate the four
-directional flow variables to rectangular voltage components (vr, vi) via the
-π-equivalent circuit. Rectangular identity applied to the ACP polar expressions:
-  vmf^2            → vr_fr^2 + vi_fr^2
-  vmf*vmt*cos(θ)  → vr_fr*vr_to + vi_fr*vi_to
-  vmf*vmt*sin(θ)  → vi_fr*vr_to - vr_fr*vi_to
-"""
+# Ybus terms, supporting Float64 and VariableRef taps. PNM's ybus functions
+# use imaginary numbers which VariableRef doesn't support.
+function _tapped_admittance(adm, tap)
+    cs = cos(adm.shift)
+    sn = sin(adm.shift)
+    return (
+        g11 = adm.g / tap^2 + adm.g_fr,
+        b11 = adm.b / tap^2 + adm.b_fr,
+        g12 = (-adm.g * cs + adm.b * sn) / tap,
+        b12 = (-adm.b * cs - adm.g * sn) / tap,
+        g21 = (-adm.g * cs - adm.b * sn) / tap,
+        b21 = (adm.g * sn - adm.b * cs) / tap,
+        g22 = adm.g + adm.g_to,
+        b22 = adm.b + adm.b_to,
+    )
+end
+
+# Voltage-only AC networks.
 function add_constraints!(
     container::OptimizationContainer,
     sys::PSY.System,
     ::Type{NetworkFlowConstraint},
     devices::IS.FlattenIteratorWrapper{T},
     device_model::DeviceModel{T, U},
-    network_model::NetworkModel{ACRNetworkModel},
-) where {T <: PSY.ACTransmission, U <: AbstractBranchFormulation}
+    network_model::NetworkModel{N},
+) where {
+    T <: PSY.ACTransmission,
+    U <: AbstractBranchFormulation,
+    N <: Union{ACPNetworkModel, ACRNetworkModel, LPACCNetworkModel},
+}
     time_steps = get_time_steps(container)
 
-    vr = get_variable(container, VoltageReal, PSY.ACBus)
-    vi = get_variable(container, VoltageImaginary, PSY.ACBus)
     pft = get_variable(container, FlowActivePowerFromToVariable, T)
     ptf = get_variable(container, FlowActivePowerToFromVariable, T)
     qft = get_variable(container, FlowReactivePowerFromToVariable, T)
@@ -1689,34 +1663,42 @@ function add_constraints!(
     cons_pft, cons_qft, cons_ptf, cons_qtf =
         _add_flow_constraint_containers!(container, T, branch_names)
     jump_model = get_jump_model(container)
+
     slacks = _flow_equality_slacks(container, device_model, T)
+    p_ft_slack = _slack_term(slacks.p_ft, name, t)
+    q_ft_slack = _slack_term(slacks.q_ft, name, t)
+    p_tf_slack = _slack_term(slacks.p_tf, name, t)
+    q_tf_slack = _slack_term(slacks.q_tf, name, t)
 
     for g_geom in geoms
         name = g_geom.name
         adm = g_geom.adm
-        tm = adm.tap
         from_bus = g_geom.from_name
         to_bus = g_geom.to_name
-        coef = _tap_flow_coefficients(
-            adm.g, adm.b, adm.g_fr, adm.b_fr, adm.g_to, adm.b_to, adm.shift,
-        )
 
         for t in time_steps
-            vr_fr = vr[from_bus, t]
-            vr_to = vr[to_bus, t]
-            vi_fr = vi[from_bus, t]
-            vi_to = vi[to_bus, t]
-            vsq_fr = vr_fr^2 + vi_fr^2
-            vsq_to = vr_to^2 + vi_to^2
-            vv_cos = vr_fr * vr_to + vi_fr * vi_to
-            vv_sin = vi_fr * vr_to - vr_fr * vi_to
-            _add_tap_acr_flow!(
-                jump_model, cons_pft, cons_qft, cons_ptf, cons_qtf, pft, qft, ptf, qtf,
-                name, t, vsq_fr, vsq_to, vv_cos, vv_sin, coef, tm,
-                _slack_term(slacks.p_ft, name, t),
-                _slack_term(slacks.q_ft, name, t),
-                _slack_term(slacks.p_tf, name, t),
-                _slack_term(slacks.q_tf, name, t),
+            vp = _voltage_products(container, network_model, T, name, from_bus, to_bus, t)
+            y = _tapped_admittance(adm, adm.tap)
+
+            cons_pft[name, t] = JuMP.@constraint(
+                jump_model,
+                pft[name, t] ==
+                y.g11 * vp.v2_fr + y.g12 * vp.vv_cos + y.b12 * vp.vv_sin + p_ft_slack,
+            )
+            cons_qft[name, t] = JuMP.@constraint(
+                jump_model,
+                qft[name, t] ==
+                -y.b11 * vp.v2_fr - y.b12 * vp.vv_cos + y.g12 * vp.vv_sin + q_ft_slack,
+            )
+            cons_ptf[name, t] = JuMP.@constraint(
+                jump_model,
+                ptf[name, t] ==
+                y.g22 * vp.v2_to + y.g21 * vp.vv_cos - y.b21 * vp.vv_sin + p_tf_slack,
+            )
+            cons_qtf[name, t] = JuMP.@constraint(
+                jump_model,
+                qtf[name, t] ==
+                -y.b22 * vp.v2_to - y.b21 * vp.vv_cos - y.g21 * vp.vv_sin + q_tf_slack,
             )
         end
     end
@@ -1867,105 +1849,6 @@ function _entry_angle_limits(geometry, device_by_name::Dict{String, <:PSY.ACTran
         return _lpacc_branch_angle_limits(device_by_name[geometry.name])
     end
     return (min = -π / 2, max = π / 2)
-end
-
-"""
-Add the LPAC-linearized π-model AC Ohm's law constraints for ACBranch under
-LPACCNetworkModel.
-
-Four constraints per branch per time step (p_ft, q_ft, p_tf, q_tf) relate the directional
-flow variables to the voltage-magnitude deviations (phi), the bus-pair cosine variable (cs),
-and the voltage-angle difference (va_fr - va_to). Transcribed from PowerModels `lpac.jl`
-`constraint_ohms_yt_from/to` for `AbstractLPACCNetworkModel`, with `tr = tm·cos(shift)`,
-`ti = tm·sin(shift)`.
-"""
-function add_constraints!(
-    container::OptimizationContainer,
-    sys::PSY.System,
-    ::Type{NetworkFlowConstraint},
-    devices::IS.FlattenIteratorWrapper{T},
-    device_model::DeviceModel{T, U},
-    network_model::NetworkModel{LPACCNetworkModel},
-) where {T <: PSY.ACTransmission, U <: AbstractBranchFormulation}
-    time_steps = get_time_steps(container)
-
-    va = get_variable(container, VoltageAngle, PSY.ACBus)
-    phi = get_variable(container, VoltageDeviation, PSY.ACBus)
-    cs = get_variable(container, CosineApproximation, T)
-    pft = get_variable(container, FlowActivePowerFromToVariable, T)
-    ptf = get_variable(container, FlowActivePowerToFromVariable, T)
-    qft = get_variable(container, FlowReactivePowerFromToVariable, T)
-    qtf = get_variable(container, FlowReactivePowerToFromVariable, T)
-
-    number_to_name = _retained_number_to_name(sys, network_model)
-    geoms =
-        _branch_geometries(number_to_name, network_model, devices, T, NetworkFlowConstraint)
-    branch_names = [g.name for g in geoms]
-    cons_pft, cons_qft, cons_ptf, cons_qtf =
-        _add_flow_constraint_containers!(container, T, branch_names)
-
-    jump_model = get_jump_model(container)
-    slacks = _flow_equality_slacks(container, device_model, T)
-    for g_geom in geoms
-        name = g_geom.name
-        adm = g_geom.adm
-        g = adm.g
-        b = adm.b
-        g_fr = adm.g_fr
-        b_fr = adm.b_fr
-        g_to = adm.g_to
-        b_to = adm.b_to
-        tm = adm.tap
-        nominal_shift = adm.shift
-        from_bus = g_geom.from_name
-        to_bus = g_geom.to_name
-        tr = tm * cos(nominal_shift)
-        ti = tm * sin(nominal_shift)
-        # Coupling coefficients (identical to ACP / PowerModels lpac.jl).
-        c_cos_fr = (-g * tr + b * ti) / tm^2
-        c_sin_fr = (-b * tr - g * ti) / tm^2
-        c_cos_to = (-g * tr - b * ti) / tm^2
-        c_sin_to = (-b * tr + g * ti) / tm^2
-
-        for t in time_steps
-            phi_fr = phi[from_bus, t]
-            phi_to = phi[to_bus, t]
-            vad = va[from_bus, t] - va[to_bus, t]
-            cs_b = cs[name, t]
-
-            # Shared affine terms reused across the four flow constraints:
-            #   cs_sum = cs + phi_fr + phi_to,  dev_* = 1 + 2·phi_*
-            cs_sum = cs_b + phi_fr + phi_to
-            dev_fr = 1.0 + 2.0 * phi_fr
-            dev_to = 1.0 + 2.0 * phi_to
-
-            cons_pft[name, t] = JuMP.@constraint(
-                jump_model,
-                pft[name, t] ==
-                (g / tm^2 + g_fr) * dev_fr + c_cos_fr * cs_sum + c_sin_fr * vad +
-                _slack_term(slacks.p_ft, name, t),
-            )
-            cons_qft[name, t] = JuMP.@constraint(
-                jump_model,
-                qft[name, t] ==
-                -(b / tm^2 + b_fr) * dev_fr - c_sin_fr * cs_sum + c_cos_fr * vad +
-                _slack_term(slacks.q_ft, name, t),
-            )
-            cons_ptf[name, t] = JuMP.@constraint(
-                jump_model,
-                ptf[name, t] ==
-                (g + g_to) * dev_to + c_cos_to * cs_sum + c_sin_to * (-vad) +
-                _slack_term(slacks.p_tf, name, t),
-            )
-            cons_qtf[name, t] = JuMP.@constraint(
-                jump_model,
-                qtf[name, t] ==
-                -(b + b_to) * dev_to - c_sin_to * cs_sum + c_cos_to * (-vad) +
-                _slack_term(slacks.q_tf, name, t),
-            )
-        end
-    end
-    return
 end
 
 ################################## IVRNetworkModel branch constraints ##################
@@ -2764,65 +2647,6 @@ function add_constraints!(
             vvi = vi[fr, t] * vr[to, t] - vr[fr, t] * vi[to, t]
             cons_ub[g.name, t] = JuMP.@constraint(jump_model, vvi <= tan(lims.max) * vvr)
             cons_lb[g.name, t] = JuMP.@constraint(jump_model, vvi >= tan(lims.min) * vvr)
-        end
-    end
-    return
-end
-
-"""
-Add full π-model AC Ohm's law constraints for ACBranch under ACPNetworkModel.
-
-Four constraints per branch per time step (p_ft, q_ft, p_tf, q_tf) relate the four
-directional flow variables to voltage magnitudes and angles via the π-equivalent circuit.
-"""
-function add_constraints!(
-    container::OptimizationContainer,
-    sys::PSY.System,
-    ::Type{NetworkFlowConstraint},
-    devices::IS.FlattenIteratorWrapper{T},
-    device_model::DeviceModel{T, U},
-    network_model::NetworkModel{ACPNetworkModel},
-) where {T <: PSY.ACTransmission, U <: AbstractBranchFormulation}
-    time_steps = get_time_steps(container)
-
-    va = get_variable(container, VoltageAngle, PSY.ACBus)
-    vm = get_variable(container, VoltageMagnitude, PSY.ACBus)
-    pft = get_variable(container, FlowActivePowerFromToVariable, T)
-    ptf = get_variable(container, FlowActivePowerToFromVariable, T)
-    qft = get_variable(container, FlowReactivePowerFromToVariable, T)
-    qtf = get_variable(container, FlowReactivePowerToFromVariable, T)
-
-    number_to_name = _retained_number_to_name(sys, network_model)
-    geoms =
-        _branch_geometries(number_to_name, network_model, devices, T, NetworkFlowConstraint)
-    branch_names = [g.name for g in geoms]
-    cons_pft, cons_qft, cons_ptf, cons_qtf =
-        _add_flow_constraint_containers!(container, T, branch_names)
-    slacks = _flow_equality_slacks(container, device_model, T)
-
-    for g_geom in geoms
-        name = g_geom.name
-        adm = g_geom.adm
-        tm = adm.tap
-        from_bus = g_geom.from_name
-        to_bus = g_geom.to_name
-        coef = _tap_flow_coefficients(
-            adm.g, adm.b, adm.g_fr, adm.b_fr, adm.g_to, adm.b_to, adm.shift,
-        )
-
-        for t in time_steps
-            θ = va[from_bus, t] - va[to_bus, t]
-            vmf = vm[from_bus, t]
-            vmt = vm[to_bus, t]
-            jump_model = get_jump_model(container)
-            _add_tap_acp_flow!(
-                jump_model, cons_pft, cons_qft, cons_ptf, cons_qtf, pft, qft, ptf, qtf,
-                name, t, vmf, vmt, θ, coef, tm,
-                _slack_term(slacks.p_ft, name, t),
-                _slack_term(slacks.q_ft, name, t),
-                _slack_term(slacks.p_tf, name, t),
-                _slack_term(slacks.q_tf, name, t),
-            )
         end
     end
     return
