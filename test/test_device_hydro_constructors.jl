@@ -439,12 +439,12 @@ end
     )
 
     # Fix reserve parameters
-    reg_up = only(get_components(OnlineReserve{ReserveUp}, c_sys5_hy))
-    reg_dn = only(get_components(OnlineReserve{ReserveDown}, c_sys5_hy))
-    set_deployed_fraction!(reg_up, 0.0)
-    set_deployed_fraction!(reg_dn, 0.0)
-    set_requirement!(reg_up, 0.01 * PSY.SU)
-    set_requirement!(reg_dn, 0.01 * PSY.SU)
+    reserve_up = only(get_components(OnlineReserve{ReserveUp}, c_sys5_hy))
+    reserve_down = only(get_components(OnlineReserve{ReserveDown}, c_sys5_hy))
+    set_deployed_fraction!(reserve_up, 0.0)
+    set_deployed_fraction!(reserve_down, 0.0)
+    set_requirement!(reserve_up, 0.01 * PSY.SU)
+    set_requirement!(reserve_down, 0.01 * PSY.SU)
 
     hydro_budget = 24
     eps = 1e-6
@@ -453,11 +453,11 @@ end
 
     # Update Service allocation
     # Remove reg up from hydro, but leave reg dn
-    remove_service!(hy, reg_up)
+    remove_service!(hy, reserve_up)
 
     # Add reg up to thermals
     for th in get_components(ThermalStandard, c_sys5_hy)
-        add_service!(th, reg_up, c_sys5_hy)
+        add_service!(th, reserve_up, c_sys5_hy)
     end
 
     max_power = get_max_active_power(hy, PSY.SU)
@@ -528,12 +528,12 @@ end
 
     # The hydro unit is the sole contributing device for both reserves in this system, so
     # the down requirement guarantees a nonzero down award to detect.
-    reg_up = only(get_components(OnlineReserve{ReserveUp}, c_sys5_hy))
-    reg_dn = only(get_components(OnlineReserve{ReserveDown}, c_sys5_hy))
-    set_deployed_fraction!(reg_up, 0.0)
-    set_deployed_fraction!(reg_dn, 0.5)
-    set_requirement!(reg_up, 0.01 * PSY.SU)
-    set_requirement!(reg_dn, 0.01 * PSY.SU)
+    reserve_up = only(get_components(OnlineReserve{ReserveUp}, c_sys5_hy))
+    reserve_down = only(get_components(OnlineReserve{ReserveDown}, c_sys5_hy))
+    set_deployed_fraction!(reserve_up, 0.0)
+    set_deployed_fraction!(reserve_down, 0.5)
+    set_requirement!(reserve_up, 0.01 * PSY.SU)
+    set_requirement!(reserve_down, 0.01 * PSY.SU)
 
     transform_single_time_series!(c_sys5_hy, Hour(4), Hour(4))
 
