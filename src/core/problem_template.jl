@@ -250,7 +250,8 @@ function _populate_contributing_devices!(
             end
             # A reserve or interface with no available provider can never meet its requirement,
             # so error rather than let it silently force slacks or go infeasible.
-            # GroupReserve aggregates other services, so its empty map is by design.
+            # GroupReserve aggregates other SERVICES: it is a deviceless `AbstractReserve`,
+            # so its empty device map is by design - do not "simplify" this exemption away.
             if !(service_type <: PSY.GroupReserve) &&
                isempty(get_contributing_devices_map(service_model, service_name))
                 error(

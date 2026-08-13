@@ -1543,3 +1543,25 @@ end
         IS.get_time_series_key(PSY.get_variable(ordc_ts)),
     ) == 3
 end
+
+@testset "GroupReserve guards: formulation pairing and offer costs" begin
+    # Mis-pairs fail at ServiceModel declaration with an actionable error.
+    @test_throws ArgumentError ServiceModel(GroupReserve{ReserveUp}, RangeReserve)
+    @test_throws ArgumentError ServiceModel(GroupReserve{ReserveDown}, StepwiseCostReserve)
+    @test_throws ArgumentError ServiceModel(OnlineReserve{ReserveUp}, GroupRangeReserve)
+    @test_throws ArgumentError ServiceModel(OfflineReserve, GroupRangeReserve)
+    # Bare group type: the direction must be applied.
+    @test_throws ArgumentError ServiceModel(GroupReserve, GroupRangeReserve)
+    # The valid pair still constructs.
+    @test ServiceModel(GroupReserve{ReserveUp}, GroupRangeReserve) isa ServiceModel
+
+    # A group carries no per-device offers; the guard keeps the structural guarantee the
+    # `GroupReserve <: AbstractReserve` move would otherwise relax.
+    sys = System(100.0)
+    container = build_test_container(sys, 1:2)
+    group = GroupReserve{ReserveUp}(nothing)
+    model = ServiceModel(GroupReserve{ReserveUp}, GroupRangeReserve)
+    @test_throws IS.ConflictingInputsError POM.add_reserve_offer_costs!(
+        container, group, model,
+    )
+end

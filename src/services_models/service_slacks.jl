@@ -1,3 +1,4 @@
+# `T <: AbstractReserve` admits `GroupReserve` type-wise, but never reach it in practice.
 function add_reserve_slacks!(
     container::OptimizationContainer,
     ::Type{T},

@@ -60,6 +60,9 @@ function _is_group_member(sys::PSY.System, service::PSY.AbstractReserve)
     return false
 end
 
+# Groups do not nest: a skipped group is always standalone, so it always warns.
+_is_group_member(::PSY.System, ::PSY.GroupReserve) = false
+
 function _log_skipped_reserve_demand(
     sys::PSY.System,
     service::PSY.AbstractReserve,
@@ -71,7 +74,7 @@ function _log_skipped_reserve_demand(
     if _is_group_member(sys, service)
         @debug "Service $(name) of type $(typeof(service)) is a GroupReserve member and $(reason); \
                 skipping its own demand-side model. It still contributes supply to its group." _group =
-            LOG_GROUP_SERVICE_CONSTRUCTORS
+            LOG_GROUP_SERVICE_CONSTUCTORS
     else
         @warn "Service $(name) of type $(typeof(service)) is modeled with $(F) but $(reason), so it \
                imposes no demand; skipping its demand-side model. It can still supply reserve to a \
