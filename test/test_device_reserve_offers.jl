@@ -319,3 +319,255 @@ end
     push!(PSY.get_ancillary_service_offers(mbc), reserve)
     @test POM._cost_offers_reserve(mbc, reserve) == true
 end
+
+
+#################################################################################
+# Load reserve provision (PowerLoadDispatch)
+#################################################################################
+
+# Load reserve provision (`PowerLoadDispatch`): a controllable load provides UPWARD reserve
+# by shedding (`P - r_up >= 0`, awards capped by consumption) and DOWNWARD reserve by
+# consuming more (`P + r_down <= forecast`). `c_sys5_il`'s single interruptible load
+# `IloadBus4` is the sole contributor to Reserve7 (up), Reserve8 (down) and ORDC1 (up,
+# demand curve); the requirements exceed the load, so requirement models use slacks.
+
+const _IL_NAME = "IloadBus4"
+
+function _load_reserve_template(direction::Symbol)
+    template = get_thermal_dispatch_template_network()
+    set_device_model!(template, PSY.InterruptiblePowerLoad, PowerLoadDispatch)
+    direction === :up && set_service_model!(
+        template,
+        ServiceModel(OnlineReserve{ReserveUp}, RangeReserve; use_slacks = true),
+    )
+    direction === :down && set_service_model!(
+        template,
+        ServiceModel(OnlineReserve{ReserveDown}, RangeReserve; use_slacks = true),
+    )
+    return template
+end
+
+function _solve_load_model(template, sys)
+    model = DecisionModel(
+        template, sys;
+        optimizer = HiGHS_optimizer, store_variable_names = true,
+    )
+    @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
+          IOM.ModelBuildStatus.BUILT
+    @test solve!(model) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
+    return model
+end
+
+_il_cols(df) = [c for c in names(df) if endswith(c, "__$(_IL_NAME)")]
+
+@testset "Load reserve direction map + folding methods" begin
+    @test POM.get_expression_type_for_reserve(
+        ActivePowerReserveVariable, PSY.InterruptiblePowerLoad, OnlineReserve{ReserveUp},
+    ) == POM.ActivePowerRangeExpressionLB
+    @test POM.get_expression_type_for_reserve(
+        ActivePowerReserveVariable, PSY.InterruptiblePowerLoad, OnlineReserve{ReserveDown},
+    ) == POM.ActivePowerRangeExpressionUB
+end
+
+@testset "UP-reserve: award capped by consumption (shed headroom)" begin
+    sys = deepcopy(PSB.build_system(PSITestSystems, "c_sys5_il"; add_reserves = true))
+    model = _solve_load_model(_load_reserve_template(:up), sys)
+    container = IOM.get_optimization_container(model)
+    @test IOM.has_container_key(
+        container, POM.ActivePowerRangeExpressionLB, PSY.InterruptiblePowerLoad,
+    )
+    res = IOM.OptimizationProblemOutputs(model)
+    p = read_variable(
+        res, "ActivePowerVariable__InterruptiblePowerLoad";
+        table_format = TableFormat.WIDE,
+    )
+    awards = read_variable(
+        res, "ActivePowerReserveVariable__OnlineReserve__ReserveUp";
+        table_format = TableFormat.WIDE,
+    )
+    total_award = 0.0
+    for t in 1:24
+        awarded = sum(awards[t, c] for c in _il_cols(awards))
+        @test awarded <= p[t, _IL_NAME] + 1e-4
+        @test p[t, _IL_NAME] - awarded >= -1e-4
+        total_award += awarded
+    end
+    @test total_award > 1.0
+end
+
+@testset "DOWN-reserve: award within forecast headroom" begin
+    sys = deepcopy(PSB.build_system(PSITestSystems, "c_sys5_il"; add_reserves = true))
+    il = get_component(PSY.InterruptiblePowerLoad, sys, _IL_NAME)
+    pmax = PSY.get_max_active_power(il, PSY.NU)
+    model = _solve_load_model(_load_reserve_template(:down), sys)
+    res = IOM.OptimizationProblemOutputs(model)
+    p = read_variable(
+        res, "ActivePowerVariable__InterruptiblePowerLoad";
+        table_format = TableFormat.WIDE,
+    )
+    awards = read_variable(
+        res, "ActivePowerReserveVariable__OnlineReserve__ReserveDown";
+        table_format = TableFormat.WIDE,
+    )
+    hsl = read_parameter(
+        res, "ActivePowerTimeSeriesParameter__InterruptiblePowerLoad";
+        table_format = TableFormat.WIDE,
+    )
+    total_award = 0.0
+    for t in 1:24
+        awarded = sum(awards[t, c] for c in _il_cols(awards))
+        @test awarded >= -1e-4
+        @test p[t, _IL_NAME] + awarded <= hsl[t, _IL_NAME] + 1e-3
+        @test p[t, _IL_NAME] + awarded <= pmax + 1e-3
+        total_award += awarded
+    end
+    @test total_award > 1.0
+end
+
+@testset "VOLL-priced load: pinned at forecast, full up-shed, zero down" begin
+    sys = deepcopy(PSB.build_system(PSITestSystems, "c_sys5_il"; add_reserves = true))
+    il = get_component(PSY.InterruptiblePowerLoad, sys, _IL_NAME)
+    set_operation_cost!(
+        il,
+        PSY.LoadCost(PSY.CostCurve(PSY.LinearCurve(5000.0, 0.0), IS.NaturalUnit()), 24.0),
+    )
+    template = _load_reserve_template(:up)
+    set_service_model!(
+        template,
+        ServiceModel(OnlineReserve{ReserveDown}, RangeReserve; use_slacks = true),
+    )
+    model = _solve_load_model(template, sys)
+    res = IOM.OptimizationProblemOutputs(model)
+    p = read_variable(
+        res, "ActivePowerVariable__InterruptiblePowerLoad";
+        table_format = TableFormat.WIDE,
+    )
+    up = read_variable(
+        res, "ActivePowerReserveVariable__OnlineReserve__ReserveUp";
+        table_format = TableFormat.WIDE,
+    )
+    dn = read_variable(
+        res, "ActivePowerReserveVariable__OnlineReserve__ReserveDown";
+        table_format = TableFormat.WIDE,
+    )
+    hsl = read_parameter(
+        res, "ActivePowerTimeSeriesParameter__InterruptiblePowerLoad";
+        table_format = TableFormat.WIDE,
+    )
+    up_total = 0.0
+    for t in 1:24
+        @test isapprox(p[t, _IL_NAME], hsl[t, _IL_NAME]; atol = 1e-1)
+        up_t = sum(up[t, c] for c in _il_cols(up))
+        @test isapprox(up_t, p[t, _IL_NAME]; atol = 1e-1)
+        @test sum(dn[t, c] for c in _il_cols(dn)) <= 1e-2
+        up_total += up_t
+    end
+    @test up_total > 1.0
+end
+
+@testset "No-reserve regression: pure-energy path unchanged" begin
+    sys = deepcopy(PSB.build_system(PSITestSystems, "c_sys5_il"; add_reserves = false))
+    model = _solve_load_model(_load_reserve_template(:none), sys)
+    container = IOM.get_optimization_container(model)
+    @test !IOM.has_container_key(
+        container, POM.ActivePowerRangeExpressionLB, PSY.InterruptiblePowerLoad,
+    )
+    @test !IOM.has_container_key(
+        container, POM.ActivePowerRangeExpressionUB, PSY.InterruptiblePowerLoad,
+    )
+end
+
+@testset "Costless load offering reserves fails loudly" begin
+    sys = deepcopy(PSB.build_system(PSITestSystems, "c_sys5_il"; add_reserves = true))
+    il = get_component(PSY.InterruptiblePowerLoad, sys, _IL_NAME)
+    set_operation_cost!(il, PSY.LoadCost(nothing))
+    model = DecisionModel(
+        _load_reserve_template(:up), sys;
+        optimizer = HiGHS_optimizer,
+    )
+    @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
+          IOM.ModelBuildStatus.FAILED
+end
+
+@testset "Co-provision: two up-services share one shed headroom" begin
+    sys = deepcopy(PSB.build_system(PSITestSystems, "c_sys5_il"; add_reserves = true))
+    il = get_component(PSY.InterruptiblePowerLoad, sys, _IL_NAME)
+    set_operation_cost!(
+        il,
+        PSY.LoadCost(PSY.CostCurve(PSY.LinearCurve(5000.0, 0.0), IS.NaturalUnit()), 24.0),
+    )
+    # A second requirement reserve on the same load; both clear under ONE per-type model.
+    second = OnlineReserve{ReserveUp}("Reserve7B", true, 30.0, 100.0)
+    add_service!(sys, second, [il])
+    model = _solve_load_model(_load_reserve_template(:up), sys)
+    res = IOM.OptimizationProblemOutputs(model)
+    p = read_variable(
+        res, "ActivePowerVariable__InterruptiblePowerLoad";
+        table_format = TableFormat.WIDE,
+    )
+    awards = read_variable(
+        res, "ActivePowerReserveVariable__OnlineReserve__ReserveUp";
+        table_format = TableFormat.WIDE,
+    )
+    combined_total = 0.0
+    for t in 1:24
+        # One shared LB expression: a per-service headroom bug would allow up to 2*P.
+        combined = awards[t, "Reserve7__$(_IL_NAME)"] + awards[t, "Reserve7B__$(_IL_NAME)"]
+        @test combined <= p[t, _IL_NAME] + 1e-3
+        combined_total += combined
+    end
+    @test combined_total > 1.0
+end
+
+@testset "Load offers into an elastic reserve: award bounded by the offer" begin
+    sys = deepcopy(PSB.build_system(PSITestSystems, "c_sys5_il"; add_reserves = true))
+    il = get_component(PSY.InterruptiblePowerLoad, sys, _IL_NAME)
+    pmax = PSY.get_max_active_power(il, PSY.NU)
+    ordc = first(get_components(PSY.has_demand_curve, PSY.OnlineReserve, sys))
+    offer_mw = 10.0
+    set_operation_cost!(
+        il,
+        MarketBidCost(;
+            no_load_cost = LinearCurve(0.0),
+            start_up = (hot = 0.0, warm = 0.0, cold = 0.0),
+            shut_down = LinearCurve(0.0),
+            decremental_offer_curves = make_market_bid_curve(
+                [0.0, pmax], [5000.0], 0.0; power_units = IS.NaturalUnit(),
+            ),
+        ),
+    )
+    offer_ts = Deterministic(
+        PSY.get_name(ordc),
+        Dict(
+            it => [IS.PiecewiseStepData([0.0, offer_mw], [0.0]) for _ in 1:24] for
+            it in [DateTime("2024-01-01T00:00:00"), DateTime("2024-01-02T00:00:00")]
+        ),
+        Hour(1),
+    )
+    PSY.set_service_bid!(sys, il, ordc, offer_ts, IS.NaturalUnit())
+
+    template = get_thermal_dispatch_template_network()
+    set_device_model!(template, PSY.InterruptiblePowerLoad, PowerLoadDispatch)
+    set_service_model!(
+        template,
+        ServiceModel(OnlineReserve{ReserveUp}, StepwiseCostReserve),
+    )
+    model = _solve_load_model(template, sys)
+    container = IOM.get_optimization_container(model)
+    @test IOM.has_container_key(
+        container, POM.PiecewiseLinearBlockReserveOffer, PSY.InterruptiblePowerLoad,
+    )
+    res = IOM.OptimizationProblemOutputs(model)
+    awards = read_variable(
+        res, "ActivePowerReserveVariable__OnlineReserve__ReserveUp";
+        table_format = TableFormat.WIDE,
+    )
+    col = "$(PSY.get_name(ordc))__$(_IL_NAME)"
+    total = 0.0
+    for t in 1:24
+        @test awards[t, col] <= offer_mw + 1e-3
+        total += awards[t, col]
+    end
+    # The zero-priced block clears against the elastic demand.
+    @test total > 1.0
+end
