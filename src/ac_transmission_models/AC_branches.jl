@@ -69,6 +69,14 @@ function get_default_time_series_names(
     return Dict{Type{<:TimeSeriesParameter}, String}()
 end
 
+ENABLE_CONTROLS_KEY = "enable_controls"
+
+_control_attribute(
+    ::Union{Type{PSY.TwoWindingTransformer}, Type{PSY.ThreeWindingTransformer}},
+) = (ENABLE_CONTROLS_KEY => false,)
+
+_control_attribute(_) = ()
+
 """
 DeviceModel attribute key selecting which `PowerNetworkMatrices` function aggregates
 the individual circuit ratings of a `PNM.BranchesParallel` into a single maximum flow
@@ -84,6 +92,7 @@ function get_default_attributes(
 ) where {U <: PSY.ACTransmission, V <: AbstractBranchFormulation}
     return Dict{String, Any}(
         PARALLEL_BRANCH_MAX_RATING_KEY => "single_element_contingency",
+        _control_attribute(U)...
     )
 end
 
@@ -94,6 +103,7 @@ function get_default_attributes(
     return Dict{String, Any}(
         PARALLEL_BRANCH_MAX_RATING_KEY => "single_element_contingency",
         "include_planned_outages" => false,
+        _control_attribute(U)...
     )
 end
 
@@ -271,12 +281,48 @@ function add_variables!(
     return
 end
 
-# Non-negative flow-definition slack container carrying a container META. StaticBranchBounds
-# distinguishes its per-direction slack pairs ("p_ft"/"p_tf"/"q_ft"/"q_tf") by meta on the
-# shared FlowActivePowerSlack{Upper,Lower}Bound types; `add_variables!` threads no meta, so
-# build the container directly. One slack per representative arc — the equality is written
-# once per arc. Axes are precomputed by the caller (shared across all metas of one device
-# model).
+# Matches the names returned by _branch_geometries
+_circuit_arc_name(d::PSY.TwoWindingTransformer, ::PSY.TransformerCircuit, ::Int) =
+    PSY.get_name(d)
+_circuit_arc_name(d::PSY.ThreeWindingTransformer, c::PSY.TransformerCircuit, i::Int) =
+    PNM.get_name(PNM.ThreeWindingTransformerCircuit(d, c, i))
+
+function _add_transformer_control_variables!(
+    container::OptimizationContainer,
+    model::DeviceModel{U, F},
+    devices::IS.FlattenIteratorWrapper{U},
+    network_model::NetworkModel,
+) where {
+    U <: Union{PSY.TwoWindingTransformer, PSY.ThreeWindingTransformer},
+    F <: AbstractBranchFormulation,
+}
+    get_attribute(model, ENABLE_CONTROLS_KEY) === true || return
+    time_steps = get_time_steps(container)
+    jump_model = get_jump_model(container)
+    names = [
+        _circuit_arc_name(d, c, i)
+        for d in devices
+        for (i, c) in enumerate(PSY.get_circuits(d))
+        if PSY.get_available(c) && PSY.get_control_objective(c) in (PSY.TransformerControlObjective.VOLTAGE, PSY.TransformerControlObjective.REACTIVE_POWER_FLOW)
+    ]
+    _validate_controlled_branch_not_reduced(network_model, U, names)
+    variable = add_variable_container!(container, TapRatioVariable, U, names, time_steps)
+    for name in names, t in time_steps
+        variable[name, t] = JuMP.@variable(
+            jump_model,
+            base_name = "TapRatioVariable_$(U)_{$(name), $(t)}",
+        )
+    end
+    return
+end
+
+_add_transformer_control_variables!(
+    ::OptimizationContainer,
+    ::DeviceModel,
+    ::IS.FlattenIteratorWrapper,
+    ::NetworkModel,
+) = nothing
+
 function _add_meta_flow_slack!(
     container::OptimizationContainer,
     ::Type{T},
@@ -1113,27 +1159,19 @@ function _branch_rating_entries(
     ]
 end
 
-# Formulations that model a per-device control decision variable (variable tap ratio,
-# phase-shifter angle) cannot be expressed on a PNM series/parallel equivalent — the
-# reduction folds a FIXED device setting into the merged π-parameters. A controlled
-# branch absorbed by a network reduction is a modeling conflict the user must resolve,
-# not something to silently approximate.
 function _validate_controlled_branch_not_reduced(
     network_model::NetworkModel,
-    devices::IS.FlattenIteratorWrapper{T},
-    formulation_name::String,
+    ::Type{T},
+    controlled_names,
 ) where {T <: PSY.ACTransmission}
     network_reduction = get_network_reduction(network_model)
     isempty(network_reduction) && return
     arc_map = get_name_to_arc_map_entries(network_reduction, T)
-    for d in devices
-        name = PSY.get_name(d)
-        if !haskey(arc_map, name) || arc_map[name][2] != "direct_branch_map"
+    for name in controlled_names
+        entry = get(arc_map, name, nothing)
+        if entry === nothing || entry[2] != "direct_branch_map"
             error(
-                "$(formulation_name) branch $(name) was absorbed by a network \
-                 reduction (radial, degree-two, or parallel aggregation). Exclude it \
-                 from the reduction with a PNM reduction filter or model it with a \
-                 static branch formulation.",
+                "Controlled transformer circuit $(name) was merged with a parallel branch. Either remove the parallel branch or disable control for this circuit.",
             )
         end
     end
@@ -1172,6 +1210,9 @@ _dc_phase_shift(branch::PNM.AbstractReductionAggregate, nr::PNM.NetworkReduction
 _dc_phase_shift(branch::PSY.ACTransmission, ::PNM.NetworkReductionData) =
     PNM.get_series_phase_shift(branch)
 
+_control_objective(c::PSY.TransformerCircuit) = PSY.get_control_objective(c)
+_control_objective(_) = PSY.TransformerControlObjective.UNDEFINED
+
 function _branch_geometry(
     nr::PNM.NetworkReductionData,
     number_to_name::Dict{Int, String},
@@ -1192,6 +1233,7 @@ function _branch_geometry(
         shift_dc = _dc_phase_shift(branch, nr),
         r_dc = PNM.arc_dc_resistance(nr, arc_tuple),
         direct = !_is_aggregate(branch),
+        objective = _control_objective(branch)
     )
 end
 
@@ -1382,14 +1424,6 @@ function add_constraints!(
     return
 end
 
-"""
-Create the four directional `NetworkFlowConstraint` containers shared by every AC
-branch-flow formulation, fixed- and variable-tap alike: active and reactive power in
-the from→to and to→from directions, keyed by branch name and time step. Thin factory
-over `add_constraints_container!`; returns them in (p_ft, q_ft, p_tf, q_tf) order so a
-caller can write `cons_pft, cons_qft, cons_ptf, cons_qtf = ...`. Keeping this in one
-place lets each formulation's method show only the Ohm's-law math that actually differs.
-"""
 function _add_flow_constraint_containers!(
     container::OptimizationContainer,
     ::Type{T},
@@ -1656,6 +1690,8 @@ function add_constraints!(
     qft = get_variable(container, FlowReactivePowerFromToVariable, T)
     qtf = get_variable(container, FlowReactivePowerToFromVariable, T)
 
+    tap_var = get_attribute(device_model, ENABLE_CONTROLS_KEY) ? get_variable(container, TapRatioVariable, T) : nothing
+
     number_to_name = _retained_number_to_name(sys, network_model)
     geoms =
         _branch_geometries(number_to_name, network_model, devices, T, NetworkFlowConstraint)
@@ -1663,12 +1699,7 @@ function add_constraints!(
     cons_pft, cons_qft, cons_ptf, cons_qtf =
         _add_flow_constraint_containers!(container, T, branch_names)
     jump_model = get_jump_model(container)
-
     slacks = _flow_equality_slacks(container, device_model, T)
-    p_ft_slack = _slack_term(slacks.p_ft, name, t)
-    q_ft_slack = _slack_term(slacks.q_ft, name, t)
-    p_tf_slack = _slack_term(slacks.p_tf, name, t)
-    q_tf_slack = _slack_term(slacks.q_tf, name, t)
 
     for g_geom in geoms
         name = g_geom.name
@@ -1678,27 +1709,32 @@ function add_constraints!(
 
         for t in time_steps
             vp = _voltage_products(container, network_model, T, name, from_bus, to_bus, t)
-            y = _tapped_admittance(adm, adm.tap)
+            tap = g_geom.control in TAP_CONTROL_OBJECTIVES ? tap_var[name, t] : adm.tap
+            y = _tapped_admittance(adm, tap)
 
             cons_pft[name, t] = JuMP.@constraint(
                 jump_model,
                 pft[name, t] ==
-                y.g11 * vp.v2_fr + y.g12 * vp.vv_cos + y.b12 * vp.vv_sin + p_ft_slack,
+                y.g11 * vp.v2_fr + y.g12 * vp.vv_cos + y.b12 * vp.vv_sin +
+                p_slack_term(slacks.p_ft, name, t)
             )
             cons_qft[name, t] = JuMP.@constraint(
                 jump_model,
                 qft[name, t] ==
-                -y.b11 * vp.v2_fr - y.b12 * vp.vv_cos + y.g12 * vp.vv_sin + q_ft_slack,
+                -y.b11 * vp.v2_fr - y.b12 * vp.vv_cos + y.g12 * vp.vv_sin +
+                _slack_term(slacks.q_ft, name, t),
             )
             cons_ptf[name, t] = JuMP.@constraint(
                 jump_model,
                 ptf[name, t] ==
-                y.g22 * vp.v2_to + y.g21 * vp.vv_cos - y.b21 * vp.vv_sin + p_tf_slack,
+                y.g22 * vp.v2_to + y.g21 * vp.vv_cos - y.b21 * vp.vv_sin +
+                _slack_term(slacks.p_tf, name, t),
             )
             cons_qtf[name, t] = JuMP.@constraint(
                 jump_model,
                 qtf[name, t] ==
-                -y.b22 * vp.v2_to - y.b21 * vp.vv_cos - y.g21 * vp.vv_sin + q_tf_slack,
+                -y.b22 * vp.v2_to - y.b21 * vp.vv_cos - y.g21 * vp.vv_sin +
+                _slack_term(slacks.q_tf, name, t),
             )
         end
     end

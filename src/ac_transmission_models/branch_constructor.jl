@@ -288,6 +288,7 @@ function construct_device!(
     devices = get_available_components(device_model, sys)
     _add_static_branch_flow_variables!(container, devices, network_model)
     _add_static_branch_balance_arguments!(container, device_model, devices, network_model)
+    _add_transformer_control_variables!(container, device_model, devices, network_model)
     return
 end
 
