@@ -287,6 +287,8 @@ _circuit_arc_name(d::PSY.TwoWindingTransformer, ::PSY.TransformerCircuit, ::Int)
 _circuit_arc_name(d::PSY.ThreeWindingTransformer, c::PSY.TransformerCircuit, i::Int) =
     PNM.get_name(PNM.ThreeWindingTransformerCircuit(d, c, i))
 
+# TODO: add other controls + refactor
+# TODO: Change TransformerCircuit <: DeviceParameter -> <: Device
 function _add_transformer_control_variables!(
     container::OptimizationContainer,
     model::DeviceModel{U, F},
@@ -297,31 +299,29 @@ function _add_transformer_control_variables!(
     F <: AbstractBranchFormulation,
 }
     get_attribute(model, ENABLE_CONTROLS_KEY) === true || return
-    time_steps = get_time_steps(container)
-    jump_model = get_jump_model(container)
-    names = [
-        _circuit_arc_name(d, c, i)
+    # TODO: collectzip is ugly, refactor now or do Circuit <: Device first
+    names, circuits = collect(zip([
+        (_circuit_arc_name(d, c, i), c)
         for d in devices
         for (i, c) in enumerate(PSY.get_circuits(d))
         if PSY.get_available(c) && PSY.get_control_objective(c) in (PSY.TransformerControlObjective.VOLTAGE, PSY.TransformerControlObjective.REACTIVE_POWER_FLOW)
-    ]
+    ]))
     _validate_controlled_branch_not_reduced(network_model, U, names)
+
+    time_steps = get_time_steps(container)
+    jump_model = get_jump_model(container)
     variable = add_variable_container!(container, TapRatioVariable, U, names, time_steps)
-    for name in names, t in time_steps
+    for (i, name) in enumerate(names), t in time_steps
+        bounds = get_control_limits(circuits[i])
         variable[name, t] = JuMP.@variable(
             jump_model,
             base_name = "TapRatioVariable_$(U)_{$(name), $(t)}",
+            lower_bound = bounds.min,
+            upper_bound = bounds.max
         )
     end
     return
 end
-
-_add_transformer_control_variables!(
-    ::OptimizationContainer,
-    ::DeviceModel,
-    ::IS.FlattenIteratorWrapper,
-    ::NetworkModel,
-) = nothing
 
 function _add_meta_flow_slack!(
     container::OptimizationContainer,
@@ -1213,6 +1213,12 @@ _dc_phase_shift(branch::PSY.ACTransmission, ::PNM.NetworkReductionData) =
 _control_objective(c::PSY.TransformerCircuit) = PSY.get_control_objective(c)
 _control_objective(_) = PSY.TransformerControlObjective.UNDEFINED
 
+_quantity_limits(c::PSY.TransformerCircuit) = PSY.get_controlled_quantity_limits(c)
+_quantity_limits(_) = (min = -Inf, max = Inf)
+
+_regulated_bus(c::PSY.TransformerCircuit) = PSY.get_regulated_bus_number(c) === PSY.get_number(PSY.get_from(PSY.get_arc(c))) ? :from : :to
+_regulated_bus(_) = nothing
+
 function _branch_geometry(
     nr::PNM.NetworkReductionData,
     number_to_name::Dict{Int, String},
@@ -1234,6 +1240,8 @@ function _branch_geometry(
         r_dc = PNM.arc_dc_resistance(nr, arc_tuple),
         direct = !_is_aggregate(branch),
         objective = _control_objective(branch)
+        quantity_limits = _quantity_limits(branch)
+        regulated_bus = _regulated_bus(branch)
     )
 end
 
@@ -1718,24 +1726,36 @@ function add_constraints!(
                 y.g11 * vp.v2_fr + y.g12 * vp.vv_cos + y.b12 * vp.vv_sin +
                 p_slack_term(slacks.p_ft, name, t)
             )
-            cons_qft[name, t] = JuMP.@constraint(
-                jump_model,
-                qft[name, t] ==
-                -y.b11 * vp.v2_fr - y.b12 * vp.vv_cos + y.g12 * vp.vv_sin +
-                _slack_term(slacks.q_ft, name, t),
-            )
             cons_ptf[name, t] = JuMP.@constraint(
                 jump_model,
                 ptf[name, t] ==
                 y.g22 * vp.v2_to + y.g21 * vp.vv_cos - y.b21 * vp.vv_sin +
                 _slack_term(slacks.p_tf, name, t),
             )
-            cons_qtf[name, t] = JuMP.@constraint(
+            qft_expr = JuMP.@expression(
                 jump_model,
-                qtf[name, t] ==
+                -y.b11 * vp.v2_fr - y.b12 * vp.vv_cos + y.g12 * vp.vv_sin +
+                _slack_term(slacks.q_ft, name, t),
+            )
+            qtf_expr = JuMP.@expression(
+                jump_model,
                 -y.b22 * vp.v2_to - y.b21 * vp.vv_cos - y.g21 * vp.vv_sin +
                 _slack_term(slacks.q_tf, name, t),
             )
+            cons_qft[name, t] = JuMP.@constraint(jump_model, qft[name, t] == qft_expr)
+            cons_qtf[name, t] = JuMP.@constraint(jump_model, qtf[name, t] == qtf_expr)
+
+            if g_geom.control === PSY.TransformerControlObjective.VOLTAGE
+                voltage = g_geom.regulated_bus == :from ? vp.v2_fr : vp.v2_to
+                JuMP.@constraint(jump_model, voltage >= g_geom.quantity_limits.min)
+                JuMP.@constraint(jump_model, voltage <= g_geom.quantity_limits.max)
+            end
+            if g_geom.control === PSY.TransformerControlObjective.REACTIVE_POWER_FLOW
+                JuMP.@constraint(jump_model, qft_expr >= g_geom.quantity_limits.min)
+                JuMP.@constraint(jump_model, qft_expr <= g_geom.quantity_limits.max)
+                JuMP.@constraint(jump_model, qtf_expr >= g_geom.quantity_limits.min)
+                JuMP.@constraint(jump_model, qtf_expr <= g_geom.quantity_limits.max)
+            end
         end
     end
     return
