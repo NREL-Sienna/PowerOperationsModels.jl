@@ -74,8 +74,23 @@ ENABLE_CONTROLS_KEY = "enable_controls"
 _control_attribute(
     ::Union{Type{PSY.TwoWindingTransformer}, Type{PSY.ThreeWindingTransformer}},
 ) = (ENABLE_CONTROLS_KEY => false,)
-
 _control_attribute(_) = ()
+
+_control_enabled(m::Union{DeviceModel{PSY.TwoWindingTransformer}, DeviceModel{PSY.ThreeWindingTransformer}}) = get_attribute(m, ENABLE_CONTROLS_KEY) === true
+_control_enabled(c::PSY.TransformerCircuit) = PSY.get_available(c) && !(PSY.get_control_objective(c) in (PSY.TransformerControlObjective.UNDEFINED, PSY.TransformerControlObjective.FIXED))
+_control_enabled(_) = false
+
+_tap_controlled(c::PSY.TransformerControlObjective) = c in (PSY.TransformerControlObjective.VOLTAGE, PSY.TransformerControlObjective.REACTIVE_POWER_FLOW)
+_tap_controlled(c::PSY.TransformerCircuit) = PSY.get_available(c) && _tap_controlled(PSY.get_control_objective(c))
+
+_voltage_controlled(c::PSY.TransformerControlObjective) = c === PSY.TransformerControlObjective.VOLTAGE
+_voltage_controlled(c::PSY.TransformerCircuit) = PSY.get_available(c) && _voltage_controlled(PSY.get_control_objective(c))
+
+_reactive_controlled(c::PSY.TransformerControlObjective) = c === PSY.TransformerControlObjective.REACTIVE_POWER_FLOW
+
+_tap_controlled(m::DeviceModel, d) = _control_enabled(m) && _tap_controlled(d)
+_voltage_controlled(m::DeviceModel, d) = _control_enabled(m) && _voltage_controlled(d)
+_reactive_controlled(m::DeviceModel, d) = _control_enabled(m) && _reactive_controlled(d)
 
 """
 DeviceModel attribute key selecting which `PowerNetworkMatrices` function aggregates
@@ -92,7 +107,7 @@ function get_default_attributes(
 ) where {U <: PSY.ACTransmission, V <: AbstractBranchFormulation}
     return Dict{String, Any}(
         PARALLEL_BRANCH_MAX_RATING_KEY => "single_element_contingency",
-        _control_attribute(U)...
+        _control_attribute(U)...,
     )
 end
 
@@ -103,7 +118,7 @@ function get_default_attributes(
     return Dict{String, Any}(
         PARALLEL_BRANCH_MAX_RATING_KEY => "single_element_contingency",
         "include_planned_outages" => false,
-        _control_attribute(U)...
+        _control_attribute(U)...,
     )
 end
 
@@ -287,9 +302,14 @@ _circuit_arc_name(d::PSY.TwoWindingTransformer, ::PSY.TransformerCircuit, ::Int)
 _circuit_arc_name(d::PSY.ThreeWindingTransformer, c::PSY.TransformerCircuit, i::Int) =
     PNM.get_name(PNM.ThreeWindingTransformerCircuit(d, c, i))
 
-# TODO: add other controls + refactor
-# TODO: Change TransformerCircuit <: DeviceParameter -> <: Device
-function _add_transformer_control_variables!(
+_add_tap_control_variables!(
+    ::OptimizationContainer,
+    ::DeviceModel,
+    ::IS.FlattenIteratorWrapper,
+    ::NetworkModel,
+) = nothing
+
+function _add_tap_control_variables!(
     container::OptimizationContainer,
     model::DeviceModel{U, F},
     devices::IS.FlattenIteratorWrapper{U},
@@ -299,21 +319,22 @@ function _add_transformer_control_variables!(
     F <: AbstractBranchFormulation,
 }
     get_attribute(model, ENABLE_CONTROLS_KEY) === true || return
-    # TODO: collectzip is ugly, refactor now or do Circuit <: Device first
-    names, circuits = collect(zip([
-        (_circuit_arc_name(d, c, i), c)
-        for d in devices
-        for (i, c) in enumerate(PSY.get_circuits(d))
-        if PSY.get_available(c) && PSY.get_control_objective(c) in (PSY.TransformerControlObjective.VOLTAGE, PSY.TransformerControlObjective.REACTIVE_POWER_FLOW)
-    ]))
+    names = String[]
+    circuits = PSY.TransformerCircuit[]
+    for d in devices, (i, c) in enumerate(PSY.get_circuits(d))
+        _tap_controlled(c) || continue
+        push!(names, _circuit_arc_name(d, c, i))
+        push!(circuits, c)
+    end
+    isempty(names) && return
     _validate_controlled_branch_not_reduced(network_model, U, names)
 
     time_steps = get_time_steps(container)
     jump_model = get_jump_model(container)
-    variable = add_variable_container!(container, TapRatioVariable, U, names, time_steps)
+    tap_var = add_variable_container!(container, TapRatioVariable, U, names, time_steps)
     for (i, name) in enumerate(names), t in time_steps
-        bounds = get_control_limits(circuits[i])
-        variable[name, t] = JuMP.@variable(
+        bounds = PSY.get_control_limits(circuits[i])
+        tap_var[name, t] = JuMP.@variable(
             jump_model,
             base_name = "TapRatioVariable_$(U)_{$(name), $(t)}",
             lower_bound = bounds.min,
@@ -1178,25 +1199,6 @@ function _validate_controlled_branch_not_reduced(
     return
 end
 
-# Concrete element type for `_branch_geometries` so constraint builders stay type-stable
-# and empty axes still yield `String` name comprehensions (an axis can be empty when the
-# other branch type's constructor claimed every shared reduced arc first).
-const BranchGeometry = @NamedTuple{
-    name::String,
-    from_name::String,
-    to_name::String,
-    from_number::Int,
-    to_number::Int,
-    adm::NamedTuple{
-        (:g, :b, :g_fr, :b_fr, :g_to, :b_to, :tap, :shift),
-        NTuple{8, Float64},
-    },
-    b_dc::Float64,
-    shift_dc::Float64,
-    r_dc::Float64,
-    direct::Bool,
-}
-
 _is_aggregate(::PNM.AbstractReductionAggregate) = true
 _is_aggregate(::PSY.ACTransmission) = false
 
@@ -1210,16 +1212,46 @@ _dc_phase_shift(branch::PNM.AbstractReductionAggregate, nr::PNM.NetworkReduction
 _dc_phase_shift(branch::PSY.ACTransmission, ::PNM.NetworkReductionData) =
     PNM.get_series_phase_shift(branch)
 
-_control_objective(c::PSY.TransformerCircuit) = PSY.get_control_objective(c)
-_control_objective(_) = PSY.TransformerControlObjective.UNDEFINED
+_get_circuit(
+    b::Union{PSY.TwoWindingTransformer, PNM.ThreeWindingTransformerCircuit},
+) = PSY.get_circuit(b)
+_get_circuit(_) = nothing
 
+_control_objective(branch) = _control_objective(_get_circuit(branch))
+_control_objective(::Nothing) = PSY.TransformerControlObjective.UNDEFINED
+_control_objective(c::PSY.TransformerCircuit) =
+    PSY.get_available(c) ? PSY.get_control_objective(c) :
+    PSY.TransformerControlObjective.UNDEFINED
+
+_quantity_limits(branch) = _quantity_limits(_get_circuit(branch))
+_quantity_limits(::Nothing) = (min = -Inf, max = Inf)
 _quantity_limits(c::PSY.TransformerCircuit) = PSY.get_controlled_quantity_limits(c)
-_quantity_limits(_) = (min = -Inf, max = Inf)
 
-_regulated_bus(c::PSY.TransformerCircuit) = PSY.get_regulated_bus_number(c) === PSY.get_number(PSY.get_from(PSY.get_arc(c))) ? :from : :to
-_regulated_bus(_) = nothing
+_regulated_number(branch) = _regulated_number(_get_circuit(branch))
+_regulated_number(::Nothing) = -1
+_regulated_number(c::PSY.TransformerCircuit) = PSY.get_regulated_bus_number(c)
 
-function _branch_geometry(
+Base.@kwdef struct BranchGeometry
+    name::String
+    from_name::String
+    to_name::String
+    from_number::Int
+    to_number::Int
+    adm::NamedTuple{
+        (:g, :b, :g_fr, :b_fr, :g_to, :b_to, :tap, :shift),
+        NTuple{8, Float64},
+    }
+    b_dc::Float64
+    shift_dc::Float64
+    r_dc::Float64
+    direct::Bool
+    control::PSY.TransformerControlObjective
+    quantity_limits::MinMax
+    regulated_number::Int
+
+end
+
+function BranchGeometry(
     nr::PNM.NetworkReductionData,
     number_to_name::Dict{Int, String},
     name::String,
@@ -1228,7 +1260,7 @@ function _branch_geometry(
 )
     from_no = arc_tuple[1]
     to_no = arc_tuple[2]
-    return (
+    return BranchGeometry(;
         name = name,
         from_name = number_to_name[from_no],
         to_name = number_to_name[to_no],
@@ -1239,17 +1271,18 @@ function _branch_geometry(
         shift_dc = _dc_phase_shift(branch, nr),
         r_dc = PNM.arc_dc_resistance(nr, arc_tuple),
         direct = !_is_aggregate(branch),
-        objective = _control_objective(branch)
-        quantity_limits = _quantity_limits(branch)
-        regulated_bus = _regulated_bus(branch)
+        control = _control_objective(branch),
+        quantity_limits = _quantity_limits(branch),
+        regulated_number = _regulated_number(branch),
     )
 end
+_tap_controlled(g::BranchGeometry) = _tap_controlled(g.control)
+_voltage_controlled(g::BranchGeometry) = _voltage_controlled(g.control)
+_reactive_controlled(g::BranchGeometry) = _reactive_controlled(g.control)
 
 """
-Per-branch network geometry for the native nodal constraint builders.
-
-One geometry per arc of `T` not yet claimed for the constraint family `C` — the
-representative axis from [`get_branch_argument_constraint_axis`](@ref) — with PNM's
+One [`BranchGeometry`](@ref) per arc of `T` not yet claimed for the constraint family `C` —
+the representative axis from [`get_branch_argument_constraint_axis`](@ref) — with PNM's
 reduction-aware equivalent admittance.
 
 Every member of a reduced arc (series segments, parallel groups, across branch types)
@@ -1270,7 +1303,7 @@ function _branch_geometries(
     arc_map = get_name_to_arc_map_entries(nr, T)
     all_branch_maps_by_type = PNM.get_all_branch_maps_by_type(nr)
     geoms = BranchGeometry[
-        _branch_geometry(
+        BranchGeometry(
             nr,
             number_to_name,
             name,
@@ -1603,16 +1636,16 @@ function _voltage_products(
     to_bus::String,
     t::Int,
 )
+    jump_model = get_jump_model(container)
     vm = get_variable(container, VoltageMagnitude, PSY.ACBus)
     va = get_variable(container, VoltageAngle, PSY.ACBus)
-    vmf = vm[from_bus, t]
-    vmt = vm[to_bus, t]
-    θ = va[from_bus, t] - va[to_bus, t]
+    vmf, vmt = vm[from_bus, t], vm[to_bus, t]
+    vaf, vat = va[from_bus, t], va[to_bus, t]
     return (
-        v2_fr = vmf^2,
-        v2_to = vmt^2,
-        vv_cos = vmf * vmt * cos(θ),
-        vv_sin = vmf * vmt * sin(θ),
+        v2_fr = JuMP.@expression(jump_model, vmf^2),
+        v2_to = JuMP.@expression(jump_model, vmt^2),
+        vv_cos = JuMP.@expression(jump_model, vmf * vmt * cos(vaf - vat)),
+        vv_sin = JuMP.@expression(jump_model, vmf * vmt * sin(vaf - vat)),
     )
 end
 
@@ -1625,17 +1658,16 @@ function _voltage_products(
     to_bus::String,
     t::Int,
 )
+    jump_model = get_jump_model(container)
     vr = get_variable(container, VoltageReal, PSY.ACBus)
     vi = get_variable(container, VoltageImaginary, PSY.ACBus)
-    vr_fr = vr[from_bus, t]
-    vr_to = vr[to_bus, t]
-    vi_fr = vi[from_bus, t]
-    vi_to = vi[to_bus, t]
+    vr_fr, vr_to = vr[from_bus, t], vr[to_bus, t]
+    vi_fr, vi_to = vi[from_bus, t], vi[to_bus, t]
     return (
-        v2_fr = vr_fr^2 + vi_fr^2,
-        v2_to = vr_to^2 + vi_to^2,
-        vv_cos = vr_fr * vr_to + vi_fr * vi_to,
-        vv_sin = vi_fr * vr_to - vr_fr * vi_to,
+        v2_fr = JuMP.@expression(jump_model, vr_fr^2 + vi_fr^2),
+        v2_to = JuMP.@expression(jump_model, vr_to^2 + vi_to^2),
+        vv_cos = JuMP.@expression(jump_model, vr_fr * vr_to + vi_fr * vi_to),
+        vv_sin = JuMP.@expression(jump_model, vi_fr * vr_to - vr_fr * vi_to),
     )
 end
 
@@ -1648,31 +1680,31 @@ function _voltage_products(
     to_bus::String,
     t::Int,
 ) where {T <: PSY.ACTransmission}
+    jump_model = get_jump_model(container)
     va = get_variable(container, VoltageAngle, PSY.ACBus)
     phi = get_variable(container, VoltageDeviation, PSY.ACBus)
     cs = get_variable(container, CosineApproximation, T)
-    phi_fr = phi[from_bus, t]
-    phi_to = phi[to_bus, t]
+    phi_fr, phi_to = phi[from_bus, t], phi[to_bus, t]
     return (
-        v2_fr = 1.0 + 2.0 * phi_fr,
-        v2_to = 1.0 + 2.0 * phi_to,
-        vv_cos = cs[name, t] + phi_fr + phi_to,
-        vv_sin = va[from_bus, t] - va[to_bus, t],
+        v2_fr = JuMP.@expression(jump_model, 1.0 + 2.0 * phi_fr),
+        v2_to = JuMP.@expression(jump_model, 1.0 + 2.0 * phi_to),
+        vv_cos = JuMP.@expression(jump_model, cs[name, t] + phi_fr + phi_to),
+        vv_sin = JuMP.@expression(jump_model, va[from_bus, t] - va[to_bus, t]),
     )
 end
 
 # Ybus terms, supporting Float64 and VariableRef taps. PNM's ybus functions
 # use imaginary numbers which VariableRef doesn't support.
-function _tapped_admittance(adm, tap)
-    cs = cos(adm.shift)
-    sn = sin(adm.shift)
+function _tapped_admittance(jump_model, adm, tap)
+    g_cos, g_sin = adm.g * cos(adm.shift), adm.g * sin(adm.shift)
+    b_cos, b_sin = adm.b * cos(adm.shift), adm.b * sin(adm.shift)
     return (
-        g11 = adm.g / tap^2 + adm.g_fr,
-        b11 = adm.b / tap^2 + adm.b_fr,
-        g12 = (-adm.g * cs + adm.b * sn) / tap,
-        b12 = (-adm.b * cs - adm.g * sn) / tap,
-        g21 = (-adm.g * cs - adm.b * sn) / tap,
-        b21 = (adm.g * sn - adm.b * cs) / tap,
+        g11 = JuMP.@expression(jump_model, adm.g / tap^2 + adm.g_fr),
+        b11 = JuMP.@expression(jump_model, adm.b / tap^2 + adm.b_fr),
+        g12 = JuMP.@expression(jump_model, (-g_cos + b_sin) / tap),
+        b12 = JuMP.@expression(jump_model, (-b_cos - g_sin) / tap),
+        g21 = JuMP.@expression(jump_model, (-g_cos - b_sin) / tap),
+        b21 = JuMP.@expression(jump_model, (g_sin - b_cos) / tap),
         g22 = adm.g + adm.g_to,
         b22 = adm.b + adm.b_to,
     )
@@ -1698,8 +1730,6 @@ function add_constraints!(
     qft = get_variable(container, FlowReactivePowerFromToVariable, T)
     qtf = get_variable(container, FlowReactivePowerToFromVariable, T)
 
-    tap_var = get_attribute(device_model, ENABLE_CONTROLS_KEY) ? get_variable(container, TapRatioVariable, T) : nothing
-
     number_to_name = _retained_number_to_name(sys, network_model)
     geoms =
         _branch_geometries(number_to_name, network_model, devices, T, NetworkFlowConstraint)
@@ -1717,14 +1747,14 @@ function add_constraints!(
 
         for t in time_steps
             vp = _voltage_products(container, network_model, T, name, from_bus, to_bus, t)
-            tap = g_geom.control in TAP_CONTROL_OBJECTIVES ? tap_var[name, t] : adm.tap
-            y = _tapped_admittance(adm, tap)
+            tap = _tap_controlled(device_model, g_geom) ? get_variable(container, TapRatioVariable, T)[name, t] : adm.tap
+            y = _tapped_admittance(jump_model, adm, tap)
 
             cons_pft[name, t] = JuMP.@constraint(
                 jump_model,
                 pft[name, t] ==
                 y.g11 * vp.v2_fr + y.g12 * vp.vv_cos + y.b12 * vp.vv_sin +
-                p_slack_term(slacks.p_ft, name, t)
+                _slack_term(slacks.p_ft, name, t)
             )
             cons_ptf[name, t] = JuMP.@constraint(
                 jump_model,
@@ -1745,12 +1775,8 @@ function add_constraints!(
             cons_qft[name, t] = JuMP.@constraint(jump_model, qft[name, t] == qft_expr)
             cons_qtf[name, t] = JuMP.@constraint(jump_model, qtf[name, t] == qtf_expr)
 
-            if g_geom.control === PSY.TransformerControlObjective.VOLTAGE
-                voltage = g_geom.regulated_bus == :from ? vp.v2_fr : vp.v2_to
-                JuMP.@constraint(jump_model, voltage >= g_geom.quantity_limits.min)
-                JuMP.@constraint(jump_model, voltage <= g_geom.quantity_limits.max)
-            end
-            if g_geom.control === PSY.TransformerControlObjective.REACTIVE_POWER_FLOW
+            # TODO: register in containers
+            if _reactive_controlled(device_model, g_geom)
                 JuMP.@constraint(jump_model, qft_expr >= g_geom.quantity_limits.min)
                 JuMP.@constraint(jump_model, qft_expr <= g_geom.quantity_limits.max)
                 JuMP.@constraint(jump_model, qtf_expr >= g_geom.quantity_limits.min)
@@ -1760,6 +1786,62 @@ function add_constraints!(
     end
     return
 end
+
+_voltage_magnitude(::Type{<:Union{ACPNetworkModel, IVRNetworkModel}}) = VoltageMagnitude
+_voltage_magnitude(_) = RegulatedVoltageMagnitude
+
+# TODO: It might benefit solvers to reset VariableRef bounds instead of using singleton constraints (or even to use fix()), but then we lose the dual. Worth it?
+function _add_voltage_control_constraints!(
+    container::OptimizationContainer,
+    sys::PSY.System,
+    devices::IS.FlattenIteratorWrapper{T},
+    device_model::DeviceModel{T},
+    ::NetworkModel{N}
+) where {T <: Union{PSY.TwoWindingTransformer, PSY.ThreeWindingTransformer}, N <: AbstractNetworkModel}
+    _control_enabled(device_model) || return
+
+    cons = add_constraints_container!(
+        container,
+        VoltageMagnitudeConstraint,
+        T,
+        String[],
+        Int[],
+        Int[];
+        sparse = true
+    )
+    vm = get_variable(container, _voltage_magnitude(N), PSY.ACBus)
+
+    time_steps = get_time_steps(container)
+    jump_model = get_jump_model(container)
+    for d in devices
+        for (i, circuit) in enumerate(PSY.get_circuits(d))
+            _voltage_controlled(device_model, circuit) || continue
+            circuit_name = _circuit_arc_name(d, circuit, i)
+
+            bus = PSY.get_bus(sys, PSY.get_regulated_bus_number(circuit))
+            bus_name = PSY.get_name(bus)
+            bus_limits = PSY.get_voltage_limits(bus)
+            ctl_limits = PSY.get_controlled_quantity_limits(circuit)
+
+            # TODO: temporary pending PSY#1755
+            (bus_limits.min <= ctl_limits.min <= ctl_limits.max <= bus_limits.max) || error("Bus limits for $bus_name disagree with control limits for circuit $circuit_name.")
+
+            for t in time_steps
+                cons[circuit_name, 1, t] = JuMP.@constraint(jump_model, vm[bus_name, t] >= ctl_limits.min)
+                cons[circuit_name, 2, t] = JuMP.@constraint(jump_model, vm[bus_name, t] <= ctl_limits.max)
+            end
+        end
+    end
+    return
+end
+
+_add_voltage_control_constraints!(
+    ::OptimizationContainer,
+    ::PSY.System,
+    ::IS.FlattenIteratorWrapper{T},
+    ::DeviceModel{T},
+    ::NetworkModel,
+) where {T} = nothing
 
 ################################## LPACCNetworkModel branch constraints ###############
 
@@ -1909,6 +1991,22 @@ end
 
 ################################## IVRNetworkModel branch constraints ##################
 
+_branch_arc(d::PSY.ACTransmission) = PSY.get_arc(d)
+_branch_arc(d::PSY.TwoWindingTransformer) = PSY.get_arc(PSY.get_circuit(d))
+
+function _min_endpoint_voltage_limit(branch::PSY.ACTransmission)
+    arc = _branch_arc(branch)
+    # bus voltage limits are already per-unit
+    vmin_fr = PSY.get_voltage_limits(PSY.get_from(arc)).min
+    vmin_to = PSY.get_voltage_limits(PSY.get_to(arc)).min
+    return min(vmin_fr, vmin_to)
+end
+
+# Series segments may themselves be parallel groups; recursion bottoms out at devices.
+function _min_endpoint_voltage_limit(entry::PNM.AbstractReductionAggregate)
+    return minimum(_min_endpoint_voltage_limit(member) for member in entry)
+end
+
 # Compute the per-unit current rating bound for an IVR branch variable.
 # c_rating_a = rate_a / vmin  (system-base power / per-unit voltage → per-unit current).
 function _ivr_current_rating(branch::PSY.ACTransmission)
@@ -1944,22 +2042,6 @@ function _ivr_current_rating(
         "IVR: reduced arc $(entry_name) has a non-positive member voltage minimum ($vmin)",
     )
     return rate_a / vmin
-end
-
-_branch_arc(d::PSY.ACTransmission) = PSY.get_arc(d)
-_branch_arc(d::PSY.TwoWindingTransformer) = PSY.get_arc(PSY.get_circuit(d))
-
-function _min_endpoint_voltage_limit(branch::PSY.ACTransmission)
-    arc = _branch_arc(branch)
-    # bus voltage limits are already per-unit
-    vmin_fr = PSY.get_voltage_limits(PSY.get_from(arc)).min
-    vmin_to = PSY.get_voltage_limits(PSY.get_to(arc)).min
-    return min(vmin_fr, vmin_to)
-end
-
-# Series segments may themselves be parallel groups; recursion bottoms out at devices.
-function _min_endpoint_voltage_limit(entry::PNM.AbstractReductionAggregate)
-    return minimum(_min_endpoint_voltage_limit(member) for member in entry)
 end
 
 function add_variables!(

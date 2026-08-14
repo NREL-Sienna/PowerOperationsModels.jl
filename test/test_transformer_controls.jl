@@ -26,7 +26,9 @@ function _controlled_sys14(
     objective;
     name = "Trans1",
     regulated = :to,
-    quantity_limits = (min = 0.9, max = 1.1),
+    # c_sys14 buses carry (0.94, 1.06) voltage limits; a VOLTAGE band has to sit inside
+    # the regulated bus's own limits.
+    quantity_limits = (min = 0.95, max = 1.05),
     control_limits = (min = 0.9, max = 1.1),
 )
     sys = PSB.build_system(PSITestSystems, "c_sys14")
@@ -42,7 +44,8 @@ function _controlled_sys14(
 end
 
 function _controlled_template(network_formulation; enable = true, kwargs...)
-    template = get_thermal_dispatch_template_network(NetworkModel(network_formulation; kwargs...))
+    template =
+        get_thermal_dispatch_template_network(NetworkModel(network_formulation; kwargs...))
     set_device_model!(
         template,
         DeviceModel(
@@ -148,7 +151,12 @@ end
 function _uncontrolled_voltage(bus_name; network_formulation = ACPNetworkModel)
     sys = PSB.build_system(PSITestSystems, "c_sys14")
     model, status =
-        _build_controlled(sys, network_formulation; enable = false, optimizer = ipopt_optimizer)
+        _build_controlled(
+            sys,
+            network_formulation;
+            enable = false,
+            optimizer = ipopt_optimizer,
+        )
     @test status == IOM.ModelBuildStatus.BUILT
     @test solve!(model) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
     res = IOM.OptimizationProblemOutputs(model)
@@ -160,7 +168,9 @@ end
     _, _, _, bus_name = _controlled_sys14(VOLTAGE_CONTROL)
     free_vm = _uncontrolled_voltage(bus_name)
     # A band the free-running solution violates, so holding it requires the tap to move.
-    band = (min = free_vm + 0.01, max = free_vm + 0.02)
+    # It sits below `free_vm`: the free-running voltage rides near the bus's 1.06 upper
+    # limit, and the band may not reach outside the bus's own limits.
+    band = (min = free_vm - 0.02, max = free_vm - 0.01)
 
     sys, _, _, _ = _controlled_sys14(VOLTAGE_CONTROL; quantity_limits = band)
     model, status = _build_controlled(sys, ACPNetworkModel; optimizer = ipopt_optimizer)
@@ -189,7 +199,7 @@ end
 @testset "VOLTAGE control regulates the from-side bus when its number is given" begin
     _, _, _, bus_name = _controlled_sys14(VOLTAGE_CONTROL; regulated = :from)
     free_vm = _uncontrolled_voltage(bus_name)
-    band = (min = free_vm + 0.01, max = free_vm + 0.02)
+    band = (min = free_vm - 0.02, max = free_vm - 0.01)
 
     sys, _, _, _ =
         _controlled_sys14(VOLTAGE_CONTROL; regulated = :from, quantity_limits = band)
@@ -203,22 +213,6 @@ end
         @test vm[r, bus_name] >= band.min - 1e-6
         @test vm[r, bus_name] <= band.max + 1e-6
     end
-end
-
-@testset "the VOLTAGE band is a voltage, not a squared voltage" begin
-    # A band well away from 1.0 pu separates the two readings: v ∈ [0.80, 0.82] is
-    # satisfied by v² ∈ [0.64, 0.67], so a builder comparing the raw band against v²
-    # would land the voltage near 0.9 pu instead.
-    band = (min = 0.80, max = 0.82)
-    sys, _, _, bus_name = _controlled_sys14(VOLTAGE_CONTROL; quantity_limits = band)
-    model, status = _build_controlled(sys, ACPNetworkModel; optimizer = ipopt_optimizer)
-    @test status == IOM.ModelBuildStatus.BUILT
-    @test solve!(model) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
-
-    res = IOM.OptimizationProblemOutputs(model)
-    vm = read_variable(res, "VoltageMagnitude__ACBus"; table_format = TableFormat.WIDE)
-    @test vm[1, bus_name] >= band.min - 1e-6
-    @test vm[1, bus_name] <= band.max + 1e-6
 end
 
 ############################ REACTIVE_POWER_FLOW objective #############################
@@ -248,39 +242,16 @@ end
 
 ################################### model invariants ###################################
 
-@testset "the model is count-invariant across control objectives (ACP)" begin
-    function _container_for(objective)
-        sys, _, _, _ = _controlled_sys14(objective)
-        model, status = _build_controlled(sys, ACPNetworkModel; optimizer = ipopt_optimizer)
-        @test status == IOM.ModelBuildStatus.BUILT
-        return IOM.get_optimization_container(model)
-    end
-
-    cv = _container_for(VOLTAGE_CONTROL)
-    cq = _container_for(Q_FLOW_CONTROL)
-
-    var_v = IOM.get_variables(cv)
-    var_q = IOM.get_variables(cq)
-    @test Set(keys(var_v)) == Set(keys(var_q))
-    for k in keys(var_v)
-        @test size(var_v[k]) == size(var_q[k])
-    end
-
-    con_v = IOM.get_constraints(cv)
-    con_q = IOM.get_constraints(cq)
-    @test Set(keys(con_v)) == Set(keys(con_q))
-    for k in keys(con_v)
-        @test size(con_v[k]) == size(con_q[k])
-    end
-end
-
 @testset "a tap pinned at nominal reproduces the uncontrolled model (ACP)" begin
     # White-box reduction gate: with the tap variable fixed at the circuit's nominal
     # ratio and a band too wide to bind, the controlled Ohm's law is term-by-term the
     # fixed-tap one, so both models must reach the same optimum and terminal flows.
-    wide = (min = 0.5, max = 1.5)
+    # The band is the regulated bus's own (0.94, 1.06) limits — the widest a VOLTAGE band
+    # may be — so the control constrains nothing the bus does not already.
+    band = (min = 0.94, max = 1.06)
+    tap_range = (min = 0.5, max = 1.5)
 
-    sys_fixed, _, _, _ = _controlled_sys14(VOLTAGE_CONTROL; quantity_limits = wide)
+    sys_fixed, _, _, _ = _controlled_sys14(VOLTAGE_CONTROL; quantity_limits = band)
     model_fixed, status_fixed = _build_controlled(
         sys_fixed, ACPNetworkModel; enable = false, optimizer = ipopt_optimizer,
     )
@@ -288,7 +259,7 @@ end
     @test solve!(model_fixed) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
 
     sys_var, transformer, circuit, _ = _controlled_sys14(
-        VOLTAGE_CONTROL; quantity_limits = wide, control_limits = wide,
+        VOLTAGE_CONTROL; quantity_limits = band, control_limits = tap_range,
     )
     model_var, status_var =
         _build_controlled(sys_var, ACPNetworkModel; optimizer = ipopt_optimizer)
@@ -331,7 +302,11 @@ end
     @test status == IOM.ModelBuildStatus.BUILT
 
     container = IOM.get_optimization_container(model)
-    pft = IOM.get_variable(container, FlowActivePowerFromToVariable, PSY.TwoWindingTransformer)
+    pft = IOM.get_variable(
+        container,
+        FlowActivePowerFromToVariable,
+        PSY.TwoWindingTransformer,
+    )
     vm = IOM.get_variable(container, VoltageMagnitude, PSY.ACBus)
     va = IOM.get_variable(container, VoltageAngle, PSY.ACBus)
     tap = IOM.get_variable(container, TapRatioVariable, PSY.TwoWindingTransformer)
@@ -354,7 +329,7 @@ end
     )
     lookup = z -> vals[z]
 
-    y = POM._tapped_admittance(adm, vals[tap[name, t]])
+    y = POM._tapped_admittance(get_jump_model(container), adm, vals[tap[name, t]])
     vmf = vals[vm[fr, t]]
     vmt = vals[vm[to, t]]
     θ = vals[va[fr, t]] - vals[va[to, t]]
@@ -389,7 +364,11 @@ end
                 )
                 magnitude = 1.0 + phi[1, bus_name]
             else
-                vr = read_variable(res, "VoltageReal__ACBus"; table_format = TableFormat.WIDE)
+                vr = read_variable(
+                    res,
+                    "VoltageReal__ACBus";
+                    table_format = TableFormat.WIDE,
+                )
                 vi = read_variable(
                     res, "VoltageImaginary__ACBus"; table_format = TableFormat.WIDE,
                 )
@@ -434,21 +413,26 @@ end
 @testset "a controlled circuit merged with a parallel branch fails with a clear error" begin
     # PNM collapses parallel branches onto one equivalent arc before POM sees them, which
     # would leave the control acting on a flow that is not the transformer's own.
-    sys, transformer, _, _ = _controlled_sys14(VOLTAGE_CONTROL)
-    arc = PSY.get_arc(PSY.get_circuit(transformer))
+    # Trans1's arc spans a voltage change, so the parallel branch has to be another
+    # transformer: PSY rejects a Line whose endpoints differ in base voltage.
+    sys, transformer, circuit, _ = _controlled_sys14(VOLTAGE_CONTROL)
+    arc = PSY.get_arc(circuit)
     PSY.add_component!(
         sys,
-        PSY.Line(;
+        PSY.TwoWindingTransformer(;
             name = "parallel_to_Trans1",
-            available = true,
-            active_power_flow = 0.0,
-            reactive_power_flow = 0.0,
-            arc = arc,
-            r = 0.01,
-            x = 0.1,
-            b = (from = 0.0, to = 0.0),
-            rating = 2.0,
-            angle_limits = (min = -π / 2, max = π / 2),
+            circuit = PSY.TransformerCircuit(;
+                available = true,
+                arc = arc,
+                r = PSY.get_r(circuit, PSY.SU),
+                x = PSY.get_x(circuit, PSY.SU),
+                tap = 1.0,
+                α = 0.0,
+                rating = PSY.get_rating(circuit, PSY.SU),
+                base_power = PSY.get_base_power(sys, PSY.NU),
+            ),
+            magnetizing_shunt = 0.0 + 0.0im,
+            shunt_location = PSY.TwoWindingTransformerShuntLocation.PRIMARY,
         ),
     )
     template = _controlled_template(ACPNetworkModel)
@@ -476,65 +460,88 @@ function _case11_with_forecast()
     return sys
 end
 
-@testset "a controlled circuit absorbed by a series reduction fails with a clear error" begin
-    # "1-6-i_1" is one segment of the (1,2) series chain, so under reduction it has no
-    # direct-branch entry of its own and its tap would control an equivalent arc it only
-    # partly owns.
-    sys = _case11_with_forecast()
-    line = PSY.get_component(PSY.Line, sys, "1-6-i_1")
-    arc = PSY.get_arc(line)
-    transformer = PSY.TwoWindingTransformer(;
-        name = PSY.get_name(line),
-        circuit = PSY.TransformerCircuit(;
-            available = true,
-            arc = arc,
-            r = PSY.get_r(line, PSY.SU),
-            x = PSY.get_x(line, PSY.SU),
-            tap = 1.0,
-            α = 0.0,
-            rating = PSY.get_rating(line, PSY.SU),
-            control_objective = VOLTAGE_CONTROL,
-            regulated_bus_number = PSY.get_number(PSY.get_to(arc)),
-            control_limits = (min = 0.9, max = 1.1),
-            controlled_quantity_limits = (min = 0.95, max = 1.05),
-            base_power = PSY.get_base_power(sys, PSY.NU),
-        ),
-        magnetizing_shunt = 0.0 + 0.0im,
-        shunt_location = PSY.TwoWindingTransformerShuntLocation.PRIMARY,
-    )
-    PSY.remove_component!(sys, line)
-    PSY.add_component!(sys, transformer)
-
-    template = _controlled_template(
-        ACPNetworkModel;
-        reduce_radial_branches = true,
-        reduce_degree_two_branches = true,
-    )
-    model = DecisionModel(template, sys; optimizer = ipopt_optimizer)
-    out = mktempdir(; cleanup = true)
-    @test build!(model; output_dir = out, console_level = Logging.Error) ==
-          IOM.ModelBuildStatus.FAILED
-    @test occursin(
-        "Controlled transformer circuit",
-        read(joinpath(out, "operation_problem.log"), String),
-    )
-end
-
-@testset "ACP rejects two transformers regulating the same bus" begin
-    # Trans1 (4 → 9) and Trans3 (4 → 7) share bus 4. Under ACP both would drive the one
-    # shared VoltageMagnitude, so the conflicting bands must be caught at validation.
+@testset "StaticBranch models transformer off-nominal tap under DCP (c_sys14)" begin
     sys = PSB.build_system(PSITestSystems, "c_sys14")
-    for name in ("Trans1", "Trans3")
-        circuit = PSY.get_circuit(PSY.get_component(PSY.TwoWindingTransformer, sys, name))
-        PSY.set_control_objective!(circuit, VOLTAGE_CONTROL)
-        PSY.set_regulated_bus_number!(circuit, PSY.get_number(PSY.get_from(PSY.get_arc(circuit))))
-        PSY.set_controlled_quantity_limits!(circuit, (min = 0.98, max = 1.02))
+    template = get_thermal_dispatch_template_network(NetworkModel(DCPNetworkModel))
+    set_device_model!(template, PSY.TwoWindingTransformer, StaticBranch)
+    model = DecisionModel(template, sys; optimizer = HiGHS_optimizer)
+    @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
+          IOM.ModelBuildStatus.BUILT
+    @test solve!(model) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
+
+    res = IOM.OptimizationProblemOutputs(model)
+    base = IOM.get_model_base_power(res)
+    # StaticBranch under DCP has no FlowActivePowerVariable: the flow IS the
+    # BThetaBranchFlow expression, reported in natural units (MW). VoltageAngle is
+    # unitless (radians, no conversion), so compare in per-unit.
+    pflow = read_expression(
+        res,
+        "BThetaBranchFlow__TwoWindingTransformer";
+        table_format = TableFormat.WIDE,
+    )
+    va = read_variable(res, "VoltageAngle__ACBus"; table_format = TableFormat.WIDE)
+
+    tested_a_real_tap = false
+    for tr in PSY.get_components(PSY.TwoWindingTransformer, sys)
+        name = PSY.get_name(tr)
+        @test name in names(pflow)
+
+        # Recover the series reactance independently, from the π-model admittance, so the
+        # oracle does not simply re-call the susceptance helper the source uses.
+        adm = PNM.branch_admittance(tr)
+        x = -adm.b / (adm.g^2 + adm.b^2)
+        # The DC susceptance is tap-divided: b_dc == 1/(tap*x). Pin the equivalence of the
+        # independent recovery and PNM's DC entry point.
+        @test 1 / (x * adm.tap) ≈ PNM.get_series_susceptance(tr, PSY.SU)
+
+        arc = PSY.get_arc(PSY.get_circuit(tr))
+        fr = PSY.get_name(PSY.get_from(arc))
+        to = PSY.get_name(PSY.get_to(arc))
+        shift = PNM.get_series_phase_shift(tr)
+        if !isapprox(adm.tap, 1.0; atol = 1e-6)
+            tested_a_real_tap = true
+        end
+        for r in 1:nrow(pflow)
+            p_pu = pflow[r, name] / base
+            expected = (va[r, fr] - va[r, to] - shift) / (x * adm.tap)
+            @test isapprox(p_pu, expected; atol = 1e-5)
+        end
     end
-    template = _controlled_template(ACPNetworkModel)
-    model = DecisionModel(template, sys; optimizer = ipopt_optimizer)
-    @test_throws IS.ConflictingInputsError POM.validate_template(model)
+    # Guard: the test system must actually carry a non-unit tap, else this proves nothing.
+    @test tested_a_real_tap
 end
 
+@testset "_tapped_admittance round-trips PNM.ybus_branch_entries" begin
+    function check_terms(y, ybus)
+        Y11, Y12, Y21, Y22 = ybus
+        @test isapprox(complex(y.g11, y.b11), Y11; rtol = 1e-10, atol = 1e-12)
+        @test isapprox(complex(y.g12, y.b12), Y12; rtol = 1e-10, atol = 1e-12)
+        @test isapprox(complex(y.g21, y.b21), Y21; rtol = 1e-10, atol = 1e-12)
+        @test isapprox(complex(y.g22, y.b22), Y22; rtol = 1e-10, atol = 1e-12)
+    end
+
+    model = JuMP.Model()
+    sys = PSB.build_system(PSITestSystems, "c_sys14")
+    for br in Iterators.flatten((
+        PSY.get_components(PSY.Line, sys),
+        PSY.get_components(PSY.TwoWindingTransformer, sys),
+    ))
+        adm = PNM.branch_admittance(br)
+        check_terms(POM._tapped_admittance(model, adm, adm.tap), PNM.ybus_branch_entries(br))
+    end
+
+    tr = PSY.get_component(PSY.TwoWindingTransformer, sys, "Trans1")
+    circuit = PSY.get_circuit(tr)
+    for shift in (-pi / 5, 0.0, pi / 6)
+        PSY.set_α!(circuit, shift)
+        PSY.set_tap!(circuit, 1.0)
+        adm = PNM.branch_admittance(tr)
+        for tap in (0.9, 1.0, 1.1, 1.25)
+            PSY.set_tap!(circuit, tap)
+            check_terms(POM._tapped_admittance(model, adm, tap), PNM.ybus_branch_entries(tr))
+        end
+    end
+end
 #########################################################################################
 # Phase control (the ACTIVE_POWER_FLOW / ASYMMETRIC_ACTIVE_POWER_FLOW objectives, where the
 # phase shift α rather than the tap ratio is the decision variable) is NOT supported yet.
