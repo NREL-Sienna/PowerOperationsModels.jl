@@ -81,7 +81,10 @@ _TRANSFORMERS = Union{PSY.TwoWindingTransformer, PSY.ThreeWindingTransformer}
 _control_enabled(m::DeviceModel{<:_TRANSFORMERS}) =
     get_attribute(m, ENABLE_CONTROLS_KEY) === true
 _control_enabled(c::PSY.TransformerCircuit) =
-    PSY.get_available(c) && !(PSY.get_control_objective(c) in (PSY.TransformerControlObjective.UNDEFINED, PSY.TransformerControlObjective.FIXED))
+    PSY.get_available(c) && !(
+        PSY.get_control_objective(c) in
+        (PSY.TransformerControlObjective.UNDEFINED, PSY.TransformerControlObjective.FIXED)
+    )
 _control_enabled(_) = false
 
 _tap_controlled(c::PSY.TransformerControlObjective) = c in (
@@ -322,7 +325,9 @@ _add_tap_control_variables!(
     ::NetworkModel,
 ) = nothing
 
-_warn_tap_control_nonconvexity(::NetworkModel{N}) where {N <: Union{LPACCNetworkModel, DCPNetworkModel, DCPLLNetworkModel}} =
+_warn_tap_control_nonconvexity(
+    ::NetworkModel{N},
+) where {N <: Union{LPACCNetworkModel, DCPNetworkModel, DCPLLNetworkModel}} =
     @warn "Tap control makes $N network models non-convex. Use Ipopt or change circuit controls."
 _warn_tap_control_nonconvexity(_) = nothing
 
@@ -1804,21 +1809,32 @@ end
 
 _voltage_magnitude(container, name, ::NetworkModel{ACPNetworkModel}) =
     get_variable(container, VoltageMagnitude, PSY.ACBus)[name, :]
-_voltage_magnitude(container, name, ::NetworkModel{<:Union{ACRNetworkModel, IVRNetworkModel}}) =
-    JuMP.@expression(get_jump_model(container), [t in get_time_steps(container)], get_variable(container, VoltageReal, PSY.ACBus)[name, t]^2 + get_variable(container, VoltageImaginary, PSY.ACBus)[name, t]^2)
+_voltage_magnitude(
+    container,
+    name,
+    ::NetworkModel{<:Union{ACRNetworkModel, IVRNetworkModel}},
+) =
+    JuMP.@expression(
+        get_jump_model(container),
+        [t in get_time_steps(container)],
+        get_variable(container, VoltageReal, PSY.ACBus)[name, t]^2 +
+        get_variable(container, VoltageImaginary, PSY.ACBus)[name, t]^2
+    )
 _voltage_magnitude(container, name, ::NetworkModel{LPACCNetworkModel}) =
     get_variable(container, VoltageDeviation, PSY.ACBus)[name, :]
 
 _voltage_limits(limits, ::NetworkModel{ACPNetworkModel}) = limits
-_voltage_limits(limits, ::NetworkModel{<:Union{ACRNetworkModel, IVRNetworkModel}}) = (min = limits.min^2, max = limits.max^2)
-_voltage_limits(limits, ::NetworkModel{LPACCNetworkModel}) = (min = limits.min - 1, max = limits.max - 1)
+_voltage_limits(limits, ::NetworkModel{<:Union{ACRNetworkModel, IVRNetworkModel}}) =
+    (min = limits.min^2, max = limits.max^2)
+_voltage_limits(limits, ::NetworkModel{LPACCNetworkModel}) =
+    (min = limits.min - 1, max = limits.max - 1)
 
 function _add_voltage_control_constraints!(
     container::OptimizationContainer,
     sys::PSY.System,
     devices::IS.FlattenIteratorWrapper{T},
     device_model::DeviceModel{T},
-    network_model::NetworkModel{<:NativeACNetworkModel}
+    network_model::NetworkModel{<:NativeACNetworkModel},
 ) where {T <: _TRANSFORMERS}
     _control_enabled(device_model) || return
 
@@ -1844,7 +1860,9 @@ function _add_voltage_control_constraints!(
             ctl_limits = PSY.get_controlled_quantity_limits(circuit)
             # TODO: temporary pending PSY#1755
             circuit_name = _circuit_arc_name(d, circuit, i)
-            (bus_limits.min <= ctl_limits.min <= ctl_limits.max <= bus_limits.max) || error("Bus limits for $bus_name disagree with control limits for circuit $circuit_name.")
+            (bus_limits.min <= ctl_limits.min <= ctl_limits.max <= bus_limits.max) || error(
+                "Bus limits for $bus_name disagree with control limits for circuit $circuit_name.",
+            )
 
             lims = _voltage_limits(ctl_limits, network_model)
             vm = _voltage_magnitude(container, bus_name, network_model)
@@ -2618,18 +2636,18 @@ function add_constraints!(
         flow =
             if use_slacks
                 JuMP.@expression(
-                jump_model,
-                p[g.name, t] - slack_ub[g.name, t] + slack_lb[g.name, t]
-            )
+                    jump_model,
+                    p[g.name, t] - slack_ub[g.name, t] + slack_lb[g.name, t]
+                )
             else
                 p[g.name, t]
             end
         cons[g.name, t] =
             if _tap_controlled(device_model, g)
                 JuMP.@constraint(
-                jump_model,
-                flow * tap_var[g.name, t] == g.b_dc * g.adm.tap * angle
-            )
+                    jump_model,
+                    flow * tap_var[g.name, t] == g.b_dc * g.adm.tap * angle
+                )
             else
                 JuMP.@constraint(jump_model, flow == g.b_dc * angle)
             end
@@ -3043,9 +3061,9 @@ function add_constraints!(
         cons[g.name, t] =
             if _tap_controlled(device_model, g)
                 JuMP.@constraint(
-                jump_model,
-                pft[g.name, t] * tap_var[g.name, t] == g.b_dc * g.adm.tap * angle
-            )
+                    jump_model,
+                    pft[g.name, t] * tap_var[g.name, t] == g.b_dc * g.adm.tap * angle
+                )
             else
                 JuMP.@constraint(jump_model, pft[g.name, t] == g.b_dc * angle)
             end
