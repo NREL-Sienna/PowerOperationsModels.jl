@@ -320,7 +320,9 @@ function construct_device!(
     add_constraints!(
         container, sys, AngleDifferenceConstraint, devices, device_model, network_model,
     )
-    _add_voltage_control_constraints!(container, sys, devices, device_model, network_model)
+    _add_transformer_control_constraints!(
+        container, sys, devices, device_model, network_model,
+    )
     add_feedforward_constraints!(container, device_model, devices)
     add_to_objective_function!(container, devices, device_model, ACPNetworkModel)
     add_constraint_dual!(container, sys, device_model)
@@ -415,6 +417,7 @@ function construct_device!(
     devices = get_available_components(device_model, sys)
     _add_static_branch_flow_variables!(container, devices, network_model)
     _add_static_branch_balance_arguments!(container, device_model, devices, network_model)
+    _add_tap_control_variables!(container, device_model, devices, network_model)
     return
 end
 
@@ -446,6 +449,9 @@ function construct_device!(
     )
     add_constraints!(
         container, sys, AngleDifferenceConstraint, devices, device_model, network_model,
+    )
+    _add_transformer_control_constraints!(
+        container, sys, devices, device_model, network_model,
     )
     add_feedforward_constraints!(container, device_model, devices)
     add_to_objective_function!(container, devices, device_model, ACRNetworkModel)
@@ -509,6 +515,7 @@ ArgumentConstructStage for StaticBranch under LPACCNetworkModel.
 Creates the four directional flow variables, the bus-pair cosine variable (cs), optional
 slacks, and registers each flow's contribution to the per-bus ActivePowerBalance and
 ReactivePowerBalance expressions.
+
 """
 function construct_device!(
     container::OptimizationContainer,
@@ -523,6 +530,7 @@ function construct_device!(
     _add_static_branch_flow_variables!(container, devices, network_model)
     add_variables!(container, CosineApproximation, devices, network_model)
     _add_static_branch_balance_arguments!(container, device_model, devices, network_model)
+    _add_tap_control_variables!(container, device_model, devices, network_model)
     return
 end
 
@@ -556,6 +564,9 @@ function construct_device!(
     )
     add_constraints!(
         container, sys, AngleDifferenceConstraint, devices, device_model, network_model,
+    )
+    _add_transformer_control_constraints!(
+        container, sys, devices, device_model, network_model,
     )
     add_feedforward_constraints!(container, device_model, devices)
     add_to_objective_function!(container, devices, device_model, LPACCNetworkModel)
@@ -697,6 +708,7 @@ function construct_device!(
             network_model,
         )
     end
+    _add_tap_control_variables!(container, device_model, devices, network_model)
     add_feedforward_arguments!(container, device_model, devices)
     return
 end
@@ -733,6 +745,9 @@ function construct_device!(
     )
     add_constraints!(
         container, sys, AngleDifferenceConstraint, devices, device_model, network_model,
+    )
+    _add_transformer_control_constraints!(
+        container, sys, devices, device_model, network_model,
     )
     add_feedforward_constraints!(container, device_model, devices)
     add_to_objective_function!(container, devices, device_model, IVRNetworkModel)
@@ -1125,6 +1140,7 @@ function construct_device!(
         container, ActivePowerBalance, FlowActivePowerToFromVariable,
         devices, device_model, network_model,
     )
+    _add_tap_control_variables!(container, device_model, devices, network_model)
     add_feedforward_arguments!(container, device_model, devices)
     return
 end
@@ -1197,6 +1213,7 @@ function construct_device!(
         device_model,
         network_model,
     )
+    _add_tap_control_variables!(container, device_model, devices, network_model)
     add_feedforward_arguments!(container, device_model, devices)
     return
 end

@@ -69,24 +69,37 @@ function get_default_time_series_names(
     return Dict{Type{<:TimeSeriesParameter}, String}()
 end
 
-ENABLE_CONTROLS_KEY = "enable_controls"
+const ENABLE_CONTROLS_KEY = "enable_controls"
 
 _control_attribute(
     ::Union{Type{PSY.TwoWindingTransformer}, Type{PSY.ThreeWindingTransformer}},
 ) = (ENABLE_CONTROLS_KEY => false,)
 _control_attribute(_) = ()
 
-_control_enabled(m::Union{DeviceModel{PSY.TwoWindingTransformer}, DeviceModel{PSY.ThreeWindingTransformer}}) = get_attribute(m, ENABLE_CONTROLS_KEY) === true
-_control_enabled(c::PSY.TransformerCircuit) = PSY.get_available(c) && !(PSY.get_control_objective(c) in (PSY.TransformerControlObjective.UNDEFINED, PSY.TransformerControlObjective.FIXED))
+_TRANSFORMERS = Union{PSY.TwoWindingTransformer, PSY.ThreeWindingTransformer}
+
+_control_enabled(m::DeviceModel{<:_TRANSFORMERS}) =
+    get_attribute(m, ENABLE_CONTROLS_KEY) === true
+_control_enabled(c::PSY.TransformerCircuit) =
+    PSY.get_available(c) && !(PSY.get_control_objective(c) in (PSY.TransformerControlObjective.UNDEFINED, PSY.TransformerControlObjective.FIXED))
 _control_enabled(_) = false
 
-_tap_controlled(c::PSY.TransformerControlObjective) = c in (PSY.TransformerControlObjective.VOLTAGE, PSY.TransformerControlObjective.REACTIVE_POWER_FLOW)
-_tap_controlled(c::PSY.TransformerCircuit) = PSY.get_available(c) && _tap_controlled(PSY.get_control_objective(c))
+_tap_controlled(c::PSY.TransformerControlObjective) = c in (
+    PSY.TransformerControlObjective.VOLTAGE,
+    PSY.TransformerControlObjective.REACTIVE_POWER_FLOW,
+)
+_tap_controlled(c::PSY.TransformerCircuit) =
+    PSY.get_available(c) && _tap_controlled(PSY.get_control_objective(c))
 
-_voltage_controlled(c::PSY.TransformerControlObjective) = c === PSY.TransformerControlObjective.VOLTAGE
-_voltage_controlled(c::PSY.TransformerCircuit) = PSY.get_available(c) && _voltage_controlled(PSY.get_control_objective(c))
+_voltage_controlled(c::PSY.TransformerControlObjective) =
+    c === PSY.TransformerControlObjective.VOLTAGE
+_voltage_controlled(c::PSY.TransformerCircuit) =
+    PSY.get_available(c) && _voltage_controlled(PSY.get_control_objective(c))
 
-_reactive_controlled(c::PSY.TransformerControlObjective) = c === PSY.TransformerControlObjective.REACTIVE_POWER_FLOW
+_reactive_controlled(c::PSY.TransformerControlObjective) =
+    c === PSY.TransformerControlObjective.REACTIVE_POWER_FLOW
+_reactive_controlled(c::PSY.TransformerCircuit) =
+    PSY.get_available(c) && _reactive_controlled(PSY.get_control_objective(c))
 
 _tap_controlled(m::DeviceModel, d) = _control_enabled(m) && _tap_controlled(d)
 _voltage_controlled(m::DeviceModel, d) = _control_enabled(m) && _voltage_controlled(d)
@@ -309,6 +322,10 @@ _add_tap_control_variables!(
     ::NetworkModel,
 ) = nothing
 
+_warn_tap_control_nonconvexity(::NetworkModel{N}) where {N <: Union{LPACCNetworkModel, DCPNetworkModel, DCPLLNetworkModel}} =
+    @warn "Tap control makes $N network models non-convex. Use Ipopt or change circuit controls."
+_warn_tap_control_nonconvexity(_) = nothing
+
 function _add_tap_control_variables!(
     container::OptimizationContainer,
     model::DeviceModel{U, F},
@@ -319,6 +336,8 @@ function _add_tap_control_variables!(
     F <: AbstractBranchFormulation,
 }
     get_attribute(model, ENABLE_CONTROLS_KEY) === true || return
+    _warn_tap_control_nonconvexity(network_model)
+
     names = String[]
     circuits = PSY.TransformerCircuit[]
     for d in devices, (i, c) in enumerate(PSY.get_circuits(d))
@@ -1220,8 +1239,11 @@ _get_circuit(_) = nothing
 _control_objective(branch) = _control_objective(_get_circuit(branch))
 _control_objective(::Nothing) = PSY.TransformerControlObjective.UNDEFINED
 _control_objective(c::PSY.TransformerCircuit) =
-    PSY.get_available(c) ? PSY.get_control_objective(c) :
-    PSY.TransformerControlObjective.UNDEFINED
+    if PSY.get_available(c)
+        PSY.get_control_objective(c)
+    else
+        PSY.TransformerControlObjective.UNDEFINED
+    end
 
 _quantity_limits(branch) = _quantity_limits(_get_circuit(branch))
 _quantity_limits(::Nothing) = (min = -Inf, max = Inf)
@@ -1248,7 +1270,6 @@ Base.@kwdef struct BranchGeometry
     control::PSY.TransformerControlObjective
     quantity_limits::MinMax
     regulated_number::Int
-
 end
 
 function BranchGeometry(
@@ -1747,7 +1768,11 @@ function add_constraints!(
 
         for t in time_steps
             vp = _voltage_products(container, network_model, T, name, from_bus, to_bus, t)
-            tap = _tap_controlled(device_model, g_geom) ? get_variable(container, TapRatioVariable, T)[name, t] : adm.tap
+            tap = if _tap_controlled(device_model, g_geom)
+                get_variable(container, TapRatioVariable, T)[name, t]
+            else
+                adm.tap
+            end
             y = _tapped_admittance(jump_model, adm, tap)
 
             cons_pft[name, t] = JuMP.@constraint(
@@ -1762,42 +1787,41 @@ function add_constraints!(
                 y.g22 * vp.v2_to + y.g21 * vp.vv_cos - y.b21 * vp.vv_sin +
                 _slack_term(slacks.p_tf, name, t),
             )
-            qft_expr = JuMP.@expression(
+            cons_qft[name, t] = JuMP.@constraint(
                 jump_model,
+                qft[name, t] ==
                 -y.b11 * vp.v2_fr - y.b12 * vp.vv_cos + y.g12 * vp.vv_sin +
                 _slack_term(slacks.q_ft, name, t),
             )
-            qtf_expr = JuMP.@expression(
+            cons_qtf[name, t] = JuMP.@constraint(
                 jump_model,
+                qtf[name, t] ==
                 -y.b22 * vp.v2_to - y.b21 * vp.vv_cos - y.g21 * vp.vv_sin +
                 _slack_term(slacks.q_tf, name, t),
             )
-            cons_qft[name, t] = JuMP.@constraint(jump_model, qft[name, t] == qft_expr)
-            cons_qtf[name, t] = JuMP.@constraint(jump_model, qtf[name, t] == qtf_expr)
-
-            # TODO: register in containers
-            if _reactive_controlled(device_model, g_geom)
-                JuMP.@constraint(jump_model, qft_expr >= g_geom.quantity_limits.min)
-                JuMP.@constraint(jump_model, qft_expr <= g_geom.quantity_limits.max)
-                JuMP.@constraint(jump_model, qtf_expr >= g_geom.quantity_limits.min)
-                JuMP.@constraint(jump_model, qtf_expr <= g_geom.quantity_limits.max)
-            end
         end
     end
     return
 end
 
-_voltage_magnitude(::Type{<:Union{ACPNetworkModel, IVRNetworkModel}}) = VoltageMagnitude
-_voltage_magnitude(_) = RegulatedVoltageMagnitude
+_voltage_magnitude(container, name, ::NetworkModel{ACPNetworkModel}) =
+    get_variable(container, VoltageMagnitude, PSY.ACBus)[name, :]
+_voltage_magnitude(container, name, ::NetworkModel{<:Union{ACRNetworkModel, IVRNetworkModel}}) =
+    JuMP.@expression(get_jump_model(container), [t in get_time_steps(container)], get_variable(container, VoltageReal, PSY.ACBus)[name, t]^2 + get_variable(container, VoltageImaginary, PSY.ACBus)[name, t]^2)
+_voltage_magnitude(container, name, ::NetworkModel{LPACCNetworkModel}) =
+    get_variable(container, VoltageDeviation, PSY.ACBus)[name, :]
 
-# TODO: It might benefit solvers to reset VariableRef bounds instead of using singleton constraints (or even to use fix()), but then we lose the dual. Worth it?
+_voltage_limits(limits, ::NetworkModel{ACPNetworkModel}) = limits
+_voltage_limits(limits, ::NetworkModel{<:Union{ACRNetworkModel, IVRNetworkModel}}) = (min = limits.min^2, max = limits.max^2)
+_voltage_limits(limits, ::NetworkModel{LPACCNetworkModel}) = (min = limits.min - 1, max = limits.max - 1)
+
 function _add_voltage_control_constraints!(
     container::OptimizationContainer,
     sys::PSY.System,
     devices::IS.FlattenIteratorWrapper{T},
     device_model::DeviceModel{T},
-    ::NetworkModel{N}
-) where {T <: Union{PSY.TwoWindingTransformer, PSY.ThreeWindingTransformer}, N <: AbstractNetworkModel}
+    ::NetworkModel{<:NativeACNetworkModel}
+) where {T <: _TRANSFORMER_CONTROL_TYPES}
     _control_enabled(device_model) || return
 
     cons = add_constraints_container!(
@@ -1807,28 +1831,28 @@ function _add_voltage_control_constraints!(
         String[],
         Int[],
         Int[];
-        sparse = true
+        sparse = true,
     )
-    vm = get_variable(container, _voltage_magnitude(N), PSY.ACBus)
 
     time_steps = get_time_steps(container)
     jump_model = get_jump_model(container)
     for d in devices
         for (i, circuit) in enumerate(PSY.get_circuits(d))
             _voltage_controlled(device_model, circuit) || continue
-            circuit_name = _circuit_arc_name(d, circuit, i)
 
             bus = PSY.get_bus(sys, PSY.get_regulated_bus_number(circuit))
             bus_name = PSY.get_name(bus)
             bus_limits = PSY.get_voltage_limits(bus)
             ctl_limits = PSY.get_controlled_quantity_limits(circuit)
-
             # TODO: temporary pending PSY#1755
+            circuit_name = _circuit_arc_name(d, circuit, i)
             (bus_limits.min <= ctl_limits.min <= ctl_limits.max <= bus_limits.max) || error("Bus limits for $bus_name disagree with control limits for circuit $circuit_name.")
 
+            lims = _voltage_limits(ctl_limits)
+            vm = _voltage_magnitude(container, bus_name, network_model)
             for t in time_steps
-                cons[circuit_name, 1, t] = JuMP.@constraint(jump_model, vm[bus_name, t] >= ctl_limits.min)
-                cons[circuit_name, 2, t] = JuMP.@constraint(jump_model, vm[bus_name, t] <= ctl_limits.max)
+                cons[circuit_name, 1, t] = JuMP.@constraint(jump_model, vm[t] >= lims.min)
+                cons[circuit_name, 2, t] = JuMP.@constraint(jump_model, vm[t] <= lims.max)
             end
         end
     end
@@ -1842,6 +1866,68 @@ _add_voltage_control_constraints!(
     ::DeviceModel{T},
     ::NetworkModel,
 ) where {T} = nothing
+
+function _add_reactive_control_constraints!(
+    container::OptimizationContainer,
+    devices::IS.FlattenIteratorWrapper{T},
+    device_model::DeviceModel{T},
+    ::NetworkModel{<:NativeACNetworkModel},
+) where {T <: _TRANSFORMER_CONTROL_TYPES}
+    _control_enabled(device_model) || return
+
+    cons = add_constraints_container!(
+        container,
+        ReactivePowerFlowControlConstraint,
+        T,
+        String[],
+        Int[],
+        Int[];
+        sparse = true,
+    )
+    qft = get_variable(container, FlowReactivePowerFromToVariable, T)
+    qtf = get_variable(container, FlowReactivePowerToFromVariable, T)
+
+    time_steps = get_time_steps(container)
+    jump_model = get_jump_model(container)
+    for d in devices
+        for (i, circuit) in enumerate(PSY.get_circuits(d))
+            _reactive_controlled(device_model, circuit) || continue
+            name = _circuit_arc_name(d, circuit, i)
+            lims = PSY.get_controlled_quantity_limits(circuit)
+
+            for t in time_steps
+                cons[name, 1, t] =
+                    JuMP.@constraint(jump_model, qft[name, t] >= lims.min)
+                cons[name, 2, t] =
+                    JuMP.@constraint(jump_model, qft[name, t] <= lims.max)
+                cons[name, 3, t] =
+                    JuMP.@constraint(jump_model, qtf[name, t] >= lims.min)
+                cons[name, 4, t] =
+                    JuMP.@constraint(jump_model, qtf[name, t] <= lims.max)
+            end
+        end
+    end
+    return
+end
+
+_add_reactive_control_constraints!(
+    ::OptimizationContainer,
+    ::IS.FlattenIteratorWrapper{T},
+    ::DeviceModel{T},
+    ::NetworkModel,
+) where {T} = nothing
+
+function _add_transformer_control_constraints!(
+    container::OptimizationContainer,
+    sys::PSY.System,
+    devices::IS.FlattenIteratorWrapper{T},
+    device_model::DeviceModel{T},
+    network_model::NetworkModel,
+) where {T <: PSY.ACTransmission}
+    _add_voltage_control_constraints!(container, sys, devices, device_model, network_model)
+    _add_reactive_control_constraints!(container, devices, device_model, network_model)
+    return
+end
 
 ################################## LPACCNetworkModel branch constraints ###############
 
@@ -2118,6 +2204,7 @@ Ten constraints per branch per time step:
   (9-10) Ohm's law across series impedance Z = r + jx = 1/(g + jb) (linear):
            vr_to·tm² = vr_fr·tr + vi_fr·ti - r·csr·tm² + x·csi·tm²
            vi_to·tm² = vi_fr·tr - vr_fr·ti - r·csi·tm² - x·csr·tm²
+
 """
 function add_constraints!(
     container::OptimizationContainer,
@@ -2181,6 +2268,12 @@ function add_constraints!(
     jump_model = get_jump_model(container)
     slacks = _flow_equality_slacks(container, device_model, T)
     cslacks = _current_equality_slacks(container, device_model, T)
+    tap_var =
+        if has_container_key(container, TapRatioVariable, T)
+            get_variable(container, TapRatioVariable, T)
+        else
+            nothing
+        end
     for g_geom in geoms
         name = g_geom.name
         adm = g_geom.adm
@@ -2190,13 +2283,8 @@ function add_constraints!(
         b_fr = adm.b_fr
         g_to = adm.g_to
         b_to = adm.b_to
-        tm = adm.tap
         from_bus = g_geom.from_name
         to_bus = g_geom.to_name
-
-        tr = tm * cos(adm.shift)
-        ti = tm * sin(adm.shift)
-        tm2 = tm^2
 
         # Series impedance Z = r + jx = conj(y)/|y|²
         ymag2 = g^2 + b^2
@@ -2204,6 +2292,11 @@ function add_constraints!(
         x = -b / ymag2
 
         for t in time_steps
+            tm = _tap_controlled(device_model, g_geom) ? tap_var[name, t] : adm.tap
+            tr = tm * cos(adm.shift)
+            ti = tm * sin(adm.shift)
+            tm2 = tm^2
+
             vr_f = vr[from_bus, t]
             vi_f = vi[from_bus, t]
             vr_t = vr[to_bus, t]
@@ -2488,15 +2581,6 @@ function add_constraints!(
     return
 end
 
-"""
-Add branch Ohm's law (DC power flow) constraint for ACBranch under DCPNetworkModel:
-
-    p_fr == b * (va_fr - va_to - shift)
-
-where `b` is the DC series susceptance `1/(a·x)` and `shift` is the DC phase-shift angle
-(0 for non-PST branches) — the same pair PNM's `BA_Matrix` and `arc_dc_shift_injection`
-use, not the π-recovery `adm.b`/`adm.shift`.
-"""
 function add_constraints!(
     container::OptimizationContainer,
     sys::PSY.System,
@@ -2517,25 +2601,40 @@ function add_constraints!(
         container, NetworkFlowConstraint, T, branch_names, time_steps,
     )
 
-    # StaticBranchBounds relaxes the rating by slacking this defining equality: the bounded
-    # decision flow `p` stays within rating while the physical angle-implied flow may deviate
-    # by the signed slack. StaticBranch never reaches this method (it carries flow as the
-    # BThetaBranchFlow expression); only SBB does, so the slacks exist iff use_slacks.
     use_slacks = get_use_slacks(device_model)
     if use_slacks
         slack_ub = get_variable(container, FlowActivePowerSlackUpperBound, T)
         slack_lb = get_variable(container, FlowActivePowerSlackLowerBound, T)
     end
 
-    for g in geoms
-        for t in time_steps
-            rhs = g.b_dc * (va[g.from_name, t] - va[g.to_name, t] - g.shift_dc)
-            if use_slacks
-                rhs += slack_ub[g.name, t] - slack_lb[g.name, t]
-            end
-            cons[g.name, t] =
-                JuMP.@constraint(get_jump_model(container), p[g.name, t] == rhs)
+    jump_model = get_jump_model(container)
+    tap_var =
+        if has_container_key(container, TapRatioVariable, T)
+            get_variable(container, TapRatioVariable, T)
+        else
+            nothing
         end
+
+    for g in geoms, t in time_steps
+        angle = va[g.from_name, t] - va[g.to_name, t] - g.shift_dc
+        flow =
+            if use_slacks
+                JuMP.@expression(
+                jump_model,
+                p[g.name, t] - slack_ub[g.name, t] + slack_lb[g.name, t]
+            )
+            else
+                p[g.name, t]
+            end
+        cons[g.name, t] =
+            if _tap_controlled(device_model, g)
+                JuMP.@constraint(
+                jump_model,
+                flow * tap_var[g.name, t] == g.b_dc * g.adm.tap * angle
+            )
+            else
+                JuMP.@constraint(jump_model, flow == g.b_dc * angle)
+            end
     end
     return
 end
@@ -2913,13 +3012,6 @@ function add_constraints!(
     return
 end
 
-"""
-Add the DC Ohm's law for the from-to directional flow under DCPLLNetworkModel:
-
-    p_fr == b * (va_fr - va_to - shift)
-
-identical to the DCP law; the to-from flow is determined by the quadratic loss constraint.
-"""
 function add_constraints!(
     container::OptimizationContainer,
     sys::PSY.System,
@@ -2941,14 +3033,24 @@ function add_constraints!(
     )
 
     jump_model = get_jump_model(container)
-    for g in geoms
-        for t in time_steps
-            cons[g.name, t] = JuMP.@constraint(
-                jump_model,
-                pft[g.name, t] ==
-                g.b_dc * (va[g.from_name, t] - va[g.to_name, t] - g.shift_dc),
-            )
+    tap_var =
+        if has_container_key(container, TapRatioVariable, T)
+            get_variable(container, TapRatioVariable, T)
+        else
+            nothing
         end
+
+    for g in geoms, t in time_steps
+        angle = va[g.from_name, t] - va[g.to_name, t] - g.shift_dc
+        cons[g.name, t] =
+            if _tap_controlled(device_model, g)
+                JuMP.@constraint(
+                jump_model,
+                pft[g.name, t] * tap_var[g.name, t] == g.b_dc * g.adm.tap * angle
+            )
+            else
+                JuMP.@constraint(jump_model, pft[g.name, t] == g.b_dc * angle)
+            end
     end
     return
 end

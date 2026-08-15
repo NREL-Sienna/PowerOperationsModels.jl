@@ -777,6 +777,7 @@ export ActiveRangeICConstraint
 export NodalBalanceActiveConstraint
 export ReferenceBusConstraint
 export VoltageMagnitudeConstraint
+export ReactivePowerFlowControlConstraint
 export RegulatedVoltageMagnitudeConstraint
 export CurrentLimitConstraint
 export AngleDifferenceConstraint

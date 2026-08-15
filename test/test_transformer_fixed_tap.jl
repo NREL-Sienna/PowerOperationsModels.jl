@@ -69,13 +69,17 @@ end
         @test isapprox(complex(y.g22, y.b22), Y22; rtol = 1e-10, atol = 1e-12)
     end
 
+    model = JuMP.Model()
     sys = PSB.build_system(PSITestSystems, "c_sys14")
     for br in Iterators.flatten((
         PSY.get_components(PSY.Line, sys),
         PSY.get_components(PSY.TwoWindingTransformer, sys),
     ))
         adm = PNM.branch_admittance(br)
-        check_terms(POM._pi_flow_terms(adm, adm.tap), PNM.ybus_branch_entries(br))
+        check_terms(
+            POM._tapped_admittance(model, adm, adm.tap),
+            PNM.ybus_branch_entries(br),
+        )
     end
 
     tr = PSY.get_component(PSY.TwoWindingTransformer, sys, "Trans1")
@@ -86,7 +90,10 @@ end
         adm = PNM.branch_admittance(tr)
         for tap in (0.9, 1.0, 1.1, 1.25)
             PSY.set_tap!(circuit, tap)
-            check_terms(POM._pi_flow_terms(adm, tap), PNM.ybus_branch_entries(tr))
+            check_terms(
+                POM._tapped_admittance(model, adm, tap),
+                PNM.ybus_branch_entries(tr),
+            )
         end
     end
 end
