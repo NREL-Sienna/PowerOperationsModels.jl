@@ -430,9 +430,11 @@ abstract type AbstractAGCFormulation <: AbstractServiceFormulation end
 struct PIDSmoothACE <: AbstractAGCFormulation end
 
 """
-Struct to add reserves to be larger than a specified requirement for an aggregated collection of services
+Group analogue of [`RangeReserve`](@ref): the awards of a `PSY.GroupReserve`'s contributing services
+must together meet the group's specified requirement. Not named `GroupReserve` to avoid clashing
+with the `PSY.GroupReserve` component type.
 """
-struct GroupReserve <: AbstractReservesFormulation end
+struct GroupRangeReserve <: AbstractReservesFormulation end
 
 """
 Struct for to add reserves to be larger than a specified requirement

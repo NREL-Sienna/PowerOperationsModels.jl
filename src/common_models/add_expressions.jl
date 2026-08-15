@@ -203,7 +203,7 @@ function add_expressions!(
 ) where {
     T <: ExpressionType,
     U <: Union{Vector{D}, IS.FlattenIteratorWrapper{D}},
-    V <: PSY.Reserve,
+    V <: PSY.AbstractReserve,
     W <: AbstractReservesFormulation,
 } where {D <: PSY.Component}
     time_steps = get_time_steps(container)
@@ -221,7 +221,7 @@ end
 Cost-expression container for reserve services, e.g. `ProductionCostExpression` for an
 operating reserve demand curve: one dense `(service_name, time)` container per service type,
 the same shape as the device `ProductionCostExpression`. Read and written by
-`add_to_expression!(container, ::CostExpressions, cost, ::ReserveDemand*, t)`.
+`add_to_expression!(container, ::CostExpressions, cost, ::AbstractReserve, t)`.
 """
 function add_expressions!(
     container::OptimizationContainer,
@@ -231,7 +231,7 @@ function add_expressions!(
 ) where {
     T <: CostExpressions,
     U <: Union{Vector{D}, IS.FlattenIteratorWrapper{D}},
-    V <: PSY.Reserve,
+    V <: PSY.AbstractReserve,
     W <: AbstractReservesFormulation,
 } where {D <: PSY.Component}
     time_steps = get_time_steps(container)

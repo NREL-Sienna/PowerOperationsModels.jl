@@ -1,3 +1,14 @@
+# Deactivate demand-curve reserves (ORDC1 in `c_sys5_bat`) so a template registering
+# `ServiceModel(OnlineReserve{Dir}, RangeReserve)` models only the requirement reserves
+# (Reserve3 up, Reserve4 down); one `ServiceModel` covers every service of its type, so an
+# available ORDC would be swept into the same model and widen the tests' scope.
+function _deactivate_unmodeled_ordc!(sys)
+    for r in PSY.get_components(PSY.has_demand_curve, PSY.OnlineReserve, sys)
+        PSY.set_available!(r, false)
+    end
+    return sys
+end
+
 # TODO these all error due to add_event_model = true, which isn't supported in POM.
 #=
 @testset "Storage Basic Storage With DC - PF" begin
@@ -252,18 +263,43 @@ end =#
     set_device_model!(template, RenewableDispatch, FixedOutput)
     set_service_model!(
         template,
-        ServiceModel(VariableReserve{ReserveUp}, RangeReserve),
+        ServiceModel(OnlineReserve{ReserveUp}, RangeReserve),
     )
     set_service_model!(
         template,
-        ServiceModel(VariableReserve{ReserveDown}, RangeReserve),
+        ServiceModel(OnlineReserve{ReserveDown}, RangeReserve),
     )
 
     c_sys5_bat = PSB.build_system(PSITestSystems, "c_sys5_bat"; add_reserves = true)
+    _deactivate_unmodeled_ordc!(c_sys5_bat)
     model = DecisionModel(template, c_sys5_bat)
     @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
           ModelBuildStatus.BUILT
-    moi_tests(model, 458, 0, 574, 286, 125, true)
+    # Complete-coverage constraints are built once per unique service type and side (each
+    # sums every same-direction service), so the battery's two up-reserves share a single
+    # 24-row container per coverage family.
+    moi_tests(model, 458, 0, 526, 286, 125, true)
+
+    # Silent-failure guard: each storage total-reserve balance row must hold exactly three
+    # terms (charge + discharge - award). If the service-device wiring is skipped, the award
+    # term vanishes while every constraint count still matches, letting storage "provide"
+    # reserves with no physical backing.
+    constraints = IOM.get_constraints(model)
+    for (service_type, s_name) in (
+        (OnlineReserve{ReserveUp}, "Reserve3"),
+        (OnlineReserve{ReserveDown}, "Reserve4"),
+    )
+        key = IOM.ConstraintKey(
+            StorageTotalReserveConstraint,
+            service_type,
+            "$(s_name)_$EnergyReservoirStorage",
+        )
+        con = constraints[key]
+        @test all(
+            length(JuMP.constraint_object(con[n, t]).func.terms) == 3
+            for n in axes(con)[1], t in axes(con)[2]
+        )
+    end
 
     device_model = DeviceModel(
         EnergyReservoirStorage,
@@ -280,7 +316,7 @@ end =#
     model = DecisionModel(template, c_sys5_bat)
     @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
           ModelBuildStatus.BUILT
-    moi_tests(model, 434, 0, 574, 286, 125, false)
+    moi_tests(model, 434, 0, 526, 286, 125, false)
 end
 
 @testset "Test Storage Energy Target Constraint" begin
@@ -371,14 +407,15 @@ end
     set_device_model!(template, RenewableDispatch, FixedOutput)
     set_service_model!(
         template,
-        ServiceModel(VariableReserve{ReserveUp}, RangeReserve),
+        ServiceModel(OnlineReserve{ReserveUp}, RangeReserve),
     )
     set_service_model!(
         template,
-        ServiceModel(VariableReserve{ReserveDown}, RangeReserve),
+        ServiceModel(OnlineReserve{ReserveDown}, RangeReserve),
     )
 
     c_sys5_bat = PSB.build_system(PSITestSystems, "c_sys5_bat"; add_reserves = true)
+    _deactivate_unmodeled_ordc!(c_sys5_bat)
     model = DecisionModel(template, c_sys5_bat)
     @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
           ModelBuildStatus.BUILT
@@ -434,14 +471,15 @@ end
     set_device_model!(template, RenewableDispatch, FixedOutput)
     set_service_model!(
         template,
-        ServiceModel(VariableReserve{ReserveUp}, RangeReserve),
+        ServiceModel(OnlineReserve{ReserveUp}, RangeReserve),
     )
     set_service_model!(
         template,
-        ServiceModel(VariableReserve{ReserveDown}, RangeReserve),
+        ServiceModel(OnlineReserve{ReserveDown}, RangeReserve),
     )
 
     c_sys5_bat = PSB.build_system(PSITestSystems, "c_sys5_bat"; add_reserves = true)
+    _deactivate_unmodeled_ordc!(c_sys5_bat)
     model = DecisionModel(template, c_sys5_bat; optimizer = ipopt_optimizer)
     @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
           ModelBuildStatus.BUILT
@@ -464,14 +502,15 @@ end
     set_device_model!(template, RenewableDispatch, FixedOutput)
     set_service_model!(
         template,
-        ServiceModel(VariableReserve{ReserveUp}, RangeReserve),
+        ServiceModel(OnlineReserve{ReserveUp}, RangeReserve),
     )
     set_service_model!(
         template,
-        ServiceModel(VariableReserve{ReserveDown}, RangeReserve),
+        ServiceModel(OnlineReserve{ReserveDown}, RangeReserve),
     )
 
     c_sys5_bat = PSB.build_system(PSITestSystems, "c_sys5_bat"; add_reserves = true)
+    _deactivate_unmodeled_ordc!(c_sys5_bat)
     model = DecisionModel(template, c_sys5_bat; optimizer = ipopt_optimizer)
     @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
           ModelBuildStatus.BUILT

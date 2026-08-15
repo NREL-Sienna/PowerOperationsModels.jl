@@ -23,6 +23,22 @@ _cost_offers_reserve(::PSY.OperationalCost, service) = false
 
 # Price every contributing device that offers into `service` by its offer curve; returns the set of
 # device names so priced (the flat-cost pass skips them).
+# A group has no contributing devices, so it can carry no per-device offers; with
+# `GroupReserve <: AbstractReserve` the generic method below would otherwise accept it.
+# Offers live on the group's contributing services and are priced by their own models.
+function add_reserve_offer_costs!(
+    ::OptimizationContainer,
+    service::SR,
+    ::ServiceModel{SR, T},
+) where {SR <: PSY.GroupReserve, T <: AbstractReservesFormulation}
+    throw(
+        IS.ConflictingInputsError(
+            "Per-resource reserve offers live on a group's contributing services, not on \
+            the group $(PSY.get_name(service)) itself.",
+        ),
+    )
+end
+
 function add_reserve_offer_costs!(
     container::OptimizationContainer,
     service::SR,

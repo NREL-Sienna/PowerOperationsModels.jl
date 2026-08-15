@@ -14,6 +14,8 @@ get_variable_multiplier(::Type{<:VariableType}, ::Type{<:PSY.HydroGen}, ::Type{<
 get_variable_multiplier(::Type{ActivePowerPumpVariable}, ::Type{<:PSY.HydroPumpTurbine}, ::Type{<:AbstractHydroPumpFormulation}) = -1.0
 get_expression_type_for_reserve(::Type{ActivePowerReserveVariable}, ::Type{<:PSY.HydroGen}, ::Type{<:PSY.Reserve{PSY.ReserveUp}}) = ActivePowerRangeExpressionUB
 get_expression_type_for_reserve(::Type{ActivePowerReserveVariable}, ::Type{<:PSY.HydroGen}, ::Type{<:PSY.Reserve{PSY.ReserveDown}}) = ActivePowerRangeExpressionLB
+# OfflineReserve (non-spin) is upward-only, so it reduces upward headroom like a ReserveUp product.
+get_expression_type_for_reserve(::Type{ActivePowerReserveVariable}, ::Type{<:PSY.HydroGen}, ::Type{<:PSY.OfflineReserve}) = ActivePowerRangeExpressionUB
 
 ########################### ActivePowerVariable, HydroGen #################################
 # These methods are defined in PowerSimulations

@@ -56,7 +56,7 @@ get_hvdc_network_model(template::PowerOperationsProblemTemplate) =
 
 # Returns `Vector{Type}`, not `Vector{DataType}`: a service's component type can be a
 # `UnionAll` rather than a concrete `DataType` when it carries an unapplied type parameter
-# (e.g. `ReserveDemandCurve{ReserveUp}`, which still has a free parameter).
+# (e.g. `OnlineReserve{ReserveUp}`, which still has a free unit-system parameter).
 function get_component_types(template::PowerOperationsProblemTemplate)::Vector{Type}
     return vcat(
         get_component_type.(values(get_device_models(template))),
@@ -234,7 +234,7 @@ function _populate_contributing_devices!(
         for service in get_available_components(service_model, sys)
             service_name = PSY.get_name(service)
             # Key by the concrete service instance type: the model's stored type can be a
-            # `UnionAll` (e.g. `ReserveDemandCurve{ReserveUp}` with a free parameter), while
+            # `UnionAll` (e.g. `OnlineReserve{ReserveUp}` with a free unit-system parameter), while
             # `get_contributing_device_mapping` keys by `typeof(service)`.
             service_devices_key = (type = typeof(service), name = service_name)
             if haskey(services_mapping, service_devices_key)
@@ -250,10 +250,10 @@ function _populate_contributing_devices!(
             end
             # A reserve or interface with no available provider can never meet its requirement,
             # so error rather than let it silently force slacks or go infeasible.
-            # ConstantReserveGroup aggregates other services, so its empty map is by design.
-            # PSY6-PORT-DISABLED: PSY.ConstantReserveGroup removed on jd/schema_matching
-            # (dropped from this condition; original: `!(service_type <: PSY.ConstantReserveGroup) &&`)
-            if isempty(get_contributing_devices_map(service_model, service_name))
+            # GroupReserve aggregates other SERVICES: it is a deviceless `AbstractReserve`,
+            # so its empty device map is by design - do not "simplify" this exemption away.
+            if !(service_type <: PSY.GroupReserve) &&
+               isempty(get_contributing_devices_map(service_model, service_name))
                 error(
                     "Service \"$(service_name)\" of type $(typeof(service)) has no available contributing devices/branches. Assign available contributing devices/branches to it in the system data, or remove its service model from the template.",
                 )
@@ -284,16 +284,13 @@ function _modify_device_model!(
     return
 end
 
-# PSY6-PORT-DISABLED: PSY.ReserveNonSpinning removed on jd/schema_matching
-#=
 function _modify_device_model!(
     ::Dict{Symbol, DeviceModel},
-    ::ServiceModel{<:PSY.ReserveNonSpinning, <:AbstractReservesFormulation},
+    ::ServiceModel{<:PSY.OfflineReserve, <:AbstractReservesFormulation},
     ::Vector{<:PSY.Component},
 )
     return
 end
-=#
 
 function _modify_device_model!(
     ::Dict{Symbol, DeviceModel},
@@ -316,9 +313,7 @@ function _add_services_to_device_model!(template::PowerOperationsProblemTemplate
     devices_template = get_device_models(template)
     for (service_key, service_model) in service_models
         S = get_component_type(service_model)
-        # PSY6-PORT-DISABLED: PSY.ConstantReserveGroup removed on jd/schema_matching
-        # (dropped from this disjunction; original: `S <: PSY.AGC || S <: PSY.ConstantReserveGroup`)
-        S <: PSY.AGC && continue
+        (S <: PSY.AGC || S <: PSY.GroupReserve) && continue
         contributing_devices = get_contributing_devices(service_model)
         isempty(contributing_devices) && continue
         _modify_device_model!(devices_template, service_model, contributing_devices)

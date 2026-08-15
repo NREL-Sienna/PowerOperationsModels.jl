@@ -518,20 +518,20 @@ no-op.
 |:------------------------------------------------------ |:--------------------------- |:---------------------------------------------------------------------------------------------- |:---------------------------------------------------------- |
 | `RangeReserve`                                         | `PSY.Reserve`               | `RequirementTimeSeriesParameter` (omitted for `ConstantReserve`), `ActivePowerReserveVariable` | `RequirementConstraint`, `ParticipationFractionConstraint` |
 | `RampReserve`                                          | `PSY.Reserve`               | as above                                                                                       | as above **+ `RampConstraint`**                            |
-| `NonSpinningReserve`                                   | `PSY.ReserveNonSpinning`    | as above, but **no** device-range expression wiring                                            | as above **+ `ReservePowerConstraint`**                    |
+| `NonSpinningReserve`                                   | `PSY.OfflineReserve`        | as above, but **no** device-range expression wiring                                            | as above **+ `ReservePowerConstraint`**                    |
 | `StepwiseCostReserve` (operating reserve demand curve) | `PSY.Reserve`               | `ServiceRequirementVariable` + demand-curve slope/breakpoint parameters                        | `RequirementConstraint` only — no participation constraint |
-| `GroupReserve`                                         | `PSY.ConstantReserveGroup`  | no variables                                                                                   | `RequirementConstraint` across contributing services       |
+| `GroupRangeReserve`                                    | `PSY.GroupReserve`          | no variables                                                                                   | `RequirementConstraint` across contributing services       |
 | `ConstantMaxInterfaceFlow`                             | `PSY.TransmissionInterface` | optional slacks, `InterfaceTotalFlow` expression                                               | `InterfaceFlowLimit` (`"ub"`/`"lb"`)                       |
 | `VariableMaxInterfaceFlow`                             | `PSY.TransmissionInterface` | as above **+ min/max flow-limit parameters**                                                   | as above, with parameterized limits                        |
 
-`GroupReserve` is deliberately constructed **last** in both stages, because it aggregates the other
+`GroupRangeReserve` is deliberately constructed **last** in both stages, because it aggregates the other
 services' variables.
 
-!!! warning "GroupReserve does not support slacks"
+!!! warning "GroupRangeReserve does not support slacks"
     
-    `GroupReserve`'s requirement-constraint builder reads a `slack_vars` binding that is never
+    `GroupRangeReserve`'s requirement-constraint builder reads a `slack_vars` binding that is never
     created, so a `ServiceModel` with `use_slacks = true` raises `UndefVarError`. A group reserve
-    also cannot currently be built end to end: a `ConstantReserveGroup` aggregates services rather
+    also cannot currently be built end to end: a `PSY.GroupReserve` aggregates services rather
     than devices, so its contributing-device list is empty and construction errors out before the
     requirement constraint is reached.
 

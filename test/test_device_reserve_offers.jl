@@ -55,7 +55,7 @@ end
 
 @testset "Per-device reserve offers: data model" begin
     sys = deepcopy(PSB.build_system(PSITestSystems, "c_sys5_uc"; add_reserves = true))
-    reserve = get_component(VariableReserve{ReserveUp}, sys, "Reserve1")
+    reserve = get_component(OnlineReserve{ReserveUp}, sys, "Reserve1")
     contributors, _ = add_device_reserve_offers!(sys, reserve)
 
     # Each contributor now bids into the service and exposes a per-(device, service) offer curve.
@@ -75,11 +75,11 @@ end
 
 @testset "Per-device reserve offers: builds, solves, and prices the offers" begin
     sys = deepcopy(PSB.build_system(PSITestSystems, "c_sys5_uc"; add_reserves = true))
-    reserve = get_component(VariableReserve{ReserveUp}, sys, "Reserve1")
+    reserve = get_component(OnlineReserve{ReserveUp}, sys, "Reserve1")
     contributors, base_slope = add_device_reserve_offers!(sys, reserve)
 
     template = get_thermal_standard_uc_template()
-    set_service_model!(template, ServiceModel(VariableReserve{ReserveUp}, RangeReserve))
+    set_service_model!(template, ServiceModel(OnlineReserve{ReserveUp}, RangeReserve))
     model = DecisionModel(template, sys; optimizer = HiGHS_optimizer)
     @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
           IOM.ModelBuildStatus.BUILT
@@ -88,7 +88,7 @@ end
     container = get_optimization_container(model)
     # The reserve award exists, keyed by service type.
     @test IOM.has_container_key(
-        container, ActivePowerReserveVariable, VariableReserve{ReserveUp})
+        container, ActivePowerReserveVariable, OnlineReserve{ReserveUp})
 
     # The per-device reserve OFFER is now consumed: a 4D block variable keyed
     # (service, device, segment, time) exists for the contributing device type, plus the
@@ -100,7 +100,7 @@ end
     blk = IOM.get_variable(container, POM.PiecewiseLinearBlockReserveOffer, ThermalStandard)
     cons = IOM.get_constraint(container, POM.ReserveOfferLinkingConstraint, ThermalStandard)
     award =
-        IOM.get_variable(container, ActivePowerReserveVariable, VariableReserve{ReserveUp})
+        IOM.get_variable(container, ActivePowerReserveVariable, OnlineReserve{ReserveUp})
     @test !isempty(blk)
 
     sname = PSY.get_name(reserve)
@@ -128,7 +128,7 @@ end
 
 @testset "StepwiseCostReserve prices per-device reserve offers (demand curve + offer supply)" begin
     sys = deepcopy(PSB.build_system(PSITestSystems, "c_sys5_uc"; add_reserves = true))
-    ordc = first(get_components(PSY.ReserveDemandCurve, sys))
+    ordc = first(get_components(PSY.has_demand_curve, PSY.OnlineReserve, sys))
     # Ensure thermal devices contribute to the operating reserve demand curve (ORDC) so they
     # can carry per-device offers.
     for g in get_components(ThermalStandard, sys)
@@ -138,7 +138,7 @@ end
 
     template = get_thermal_standard_uc_template()
     set_service_model!(
-        template, ServiceModel(ReserveDemandCurve{ReserveUp}, StepwiseCostReserve))
+        template, ServiceModel(OnlineReserve{ReserveUp}, StepwiseCostReserve))
     model = DecisionModel(template, sys; optimizer = HiGHS_optimizer)
     @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
           IOM.ModelBuildStatus.BUILT
@@ -202,7 +202,7 @@ end
 
 @testset "StepwiseCostReserve: per-hour offer participation (dummy hours not awarded)" begin
     sys = deepcopy(PSB.build_system(PSITestSystems, "c_sys5_uc"; add_reserves = true))
-    ordc = first(get_components(PSY.ReserveDemandCurve, sys))
+    ordc = first(get_components(PSY.has_demand_curve, PSY.OnlineReserve, sys))
     for g in get_components(ThermalStandard, sys)
         ordc in PSY.get_services(g) || PSY.add_service!(g, ordc, sys)
     end
@@ -214,7 +214,7 @@ end
 
     template = get_thermal_standard_uc_template()
     set_service_model!(
-        template, ServiceModel(ReserveDemandCurve{ReserveUp}, StepwiseCostReserve))
+        template, ServiceModel(OnlineReserve{ReserveUp}, StepwiseCostReserve))
     model = DecisionModel(template, sys; optimizer = HiGHS_optimizer)
     @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
           IOM.ModelBuildStatus.BUILT
@@ -222,7 +222,7 @@ end
 
     res = IOM.OptimizationProblemOutputs(model)
     awards = read_variable(
-        res, "ActivePowerReserveVariable__ReserveDemandCurve__ReserveUp";
+        res, "ActivePowerReserveVariable__OnlineReserve__ReserveUp";
         table_format = TableFormat.WIDE)
     # WIDE columns are "<service>__<device>"; values are per-hour reserve awards in MW.
     col = "$(PSY.get_name(ordc))__$(PSY.get_name(g1))"
@@ -235,7 +235,7 @@ end
 
 @testset "StepwiseCostReserve: no device offers -> no offer containers (ORDC unchanged)" begin
     sys = deepcopy(PSB.build_system(PSITestSystems, "c_sys5_uc"; add_reserves = true))
-    ordc = first(get_components(PSY.ReserveDemandCurve, sys))
+    ordc = first(get_components(PSY.has_demand_curve, PSY.OnlineReserve, sys))
     for g in get_components(ThermalStandard, sys)
         ordc in PSY.get_services(g) || PSY.add_service!(g, ordc, sys)
     end
@@ -243,7 +243,7 @@ end
 
     template = get_thermal_standard_uc_template()
     set_service_model!(
-        template, ServiceModel(ReserveDemandCurve{ReserveUp}, StepwiseCostReserve))
+        template, ServiceModel(OnlineReserve{ReserveUp}, StepwiseCostReserve))
     model = DecisionModel(template, sys; optimizer = HiGHS_optimizer)
     @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
           IOM.ModelBuildStatus.BUILT
@@ -260,7 +260,7 @@ end
 
 @testset "StepwiseCostReserve: merit order (cheaper offer clears, pricier does not)" begin
     sys = deepcopy(PSB.build_system(PSITestSystems, "c_sys5_uc"; add_reserves = true))
-    ordc = first(get_components(PSY.ReserveDemandCurve, sys))
+    ordc = first(get_components(PSY.has_demand_curve, PSY.OnlineReserve, sys))
     for g in get_components(ThermalStandard, sys)
         ordc in PSY.get_services(g) || PSY.add_service!(g, ordc, sys)
     end
@@ -270,7 +270,7 @@ end
 
     template = get_thermal_standard_uc_template()
     set_service_model!(
-        template, ServiceModel(ReserveDemandCurve{ReserveUp}, StepwiseCostReserve))
+        template, ServiceModel(OnlineReserve{ReserveUp}, StepwiseCostReserve))
     model = DecisionModel(template, sys; optimizer = HiGHS_optimizer)
     @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
           IOM.ModelBuildStatus.BUILT
@@ -278,7 +278,7 @@ end
 
     res = IOM.OptimizationProblemOutputs(model)
     awards = read_variable(
-        res, "ActivePowerReserveVariable__ReserveDemandCurve__ReserveUp";
+        res, "ActivePowerReserveVariable__OnlineReserve__ReserveUp";
         table_format = TableFormat.WIDE)
     sname = PSY.get_name(ordc)
     order = sort(collect(keys(base_slope)); by = n -> base_slope[n])
@@ -301,7 +301,7 @@ end
     # field but is not handled by `get_services_bid`, so an ImportExport-cost device (e.g. a Source)
     # carrying a reserve offer must NOT enter the offering branch - which would MethodError.
     # Regression for the previously over-broad OfferCurveCost dispatch.
-    reserve = PSY.ConstantReserve{ReserveUp}("iec_regression", true, 10.0, 1.0)
+    reserve = PSY.OnlineReserve{ReserveUp}("iec_regression", true, 10.0, 1.0)
 
     iec = PSY.ImportExportCost(nothing)
     @test POM._cost_offers_reserve(iec, reserve) == false

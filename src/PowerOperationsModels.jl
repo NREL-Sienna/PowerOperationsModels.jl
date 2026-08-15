@@ -19,7 +19,7 @@ import ProgressMeter
 import Serialization
 import SparseArrays
 import TimerOutputs
-import InteractiveUtils: methodswith
+import InteractiveUtils: methodswith, subtypes
 
 using DocStringExtensions
 using JSON3
@@ -915,7 +915,7 @@ export VoltageDispatchHVDCNetworkModel
 export AbstractServiceFormulation
 export AbstractReservesFormulation
 export PIDSmoothACE
-export GroupReserve
+export GroupRangeReserve
 export RangeReserve
 export StepwiseCostReserve
 export RampReserve

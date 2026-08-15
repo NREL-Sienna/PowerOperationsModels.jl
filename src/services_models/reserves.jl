@@ -1,71 +1,112 @@
 #! format: off
 ############################### Reserve Variables #########################################
 
-get_variable_multiplier(::Type{<:VariableType}, ::Type{<:PSY.Reserve}, ::Type{<:AbstractReservesFormulation}) = NaN
-############################### ActivePowerReserveVariable, Reserve #########################################
-get_variable_binary(::Type{ActivePowerReserveVariable}, ::Type{<:PSY.Reserve}, ::Type{<:AbstractReservesFormulation}) = false
-function get_variable_upper_bound(::Type{ActivePowerReserveVariable}, r::PSY.Reserve, d::PSY.Device, ::Type{<:AbstractReservesFormulation})
+get_variable_multiplier(::Type{<:VariableType}, ::Type{<:PSY.AbstractReserve}, ::Type{<:AbstractReservesFormulation}) = NaN
+############################### ActivePowerReserveVariable, AbstractReserve #########################################
+# One method covers OnlineReserve (<: Reserve) and OfflineReserve (<: AbstractReserve, no direction).
+# ORDC reserves carry `max_output_fraction = 1.0`, so the capped bound is a no-op for them.
+get_variable_binary(::Type{ActivePowerReserveVariable}, ::Type{<:PSY.AbstractReserve}, ::Type{<:AbstractReservesFormulation}) = false
+function get_variable_upper_bound(::Type{ActivePowerReserveVariable}, r::PSY.AbstractReserve, d::PSY.Device, ::Type{<:AbstractReservesFormulation})
     return PSY.get_max_output_fraction(r) * PSY.get_max_active_power(d, PSY.SU)
 end
-get_variable_upper_bound(::Type{ActivePowerReserveVariable}, r::Union{PSY.ReserveDemandCurve, PSY.ReserveDemandTimeSeriesCurve}, d::PSY.Device, ::Type{<:AbstractReservesFormulation}) = PSY.get_max_active_power(d, PSY.SU)
-get_variable_lower_bound(::Type{ActivePowerReserveVariable}, ::PSY.Reserve, ::PSY.Device, ::Type) = 0.0
+get_variable_lower_bound(::Type{ActivePowerReserveVariable}, ::PSY.AbstractReserve, ::PSY.Device, ::Type) = 0.0
 
-############################### ActivePowerReserveVariable, ReserveNonSpinning #########################################
-# PSY6-PORT-DISABLED: PSY.ReserveNonSpinning removed on jd/schema_matching
-#=
-get_variable_binary(::Type{ActivePowerReserveVariable}, ::Type{<:PSY.ReserveNonSpinning}, ::Type{<:AbstractReservesFormulation}) = false
-function get_variable_upper_bound(::Type{ActivePowerReserveVariable}, r::PSY.ReserveNonSpinning, d::PSY.Device, ::Type{<:AbstractReservesFormulation})
-    return PSY.get_max_output_fraction(r) * PSY.get_max_active_power(d, PSY.SU)
-end
-get_variable_lower_bound(::Type{ActivePowerReserveVariable}, ::PSY.ReserveNonSpinning, ::PSY.Device, ::Type) = 0.0
-=#
+############################### ServiceRequirementVariable (ORDC / StepwiseCostReserve) ################################
+# Only created on the StepwiseCostReserve construct path, so the formulation gates these to ORDC reserves.
+get_variable_binary(::Type{ServiceRequirementVariable}, ::Type{<:PSY.AbstractReserve}, ::Type{<:AbstractReservesFormulation}) = false
+get_variable_upper_bound(::Type{ServiceRequirementVariable}, ::PSY.AbstractReserve, d::PSY.Component, ::Type{<:AbstractReservesFormulation}) = PSY.get_max_active_power(d, PSY.SU)
+get_variable_lower_bound(::Type{ServiceRequirementVariable}, ::PSY.AbstractReserve, ::PSY.Component, ::Type{<:AbstractReservesFormulation}) = 0.0
 
-############################### ServiceRequirementVariable, ReserveDemandCurve ################################
-
-get_variable_binary(::Type{ServiceRequirementVariable}, ::Type{<:Union{PSY.ReserveDemandCurve, PSY.ReserveDemandTimeSeriesCurve}}, ::Type{<:AbstractReservesFormulation}) = false
-get_variable_upper_bound(::Type{ServiceRequirementVariable}, ::Union{PSY.ReserveDemandCurve, PSY.ReserveDemandTimeSeriesCurve}, d::PSY.Component, ::Type{<:AbstractReservesFormulation}) = PSY.get_max_active_power(d, PSY.SU)
-get_variable_lower_bound(::Type{ServiceRequirementVariable}, ::Union{PSY.ReserveDemandCurve, PSY.ReserveDemandTimeSeriesCurve}, ::PSY.Component, ::Type{<:AbstractReservesFormulation}) = 0.0
-
-# `VariableReserve` stores `requirement` as a dimensionless factor that scales its
-# requirement and needs an explicit unit system (PS6 made the reserve requirement
-# getter units-aware for every reserve type, including VariableReserve).
+# Reserve requirement in system units; the getter is units-aware for every reserve type.
 _get_requirement(service) = PSY.get_requirement(service, PSY.SU)
 
-get_multiplier_value(::Type{RequirementTimeSeriesParameter}, d::PSY.Reserve, ::Type{<:AbstractReservesFormulation}) = _get_requirement(d)
-# PSY6-PORT-DISABLED: PSY.ReserveNonSpinning removed on jd/schema_matching
-# get_multiplier_value(::Type{RequirementTimeSeriesParameter}, d::PSY.ReserveNonSpinning, ::Type{<:AbstractReservesFormulation}) = _get_requirement(d)
+# ── Degenerate-demand skip (formulation-driven) ──────────────────────────────────────
+# Each reserve formulation has exactly ONE demand driver. When that driver is degenerate for a
+# given service, the service imposes no demand of its own and its demand-side model is SKIPPED
+# rather than emitted as a zero/degenerate constraint. The service is still built as supply: it
+# keeps its `ActivePowerReserveVariable`, its device-side expression contributions, and its
+# per-resource offer costs, so it can serve a `GroupReserve` (the group is then the only demand).
+#
+# Skipping (rather than emitting `requirement = 0` rows) avoids degenerate `sum(awards) >= 0`
+# constraints and, with `max_participation_factor < 1`, a `requirement * factor == 0`
+# participation cap that silently forces awards to zero.
+
+"""
+Whether `service` has a demand driver under `model`'s formulation. Requirement-based formulations
+(`RangeReserve`, `RampReserve`, `NonSpinningReserve`) use `requirement`; `StepwiseCostReserve` uses
+the operating reserve demand curve, and ignores `requirement` entirely.
+"""
+_has_reserve_demand(
+    ::ServiceModel{<:PSY.AbstractReserve, <:AbstractReservesFormulation},
+    service::PSY.AbstractReserve,
+) = !iszero(_get_requirement(service))
+
+_has_reserve_demand(
+    ::ServiceModel{<:PSY.AbstractReserve, StepwiseCostReserve},
+    service::PSY.AbstractReserve,
+) = PSY.has_demand_curve(service)
+
+"Services in `services` that impose a demand of their own under `model`'s formulation."
+_demand_services(model::ServiceModel, services::Vector{<:PSY.AbstractReserve}) =
+    [s for s in services if _has_reserve_demand(model, s)]
+
+# A member of a GroupReserve is EXPECTED to be supply-only, so its skip is routine (`@debug`).
+# A standalone degenerate reserve is more likely an oversight, so it is surfaced (`@warn`).
+function _is_group_member(sys::PSY.System, service::PSY.AbstractReserve)
+    name = PSY.get_name(service)
+    for group in PSY.get_components(PSY.GroupReserve, sys)
+        any(m -> PSY.get_name(m) == name, PSY.get_contributing_services(group)) && return true
+    end
+    return false
+end
+
+# Groups do not nest: a skipped group is always standalone, so it always warns.
+_is_group_member(::PSY.System, ::PSY.GroupReserve) = false
+
+function _log_skipped_reserve_demand(
+    sys::PSY.System,
+    service::PSY.AbstractReserve,
+    ::ServiceModel{<:PSY.AbstractReserve, F},
+) where {F <: AbstractReservesFormulation}
+    name = PSY.get_name(service)
+    reason = F === StepwiseCostReserve ? "it has no operating reserve demand curve" :
+             "its requirement is zero"
+    if _is_group_member(sys, service)
+        @debug "Service $(name) of type $(typeof(service)) is a GroupReserve member and $(reason); \
+                skipping its own demand-side model. It still contributes supply to its group." _group =
+            LOG_GROUP_SERVICE_CONSTUCTORS
+    else
+        @warn "Service $(name) of type $(typeof(service)) is modeled with $(F) but $(reason), so it \
+               imposes no demand; skipping its demand-side model. It can still supply reserve to a \
+               GroupReserve. Set a requirement or a demand curve if this service should procure \
+               reserve on its own."
+    end
+    return
+end
+
+get_multiplier_value(::Type{RequirementTimeSeriesParameter}, d::PSY.AbstractReserve, ::Type{<:AbstractReservesFormulation}) = _get_requirement(d)
 
 get_parameter_multiplier(::Type{<:VariableValueParameter}, d::Type{<:PSY.AbstractReserve}, ::Type{<:AbstractReservesFormulation}) = 1.0
 get_initial_parameter_value(::Type{<:VariableValueParameter}, d::Type{<:PSY.AbstractReserve}, ::Type{<:AbstractReservesFormulation}) = 0.0
 
 objective_function_multiplier(::Type{ServiceRequirementVariable}, ::Type{StepwiseCostReserve}) = -1.0
-uses_compact_power(::Union{PSY.ReserveDemandCurve, PSY.ReserveDemandTimeSeriesCurve}, ::StepwiseCostReserve)=false
-get_multiplier_value(::Type{<:AbstractPiecewiseLinearBreakpointParameter}, ::Union{PSY.ReserveDemandCurve, PSY.ReserveDemandTimeSeriesCurve}, ::Type{<:AbstractReservesFormulation}) = 1.0
-get_multiplier_value(::Type{<:AbstractPiecewiseLinearSlopeParameter}, ::Union{PSY.ReserveDemandCurve, PSY.ReserveDemandTimeSeriesCurve}, ::Type{<:AbstractReservesFormulation}) = 1.0
+uses_compact_power(::PSY.AbstractReserve, ::StepwiseCostReserve)=false
+get_multiplier_value(::Type{<:AbstractPiecewiseLinearBreakpointParameter}, ::PSY.AbstractReserve, ::Type{<:AbstractReservesFormulation}) = 1.0
+get_multiplier_value(::Type{<:AbstractPiecewiseLinearSlopeParameter}, ::PSY.AbstractReserve, ::Type{<:AbstractReservesFormulation}) = 1.0
 # Operating reserve demand curves (ORDC) are willingness-to-pay (concave), i.e. a decremental
 # offer.
 # Routes the reserve PWL cost path through IOM's OfferDirection dispatch; making
 # this incremental is a one-line change here. Mirrors `_onvar_offer_direction` /
 # `_vom_offer_direction` in market_bid_overrides.jl.
-_reserve_offer_direction(::Union{PSY.ReserveDemandCurve, PSY.ReserveDemandTimeSeriesCurve}) = IOM.DecrementalOffer()
+_reserve_offer_direction(::PSY.AbstractReserve) = IOM.DecrementalOffer()
 #! format: on
 
 function get_initial_conditions_service_model(
     ::IOM.AbstractOptimizationModel,
     ::ServiceModel{T, D},
-) where {T <: PSY.Reserve, D <: AbstractReservesFormulation}
+) where {T <: PSY.AbstractReserve, D <: AbstractReservesFormulation}
     return ServiceModel(T, D)
 end
-
-# PSY6-PORT-DISABLED: PSY.VariableReserveNonSpinning removed on jd/schema_matching
-#=
-function get_initial_conditions_service_model(
-    ::IOM.AbstractOptimizationModel,
-    ::ServiceModel{T, D},
-) where {T <: PSY.VariableReserveNonSpinning, D <: AbstractReservesFormulation}
-    return ServiceModel(T, D)
-end
-=#
 
 function get_default_time_series_names(
     ::Type{<:PSY.Reserve},
@@ -76,41 +117,28 @@ function get_default_time_series_names(
     )
 end
 
-# PSY6-PORT-DISABLED: PSY.ReserveNonSpinning removed on jd/schema_matching
-#=
 function get_default_time_series_names(
-    ::Type{<:PSY.ReserveNonSpinning},
+    ::Type{<:PSY.OfflineReserve},
     ::Type{NonSpinningReserve},
 )
     return Dict{Type{<:TimeSeriesParameter}, String}(
         RequirementTimeSeriesParameter => "requirement",
     )
 end
-=#
 
 function get_default_time_series_names(
     ::Type{T},
     ::Type{<:AbstractReservesFormulation},
-) where {T <: PSY.Reserve}
+) where {T <: PSY.AbstractReserve}
     return Dict{Type{<:TimeSeriesParameter}, String}()
 end
 
 function get_default_attributes(
-    ::Type{<:PSY.Reserve},
+    ::Type{<:PSY.AbstractReserve},
     ::Type{<:AbstractReservesFormulation},
 )
     return Dict{String, Any}()
 end
-
-# PSY6-PORT-DISABLED: PSY.ReserveNonSpinning removed on jd/schema_matching
-#=
-function get_default_attributes(
-    ::Type{<:PSY.ReserveNonSpinning},
-    ::Type{<:AbstractReservesFormulation},
-)
-    return Dict{String, Any}()
-end
-=#
 
 """
 Add variables for ServiceRequirementVariable for StepWiseCostReserve
@@ -122,7 +150,7 @@ function add_reserve_variables!(
     formulation,
 ) where {
     T <: ServiceRequirementVariable,
-    D <: Union{PSY.ReserveDemandCurve, PSY.ReserveDemandTimeSeriesCurve},
+    D <: PSY.AbstractReserve,
 }
     time_steps = get_time_steps(container)
     service_names = [PSY.get_name(s) for s in services]
@@ -181,42 +209,67 @@ function add_constraints!(
     constraint = get_constraint(container, T, SR)
     reserve_variable = get_variable(container, ActivePowerReserveVariable, SR)
     use_slacks = get_use_slacks(model)
-
-    ts_vector = IOM.get_time_series(
-        container,
-        service,
-        "requirement";
-        interval = get_interval(get_settings(container)),
-    )
-
     use_slacks && (slack_vars = get_variable(container, ReserveRequirementSlack, SR))
     requirement = _get_requirement(service)
     jump_model = get_jump_model(container)
     extra = use_slacks ? 1 : 0
-    if built_for_recurrent_solves(container)
-        param_container =
-            get_parameter(container, RequirementTimeSeriesParameter, SR)
-        param = get_parameter_column_refs(param_container, service_name)
-        for t in time_steps
-            resource_expression =
-                _sum_service_reserves(reserve_variable, service_name, contributing_devices,
-                    t, extra)
-            use_slacks &&
-                JuMP.add_to_expression!(resource_expression, slack_vars[service_name, t])
-            constraint[service_name, t] =
-                JuMP.@constraint(jump_model, resource_expression >= param[t] * requirement)
+
+    # A static reserve gets a scalar requirement RHS; a time-varying one scales it by an
+    # attached requirement series (resolved by the model-configured name).
+    if _has_ts_requirement(model, service)
+        if built_for_recurrent_solves(container)
+            param_container =
+                get_parameter(container, RequirementTimeSeriesParameter, SR)
+            param = get_parameter_column_refs(param_container, service_name)
+            for t in time_steps
+                resource_expression =
+                    _sum_service_reserves(reserve_variable, service_name,
+                        contributing_devices,
+                        t, extra)
+                use_slacks &&
+                    JuMP.add_to_expression!(
+                        resource_expression,
+                        slack_vars[service_name, t],
+                    )
+                constraint[service_name, t] =
+                    JuMP.@constraint(
+                        jump_model,
+                        resource_expression >= param[t] * requirement
+                    )
+            end
+        else
+            ts_vector = IOM.get_time_series(
+                container,
+                service,
+                get_time_series_names(model)[RequirementTimeSeriesParameter];
+                interval = get_interval(get_settings(container)),
+            )
+            for t in time_steps
+                resource_expression =
+                    _sum_service_reserves(reserve_variable, service_name,
+                        contributing_devices,
+                        t, extra)
+                use_slacks &&
+                    JuMP.add_to_expression!(
+                        resource_expression,
+                        slack_vars[service_name, t],
+                    )
+                constraint[service_name, t] = JuMP.@constraint(
+                    jump_model,
+                    resource_expression >= ts_vector[t] * requirement
+                )
+            end
         end
     else
         for t in time_steps
             resource_expression =
                 _sum_service_reserves(reserve_variable, service_name, contributing_devices,
-                    t, extra)
+                    t,
+                    extra)
             use_slacks &&
                 JuMP.add_to_expression!(resource_expression, slack_vars[service_name, t])
-            constraint[service_name, t] = JuMP.@constraint(
-                jump_model,
-                resource_expression >= ts_vector[t] * requirement
-            )
+            constraint[service_name, t] =
+                JuMP.@constraint(jump_model, resource_expression >= requirement)
         end
     end
     return
@@ -227,7 +280,7 @@ function add_constraints!(
     T::Type{ParticipationFractionConstraint},
     service::SR,
     contributing_devices::U,
-    ::ServiceModel{SR, V},
+    model::ServiceModel{SR, V},
 ) where {
     SR <: PSY.AbstractReserve,
     V <: AbstractReservesFormulation,
@@ -251,73 +304,48 @@ function add_constraints!(
     var_r = get_variable(container, ActivePowerReserveVariable, SR)
     jump_model = get_jump_model(container)
     requirement = _get_requirement(service)
-    ts_vector = IOM.get_time_series(
-        container,
-        service,
-        "requirement";
-        interval = get_interval(get_settings(container)),
-    )
-    param_container =
-        get_parameter(container, RequirementTimeSeriesParameter, SR)
-    param = get_parameter_column_refs(param_container, service_name)
-    for t in time_steps, d in contributing_devices
-        name = PSY.get_name(d)
+    cap = requirement * max_participation_factor
+    # Static reserve: constant participation cap. Time-varying reserve: scale by the requirement
+    # series (recurrent -> parameter, else -> the resolved time series).
+    if _has_ts_requirement(model, service)
         if built_for_recurrent_solves(container)
-            cons[(service_name, name, t)] =
-                JuMP.@constraint(
+            param_container =
+                get_parameter(container, RequirementTimeSeriesParameter, SR)
+            param = get_parameter_column_refs(param_container, service_name)
+            for t in time_steps, d in contributing_devices
+                name = PSY.get_name(d)
+                cons[(service_name, name, t)] = JuMP.@constraint(
                     jump_model,
-                    var_r[(service_name, name, t)] <=
-                    (requirement * max_participation_factor) * param[t]
+                    var_r[(service_name, name, t)] <= cap * param[t]
                 )
+            end
         else
+            ts_vector = IOM.get_time_series(
+                container,
+                service,
+                get_time_series_names(model)[RequirementTimeSeriesParameter];
+                interval = get_interval(get_settings(container)),
+            )
+            for t in time_steps, d in contributing_devices
+                name = PSY.get_name(d)
+                cons[(service_name, name, t)] = JuMP.@constraint(
+                    jump_model,
+                    var_r[(service_name, name, t)] <= cap * ts_vector[t]
+                )
+            end
+        end
+    else
+        for t in time_steps, d in contributing_devices
+            name = PSY.get_name(d)
             cons[(service_name, name, t)] = JuMP.@constraint(
                 jump_model,
-                var_r[(service_name, name, t)] <=
-                (requirement * max_participation_factor) * ts_vector[t]
+                var_r[(service_name, name, t)] <= cap
             )
         end
     end
 
     return
 end
-
-# PSY6-PORT-DISABLED: PSY.ConstantReserve removed on jd/schema_matching
-#=
-function add_constraints!(
-    container::OptimizationContainer,
-    T::Type{RequirementConstraint},
-    service::SR,
-    contributing_devices::U,
-    model::ServiceModel{SR, V},
-) where {
-    SR <: PSY.ConstantReserve,
-    V <: AbstractReservesFormulation,
-    U <: Union{Vector{D}, IS.FlattenIteratorWrapper{D}},
-} where {D <: PSY.Component}
-    time_steps = get_time_steps(container)
-    service_name = PSY.get_name(service)
-    # Dense container keyed `[service_name, time]`, built per type; fill this service's row.
-    constraint = get_constraint(container, T, SR)
-    reserve_variable = get_variable(container, ActivePowerReserveVariable, SR)
-    use_slacks = get_use_slacks(model)
-    use_slacks && (slack_vars = get_variable(container, ReserveRequirementSlack, SR))
-
-    requirement = _get_requirement(service)
-    jump_model = get_jump_model(container)
-    extra = use_slacks ? 1 : 0
-    for t in time_steps
-        resource_expression =
-            _sum_service_reserves(reserve_variable, service_name, contributing_devices, t,
-                extra)
-        use_slacks &&
-            JuMP.add_to_expression!(resource_expression, slack_vars[service_name, t])
-        constraint[service_name, t] =
-            JuMP.@constraint(jump_model, resource_expression >= requirement)
-    end
-
-    return
-end
-=#
 
 function add_to_objective_function!(
     container::OptimizationContainer,
@@ -342,7 +370,7 @@ function add_constraints!(
     contributing_devices::U,
     ::ServiceModel{SR, StepwiseCostReserve},
 ) where {
-    SR <: Union{PSY.ReserveDemandCurve, PSY.ReserveDemandTimeSeriesCurve},
+    SR <: PSY.AbstractReserve,
     U <: Union{Vector{D}, IS.FlattenIteratorWrapper{D}},
 } where {D <: PSY.Component}
     time_steps = get_time_steps(container)
@@ -477,8 +505,6 @@ function add_constraints!(
     return
 end
 
-# PSY6-PORT-DISABLED: PSY.VariableReserveNonSpinning removed on jd/schema_matching
-#=
 function add_constraints!(
     container::OptimizationContainer,
     T::Type{ReservePowerConstraint},
@@ -486,7 +512,7 @@ function add_constraints!(
     contributing_devices::U,
     ::ServiceModel{SR, V},
 ) where {
-    SR <: PSY.VariableReserveNonSpinning,
+    SR <: PSY.OfflineReserve,
     V <: AbstractReservesFormulation,
     U <: Union{Vector{D}, IS.FlattenIteratorWrapper{D}},
 } where {D <: PSY.Component}
@@ -528,7 +554,6 @@ function add_constraints!(
     end
     return
 end
-=#
 
 function _add_reserve_power_constraint_device!(
     cons,
@@ -565,7 +590,7 @@ function add_to_objective_function!(
     service::S,
     model::ServiceModel{S, SR},
 ) where {
-    S <: Union{PSY.ReserveDemandCurve, PSY.ReserveDemandTimeSeriesCurve},
+    S <: PSY.AbstractReserve,
     SR <: StepwiseCostReserve,
 }
     # Demand side: price the endogenous ServiceRequirementVariable by the decremental
@@ -586,7 +611,7 @@ function add_reserves_variable_cost!(
     service::T,
     ::Type{V},
 ) where {
-    T <: Union{PSY.ReserveDemandCurve, PSY.ReserveDemandTimeSeriesCurve},
+    T <: PSY.AbstractReserve,
     U <: VariableType,
     V <: StepwiseCostReserve,
 }
@@ -597,7 +622,7 @@ end
 function _add_reserves_variable_cost_to_objective!(
     container::OptimizationContainer,
     ::Type{T},
-    component::PSY.Reserve,
+    component::PSY.AbstractReserve,
     ::Type{U},
 ) where {T <: VariableType, U <: StepwiseCostReserve}
     component_name = PSY.get_name(component)
@@ -618,19 +643,11 @@ function _add_reserves_variable_cost_to_objective!(
         )
     end
 
-    # A time-series-backed cost varies across simulation steps and is read from
-    # per-timestep parameter arrays, which are only populated for
-    # `ReserveDemandTimeSeriesCurve` (see `process_stepwise_cost_reserve_parameters!`).
-    # Reject a time-series-backed cost on any other reserve type up front, rather
-    # than failing later with a missing-parameter error.
+    # A time-varying curve enters the objective as a variant expression, a static curve as an
+    # invariant one. The curve type is the source of truth, read via `is_time_variant`;
+    # its per-timestep parameters are populated only for TS-backed ORDCs (see
+    # `process_stepwise_cost_reserve_parameters!`, gated on `_ordc_is_ts`).
     is_t_variant = is_time_variant(variable_cost)
-    if is_t_variant && !(component isa PSY.ReserveDemandTimeSeriesCurve)
-        error(
-            "Operating reserve demand curve $(component_name) of type $(typeof(component)) \
-            has a time-series-backed cost; a `PSY.ReserveDemandTimeSeriesCurve` is required \
-            for a time-varying demand curve cost.",
-        )
-    end
 
     pwl_cost_expressions =
         add_pwl_term_delta!(container, component, variable_cost, T, U)
@@ -652,19 +669,22 @@ function _add_reserves_variable_cost_to_objective!(
 end
 
 """
-Add the decremental piecewise slope/breakpoint cost parameters for a time-varying operating
-reserve demand curve (`ReserveDemandTimeSeriesCurve`) service.
+Add the decremental piecewise slope/breakpoint cost parameters for the time-varying operating
+reserve demand curves in `services` (those whose `variable` curve is time-series-backed). Static
+ORDCs and fixed-requirement reserves carry no such parameters and are skipped.
 """
 function process_stepwise_cost_reserve_parameters!(
     container::OptimizationContainer,
     model::ServiceModel,
     services::Vector{D},
-) where {D <: PSY.ReserveDemandTimeSeriesCurve}
-    # All services of a per-type model share the same offer direction, so the
-    # slope/breakpoint param containers are built once over all services.
-    dir = _reserve_offer_direction(first(services))
+) where {D <: PSY.AbstractReserve}
+    # Only time-series-backed ORDCs need the per-timestep slope/breakpoint parameters.
+    ts_services = [s for s in services if _ordc_is_ts(s)]
+    isempty(ts_services) && return
+    # These share one offer direction, so the slope/breakpoint param containers are built once.
+    dir = _reserve_offer_direction(first(ts_services))
     for param in (IOM._breakpoint_param(dir), IOM._slope_param(dir))
-        add_parameters!(container, param, services, model)
+        add_parameters!(container, param, ts_services, model)
     end
     return
 end
@@ -677,9 +697,7 @@ function add_reserves_proportional_cost!(
     contributing_names::Vector{String};
     skip_devices = Set{String}(),
 ) where {
-    # PSY6-PORT-DISABLED: PSY.ReserveNonSpinning removed on jd/schema_matching
-    # (dropped from this Union; original: `T <: Union{PSY.Reserve, PSY.ReserveNonSpinning}`)
-    T <: PSY.Reserve,
+    T <: PSY.AbstractReserve,
     U <: ActivePowerReserveVariable,
     V <: AbstractReservesFormulation,
 }

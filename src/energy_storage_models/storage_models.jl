@@ -33,30 +33,21 @@ get_variable_binary(::Type{ReservationVariable}, ::Type{<:PSY.Storage}, ::Type{<
 get_variable_binary(::Type{AncillaryServiceVariableDischarge}, ::Type{<:PSY.Storage}, ::Type{<:AbstractStorageFormulation}) = false
 get_variable_binary(::Type{AncillaryServiceVariableCharge}, ::Type{<:PSY.Storage}, ::Type{<:AbstractStorageFormulation}) = false
 
-function get_variable_upper_bound(::Type{AncillaryServiceVariableCharge}, r::PSY.Reserve, d::PSY.Storage, ::Type{<:AbstractStorageFormulation})
+# One method per bound over every AbstractReserve (online + offline). The demand-curve types were
+# removed, so ORDC reserves now use these capped bounds too.
+function get_variable_upper_bound(::Type{AncillaryServiceVariableCharge}, r::PSY.AbstractReserve, d::PSY.Storage, ::Type{<:AbstractStorageFormulation})
     return PSY.get_max_output_fraction(r) * PSY.get_input_active_power_limits(d, PSY.SU).max
 end
 
-function get_variable_upper_bound(::Type{AncillaryServiceVariableDischarge}, r::PSY.Reserve, d::PSY.Storage, ::Type{<:AbstractStorageFormulation})
+function get_variable_upper_bound(::Type{AncillaryServiceVariableDischarge}, r::PSY.AbstractReserve, d::PSY.Storage, ::Type{<:AbstractStorageFormulation})
     return PSY.get_max_output_fraction(r) * PSY.get_output_active_power_limits(d, PSY.SU).max
 end
 
-function get_variable_upper_bound(::Type{AncillaryServiceVariableCharge}, r::Union{PSY.ReserveDemandCurve, PSY.ReserveDemandTimeSeriesCurve}, d::PSY.Storage, ::Type{<:AbstractStorageFormulation})
-    return PSY.get_input_active_power_limits(d, PSY.SU).max
-end
-
-function get_variable_upper_bound(::Type{AncillaryServiceVariableDischarge}, r::Union{PSY.ReserveDemandCurve, PSY.ReserveDemandTimeSeriesCurve}, d::PSY.Storage, ::Type{<:AbstractStorageFormulation})
-    return PSY.get_output_active_power_limits(d, PSY.SU).max
-end
-
-function get_variable_upper_bound(::Type{ActivePowerReserveVariable}, r::PSY.Reserve, d::PSY.Storage, ::Type{<:AbstractReservesFormulation})
-    return PSY.get_max_output_fraction(r) * (PSY.get_output_active_power_limits(d, PSY.SU).max + PSY.get_input_active_power_limits(d, PSY.SU).max)
-end
-function get_variable_upper_bound(::Type{ActivePowerReserveVariable}, r::Union{PSY.ReserveDemandCurve, PSY.ReserveDemandTimeSeriesCurve}, d::PSY.Storage, ::Type{<:AbstractReservesFormulation})
+function get_variable_upper_bound(::Type{ActivePowerReserveVariable}, r::PSY.AbstractReserve, d::PSY.Storage, ::Type{<:AbstractReservesFormulation})
     return PSY.get_max_output_fraction(r) * (PSY.get_output_active_power_limits(d, PSY.SU).max + PSY.get_input_active_power_limits(d, PSY.SU).max)
 end
 
-get_expression_type_for_reserve(::Type{ActivePowerReserveVariable}, ::Type{<:PSY.Storage}, ::Type{<:PSY.Reserve}) = TotalReserveOffering
+get_expression_type_for_reserve(::Type{ActivePowerReserveVariable}, ::Type{<:PSY.Storage}, ::Type{<:PSY.AbstractReserve}) = TotalReserveOffering
 
 ############### Energy Targets Variables #############
 get_variable_binary(::Type{StorageEnergyShortageVariable}, ::Type{<:PSY.Storage}, ::Type{<:AbstractStorageFormulation}) = false
@@ -356,7 +347,7 @@ function add_variables!(
             U,
             PSY.get_name.(devices),
             time_steps;
-            meta = "$(typeof(service))_$(PSY.get_name(service))",
+            meta = _service_container_meta(service),
         )
 
         for d in devices, t in time_steps
@@ -639,7 +630,7 @@ function add_to_expression!(
         services = PSY.get_services(d)
         for s in services
             s_name = PSY.get_name(s)
-            variable = get_variable(container, U, V, "$(typeof(s))_$s_name")
+            variable = get_variable(container, U, V, _service_container_meta(s))
             mult = get_variable_multiplier(U, T, d, W, s) * get_fraction(T, s)
             for t in get_time_steps(container)
                 add_proportional_to_jump_expression!(
@@ -672,7 +663,7 @@ function add_to_expression!(
         services = PSY.get_services(d)
         for s in services
             s_name = PSY.get_name(s)
-            variable = get_variable(container, U, V, "$(typeof(s))_$s_name")
+            variable = get_variable(container, U, V, _service_container_meta(s))
             mult = get_variable_multiplier(U, T, d, W, s) * get_fraction(T, s)
             for t in get_time_steps(container)
                 add_proportional_to_jump_expression!(
@@ -703,8 +694,8 @@ function add_to_expression!(
         services = PSY.get_services(d)
         for s in services
             s_name = PSY.get_name(s)
-            expression = get_expression(container, T, V, "$(typeof(s))_$(s_name)")
-            variable = get_variable(container, U, V, "$(typeof(s))_$s_name")
+            expression = get_expression(container, T, V, _service_container_meta(s))
+            variable = get_variable(container, U, V, _service_container_meta(s))
             for t in get_time_steps(container)
                 add_proportional_to_jump_expression!(
                     expression[name, t],
@@ -735,7 +726,7 @@ function add_to_expression!(
     variable = get_variable(container, U, V)
     for d in devices
         name = PSY.get_name(d)
-        expression = get_expression(container, T, UV, "$(V)_$(s_name)")
+        expression = get_expression(container, T, UV, _service_container_meta(service))
         for t in get_time_steps(container)
             add_proportional_to_jump_expression!(
                 expression[name, t],
@@ -990,14 +981,14 @@ function add_constraints!(
                 V,
                 names,
                 time_steps;
-                meta = "$(typeof(service))_$(service_name)_discharge",
+                meta = "$(_service_container_meta(service))_discharge",
             )
         elseif typeof(service) <: PSY.Reserve{PSY.ReserveDown}
             add_constraints_container!(container, T,
                 V,
                 names,
                 time_steps;
-                meta = "$(typeof(service))_$(service_name)_charge",
+                meta = "$(_service_container_meta(service))_charge",
             )
         end
     end
@@ -1024,18 +1015,18 @@ function add_constraints!(
             reserve_var_discharge =
                 get_variable(container, AncillaryServiceVariableDischarge,
                     V,
-                    "$(typeof(service))_$service_name",
+                    _service_container_meta(service),
                 )
             reserve_var_charge = get_variable(container, AncillaryServiceVariableCharge,
                 V,
-                "$(typeof(service))_$service_name",
+                _service_container_meta(service),
             )
             if typeof(service) <: PSY.Reserve{PSY.ReserveUp}
                 con_discharge = get_constraint(
                     container,
                     T(),
                     V,
-                    "$(typeof(service))_$(service_name)_discharge",
+                    "$(_service_container_meta(service))_discharge",
                 )
 
                 if time_offset(T) == -1
@@ -1065,7 +1056,7 @@ function add_constraints!(
                     container,
                     T(),
                     V,
-                    "$(typeof(service))_$(service_name)_charge",
+                    "$(_service_container_meta(service))_charge",
                 )
                 if time_offset(T) == -1
                     con_charge[ci_name, 1] = JuMP.@constraint(
@@ -1168,11 +1159,11 @@ function add_constraints!(
             reserve_var_discharge =
                 get_variable(container, AncillaryServiceVariableDischarge,
                     V,
-                    "$(typeof(service))_$service_name",
+                    _service_container_meta(service),
                 )
             reserve_var_charge = get_variable(container, AncillaryServiceVariableCharge,
                 V,
-                "$(typeof(service))_$service_name",
+                _service_container_meta(service),
             )
             if typeof(service) <: PSY.Reserve{PSY.ReserveUp}
                 push!(
@@ -1275,7 +1266,7 @@ function add_constraints!(
         s_name = PSY.get_name(s)
         expression = get_expression(container, TotalReserveOffering,
             V,
-            "$(typeof(s))_$(s_name)",
+            _service_container_meta(s),
         )
         device_names, time_steps = axes(expression)
         constraint_container =

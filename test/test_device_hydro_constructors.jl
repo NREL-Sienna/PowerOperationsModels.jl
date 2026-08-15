@@ -192,15 +192,15 @@ end
     set_device_model!(template, HydroTurbine, HydroDispatchRunOfRiver)
     set_service_model!(
         template,
-        ServiceModel(VariableReserve{ReserveUp}, RangeReserve),
+        ServiceModel(OnlineReserve{ReserveUp}, RangeReserve),
     )
     set_service_model!(
         template,
-        ServiceModel(VariableReserve{ReserveDown}, RangeReserve),
+        ServiceModel(OnlineReserve{ReserveDown}, RangeReserve),
     )
     set_service_model!(
         template,
-        ServiceModel(ReserveDemandCurve{ReserveUp}, StepwiseCostReserve),
+        ServiceModel(OnlineReserve{ReserveUp}, StepwiseCostReserve),
     )
 
     c_sys5_hyd = PSB.build_system(
@@ -439,8 +439,8 @@ end
     )
 
     # Fix reserve parameters
-    reg_up = only(get_components(VariableReserve{ReserveUp}, c_sys5_hy))
-    reg_dn = only(get_components(VariableReserve{ReserveDown}, c_sys5_hy))
+    reg_up = only(get_components(OnlineReserve{ReserveUp}, c_sys5_hy))
+    reg_dn = only(get_components(OnlineReserve{ReserveDown}, c_sys5_hy))
     set_deployed_fraction!(reg_up, 0.0)
     set_deployed_fraction!(reg_dn, 0.0)
     set_requirement!(reg_up, 0.01 * PSY.SU)
@@ -497,8 +497,8 @@ end
             attributes = Dict("hydro_budget" => true,
                 "hydro_budget_interval" => Hour(hydro_budget))),
     )
-    set_service_model!(template_uc, VariableReserve{ReserveUp}, RangeReserve)
-    set_service_model!(template_uc, VariableReserve{ReserveDown}, RangeReserve)
+    set_service_model!(template_uc, OnlineReserve{ReserveUp}, RangeReserve)
+    set_service_model!(template_uc, OnlineReserve{ReserveDown}, RangeReserve)
     model = DecisionModel(
         template_uc,
         c_sys5_hy;
@@ -528,8 +528,8 @@ end
 
     # The hydro unit is the sole contributing device for both reserves in this system, so
     # the down requirement guarantees a nonzero down award to detect.
-    reg_up = only(get_components(VariableReserve{ReserveUp}, c_sys5_hy))
-    reg_dn = only(get_components(VariableReserve{ReserveDown}, c_sys5_hy))
+    reg_up = only(get_components(OnlineReserve{ReserveUp}, c_sys5_hy))
+    reg_dn = only(get_components(OnlineReserve{ReserveDown}, c_sys5_hy))
     set_deployed_fraction!(reg_up, 0.0)
     set_deployed_fraction!(reg_dn, 0.5)
     set_requirement!(reg_up, 0.01 * PSY.SU)
@@ -543,8 +543,8 @@ end
     set_device_model!(template, PowerLoad, StaticPowerLoad)
     set_device_model!(template, RenewableNonDispatch, FixedOutput)
     set_device_model!(template, HydroDispatch, HydroDispatchRunOfRiver)
-    set_service_model!(template, VariableReserve{ReserveUp}, RangeReserve)
-    set_service_model!(template, VariableReserve{ReserveDown}, RangeReserve)
+    set_service_model!(template, OnlineReserve{ReserveUp}, RangeReserve)
+    set_service_model!(template, OnlineReserve{ReserveDown}, RangeReserve)
 
     model = DecisionModel(
         template,

@@ -33,13 +33,24 @@ end
 
 # Per-type service time-series parameter: all services of the type share one container
 # keyed `(ParameterType, ServiceType)`, axed by service name.
+#
+# `U` is decoupled from the model's component type `V`: a `ServiceModel` can be declared with a
+# partially applied type, e.g. `OnlineReserve{ReserveDown}` (a `UnionAll` with a free unit-system
+# parameter), while the vector holds concrete `OnlineReserve{ReserveDown, NaturalUnit}` instances.
+# `Vector` is invariant, so no single type variable can bind both. Container keys are unaffected
+# (`canonical_component_type` strips the unit parameter).
 function add_parameters!(
     container::OptimizationContainer,
     ::Type{T},
     services::Vector{U},
-    model::ServiceModel{U, V},
-) where {T <: TimeSeriesParameter, U <: PSY.Service, V <: AbstractServiceFormulation}
-    if get_rebuild_model(get_settings(container)) && has_container_key(container, T, U)
+    model::ServiceModel{V, W},
+) where {
+    T <: TimeSeriesParameter,
+    U <: PSY.Service,
+    V <: PSY.Service,
+    W <: AbstractServiceFormulation,
+}
+    if get_rebuild_model(get_settings(container)) && has_container_key(container, T, V)
         return
     end
     _add_parameters!(container, T, services, model)
@@ -48,6 +59,7 @@ end
 
 # Per-type operating reserve demand curve (ORDC) PWL cost params: all the type's services
 # share one container (names axis + tranche axis).
+# Element type decoupled from the `ServiceModel`'s component type; see `add_parameters!` above.
 function add_parameters!(
     container::OptimizationContainer,
     ::Type{T},
@@ -58,8 +70,8 @@ function add_parameters!(
         AbstractPiecewiseLinearSlopeParameter,
         AbstractPiecewiseLinearBreakpointParameter,
     },
-    U <: PSY.ReserveDemandTimeSeriesCurve,
-    V <: PSY.ReserveDemandTimeSeriesCurve,
+    U <: PSY.AbstractReserve,
+    V <: PSY.AbstractReserve,
     W <: AbstractServiceFormulation,
 }
     if get_rebuild_model(get_settings(container)) && has_container_key(container, T, U)
@@ -412,7 +424,7 @@ _get_time_series_name(
             DecrementalPiecewiseLinearBreakpointParameter,
         },
     },
-    service::PSY.ReserveDemandTimeSeriesCurve,
+    service::PSY.AbstractReserve,
     ::ServiceModel,
 ) = IS.get_name(IS.get_time_series_key(PSY.get_variable(service)))
 
@@ -543,14 +555,14 @@ calc_additional_axes(
     W <: AbstractDeviceFormulation,
 } where {D <: PSY.Component} = ()
 
+# Element type decoupled from the `ServiceModel`'s component type; see `add_parameters!` above.
 calc_additional_axes(
     ::OptimizationContainer,
     ::Type{T},
-    ::U,
+    ::Union{Vector{<:PSY.Service}, IS.FlattenIteratorWrapper{<:PSY.Service}},
     ::ServiceModel{D, W},
 ) where {
     T <: ParameterType,
-    U <: Union{Vector{D}, IS.FlattenIteratorWrapper{D}},
     W <: AbstractServiceFormulation,
 } where {D <: PSY.Service} = ()
 
@@ -572,15 +584,14 @@ _ordc_ts_data(ts::IS.DeterministicSingleTimeSeries) =
 # Batch form (mirrors the device methods below): size the tranche axis to the largest tranche
 # count across the type's services; shorter per-hour curves are padded in `unwrap_for_param`.
 #
-# `services` is typed `Vector{<:ReserveDemandTimeSeriesCurve}` rather than tied to the
-# `ServiceModel`'s component type, because that type can be partially applied (e.g.
-# `ReserveDemandCurve` without its reserve-direction parameter) and `Vector` is invariant, so a
-# vector of the concrete service instances would not match `Vector{D}`.
+# Element type decoupled from the `ServiceModel`'s component type; see `add_parameters!` above.
+# Only time-series-backed ORDCs reach here (the caller filters on `_ordc_is_ts`), so the
+# `get_time_series_key`/`get_max_tranches` reads are valid.
 function calc_additional_axes(
     ::OptimizationContainer,
     ::Type{P},
-    services::Vector{<:PSY.ReserveDemandTimeSeriesCurve},
-    ::ServiceModel{<:PSY.ReserveDemandTimeSeriesCurve, W},
+    services::Vector{<:PSY.AbstractReserve},
+    ::ServiceModel{<:PSY.AbstractReserve, W},
 ) where {
     P <: AbstractPiecewiseLinearSlopeParameter,
     W <: AbstractServiceFormulation,
@@ -594,8 +605,8 @@ end
 function calc_additional_axes(
     ::OptimizationContainer,
     ::Type{P},
-    services::Vector{<:PSY.ReserveDemandTimeSeriesCurve},
-    ::ServiceModel{<:PSY.ReserveDemandTimeSeriesCurve, W},
+    services::Vector{<:PSY.AbstractReserve},
+    ::ServiceModel{<:PSY.AbstractReserve, W},
 ) where {
     P <: AbstractPiecewiseLinearBreakpointParameter,
     W <: AbstractServiceFormulation,
@@ -785,6 +796,7 @@ end
 # Same cost-parameter machinery as the device path: batch all the type's services into one
 # container (names axis + tranche axis), the tranche axis sized to the batch-wide maximum via
 # `calc_additional_axes`. Read back name-keyed by the delta-PWL machinery.
+# Element type decoupled from the `ServiceModel`'s component type; see `add_parameters!` above.
 #################################################################################
 
 function _add_parameters!(
@@ -797,8 +809,8 @@ function _add_parameters!(
         AbstractPiecewiseLinearSlopeParameter,
         AbstractPiecewiseLinearBreakpointParameter,
     },
-    U <: PSY.ReserveDemandTimeSeriesCurve,
-    V <: PSY.ReserveDemandTimeSeriesCurve,
+    U <: PSY.AbstractReserve,
+    V <: PSY.AbstractReserve,
     W <: AbstractServiceFormulation,
 }
     _add_objective_function_parameters!(container, T, services, model, W)
@@ -808,13 +820,18 @@ end
 #################################################################################
 # _add_parameters! for ServiceModel TimeSeriesParameter
 #################################################################################
-
+# Element type decoupled from the `ServiceModel`'s component type; see `add_parameters!` above.
 function _add_parameters!(
     container::OptimizationContainer,
     ::Type{T},
     services::Vector{U},
-    model::ServiceModel{U, V},
-) where {T <: TimeSeriesParameter, U <: PSY.Service, V <: AbstractServiceFormulation}
+    model::ServiceModel{V, W},
+) where {
+    T <: TimeSeriesParameter,
+    U <: PSY.Service,
+    V <: PSY.Service,
+    W <: AbstractServiceFormulation,
+}
     ts_type = get_default_time_series_type(container)
     if !(ts_type <: Union{PSY.AbstractDeterministic, PSY.StaticTimeSeries})
         error("add_parameters! for TimeSeriesParameter is not compatible with $ts_type")
@@ -857,8 +874,11 @@ function _add_parameters!(
 
     uuid_axis = collect(keys(initial_values))
     additional_axes = calc_additional_axes(container, T, services, model)
+    # Key the container by the MODEL's component type `V`, not the element type `U`: readers
+    # fetch with `SR` from the `ServiceModel`, and the two diverge when the model is declared
+    # with a broader type (e.g. `ServiceModel{OnlineReserve, ...}` covering both directions).
     parameter_container = add_param_container!(container, T,
-        U,
+        V,
         ts_type,
         ts_name,
         uuid_axis,
@@ -882,7 +902,7 @@ function _add_parameters!(
     end
     for (i, service) in enumerate(services)
         name = names[i]
-        IOM._set_multiplier_at!(parent_mult, get_multiplier_value(T, service, V), i)
+        IOM._set_multiplier_at!(parent_mult, get_multiplier_value(T, service, W), i)
         IOM.add_component_name!(attributes, name, service_ts_uuids[name])
     end
     return

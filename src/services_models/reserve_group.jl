@@ -1,17 +1,88 @@
-# PSY6-PORT-DISABLED: PSY.ConstantReserveGroup removed on jd/schema_matching
-#=
 function get_default_time_series_names(
-    ::Type{PSY.ConstantReserveGroup{T}},
-    ::Type{GroupReserve}) where {T <: PSY.ReserveDirection}
+    ::Type{PSY.GroupReserve{T}},
+    ::Type{GroupRangeReserve}) where {T <: PSY.ReserveDirection}
     return Dict{String, Any}()
 end
 
 function get_default_attributes(
-    ::Type{PSY.ConstantReserveGroup{T}},
-    ::Type{GroupReserve}) where {T <: PSY.ReserveDirection}
+    ::Type{PSY.GroupReserve{T}},
+    ::Type{GroupRangeReserve}) where {T <: PSY.ReserveDirection}
     return Dict{String, Any}()
 end
-=#
+
+# ── Formulation-pairing guards ────────────────────────────────────────────────────────
+# A `PSY.GroupReserve` aggregates other services, so only group formulations can model it,
+# and group formulations can model nothing else. These fallbacks fire inside the
+# `ServiceModel` constructor (which resolves the default names/attributes), so a mis-paired
+# model fails at DECLARATION with an actionable message instead of a cryptic dispatch error
+# (or a silent no-op) at build time. The valid direction-applied pairs above are more
+# specific and win.
+
+function _throw_group_pairing_error(D::Type, B::Type)
+    throw(
+        ArgumentError(
+            "ServiceModel($(D), $(B)) is invalid: `PSY.GroupReserve` aggregates other \
+            services and must use a group formulation (e.g. GroupRangeReserve), and group \
+            formulations apply only to `PSY.GroupReserve`.",
+        ),
+    )
+end
+
+get_default_time_series_names(
+    ::Type{D},
+    ::Type{B},
+) where {D <: PSY.GroupReserve, B <: AbstractServiceFormulation} =
+    _throw_group_pairing_error(D, B)
+
+get_default_attributes(
+    ::Type{D},
+    ::Type{B},
+) where {D <: PSY.GroupReserve, B <: AbstractServiceFormulation} =
+    _throw_group_pairing_error(D, B)
+
+# Disambiguates the guard above against the generic reserve defaults
+# (`T <: AbstractReserve, B <: AbstractReservesFormulation`), which a group would
+# otherwise tie with now that `GroupReserve <: AbstractReserve`.
+get_default_time_series_names(
+    ::Type{D},
+    ::Type{B},
+) where {D <: PSY.GroupReserve, B <: AbstractReservesFormulation} =
+    _throw_group_pairing_error(D, B)
+
+get_default_attributes(
+    ::Type{D},
+    ::Type{B},
+) where {D <: PSY.GroupReserve, B <: AbstractReservesFormulation} =
+    _throw_group_pairing_error(D, B)
+
+get_default_time_series_names(
+    ::Type{D},
+    ::Type{GroupRangeReserve},
+) where {D <: PSY.AbstractReserve} = _throw_group_pairing_error(D, GroupRangeReserve)
+
+get_default_attributes(
+    ::Type{D},
+    ::Type{GroupRangeReserve},
+) where {D <: PSY.AbstractReserve} = _throw_group_pairing_error(D, GroupRangeReserve)
+
+# Disambiguates the two guards' intersection (`GroupReserve <: AbstractReserve`) and gives
+# the bare-type declaration an actionable message.
+_throw_group_direction_error(D::Type) = throw(
+    ArgumentError(
+        "ServiceModel($(D), GroupRangeReserve) needs the reserve direction applied, \
+        e.g. `ServiceModel(GroupReserve{ReserveUp}, GroupRangeReserve)`.",
+    ),
+)
+
+get_default_time_series_names(
+    ::Type{D},
+    ::Type{GroupRangeReserve},
+) where {D <: PSY.GroupReserve} = _throw_group_direction_error(D)
+
+get_default_attributes(
+    ::Type{D},
+    ::Type{GroupRangeReserve},
+) where {D <: PSY.GroupReserve} = _throw_group_direction_error(D)
 
 ############################### Reserve Variables` #########################################
 """
@@ -35,8 +106,6 @@ function check_activeservice_variables(
 end
 
 ################################## Reserve Requirement Constraint ##########################
-# PSY6-PORT-DISABLED: PSY.ConstantReserveGroup removed on jd/schema_matching
-#=
 """
 This function creates the requirement constraint that will be attained by the appropriate services
 """
@@ -45,8 +114,8 @@ function add_constraints!(
     ::Type{RequirementConstraint},
     service::SR,
     contributing_services::Vector{<:PSY.Service},
-    model::ServiceModel{SR, GroupReserve},
-) where {SR <: PSY.ConstantReserveGroup}
+    model::ServiceModel{SR, GroupRangeReserve},
+) where {SR <: PSY.GroupReserve}
     time_steps = get_time_steps(container)
     service_name = PSY.get_name(service)
     # Dense container keyed `[group_name, time]`, built per type; fill this group's row.
@@ -70,7 +139,6 @@ function add_constraints!(
 
     return
 end
-=#
 
 # Collect the group's contributing reserve variables into one bucket per time step, so the
 # constraint loop above indexes straight in rather than re-scanning per `(group, t)`. Services

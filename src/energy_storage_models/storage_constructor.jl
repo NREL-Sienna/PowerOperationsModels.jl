@@ -58,7 +58,7 @@ function _add_ancillary_services!(
             T,
             PSY.get_name.(devices),
             time_steps;
-            meta = "$(typeof(s))_$(PSY.get_name(s))",
+            meta = _service_container_meta(s),
         )
     end
 
