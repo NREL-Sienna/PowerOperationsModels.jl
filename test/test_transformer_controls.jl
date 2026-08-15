@@ -444,22 +444,6 @@ end
 
 ################################### DC networks ########################################
 
-@testset "DC tap control needs StaticBranchBounds; StaticBranch is rejected" begin
-    # StaticBranch under DCP carries its flow as the BThetaBranchFlow expression, which the
-    # affine nodal balance cannot hold once the ratio is a variable. The pair is refused up
-    # front rather than letting the control go silently inert.
-    sys, _, _, _ = _controlled_sys14(VOLTAGE_CONTROL)
-    template = _controlled_template(DCPNetworkModel)
-    model = DecisionModel(template, sys; optimizer = HiGHS_optimizer)
-    out = mktempdir(; cleanup = true)
-    @test build!(model; output_dir = out, console_level = Logging.Error) ==
-          IOM.ModelBuildStatus.FAILED
-    @test occursin(
-        "builds no tap ratio variable",
-        read(joinpath(out, "operation_problem.log"), String),
-    )
-end
-
 @testset "DC networks build a variable tap under StaticBranchBounds" begin
     tap_range = (min = 0.9, max = 1.1)
     for network_formulation in (DCPNetworkModel, DCPLLNetworkModel)

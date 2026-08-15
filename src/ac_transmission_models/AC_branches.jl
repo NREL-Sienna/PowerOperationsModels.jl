@@ -332,7 +332,7 @@ function _add_tap_control_variables!(
     devices::IS.FlattenIteratorWrapper{U},
     network_model::NetworkModel,
 ) where {
-    U <: Union{PSY.TwoWindingTransformer, PSY.ThreeWindingTransformer},
+    U <: _TRANSFORMERS,
     F <: AbstractBranchFormulation,
 }
     get_attribute(model, ENABLE_CONTROLS_KEY) === true || return
@@ -1231,9 +1231,7 @@ _dc_phase_shift(branch::PNM.AbstractReductionAggregate, nr::PNM.NetworkReduction
 _dc_phase_shift(branch::PSY.ACTransmission, ::PNM.NetworkReductionData) =
     PNM.get_series_phase_shift(branch)
 
-_get_circuit(
-    b::Union{PSY.TwoWindingTransformer, PNM.ThreeWindingTransformerCircuit},
-) = PSY.get_circuit(b)
+_get_circuit(b::_TRANSFORMERS) = PSY.get_circuit(b)
 _get_circuit(_) = nothing
 
 _control_objective(branch) = _control_objective(_get_circuit(branch))
@@ -1820,8 +1818,8 @@ function _add_voltage_control_constraints!(
     sys::PSY.System,
     devices::IS.FlattenIteratorWrapper{T},
     device_model::DeviceModel{T},
-    ::NetworkModel{<:NativeACNetworkModel}
-) where {T <: _TRANSFORMER_CONTROL_TYPES}
+    network_model::NetworkModel{<:NativeACNetworkModel}
+) where {T <: _TRANSFORMERS}
     _control_enabled(device_model) || return
 
     cons = add_constraints_container!(
@@ -1848,7 +1846,7 @@ function _add_voltage_control_constraints!(
             circuit_name = _circuit_arc_name(d, circuit, i)
             (bus_limits.min <= ctl_limits.min <= ctl_limits.max <= bus_limits.max) || error("Bus limits for $bus_name disagree with control limits for circuit $circuit_name.")
 
-            lims = _voltage_limits(ctl_limits)
+            lims = _voltage_limits(ctl_limits, network_model)
             vm = _voltage_magnitude(container, bus_name, network_model)
             for t in time_steps
                 cons[circuit_name, 1, t] = JuMP.@constraint(jump_model, vm[t] >= lims.min)
@@ -1872,7 +1870,7 @@ function _add_reactive_control_constraints!(
     devices::IS.FlattenIteratorWrapper{T},
     device_model::DeviceModel{T},
     ::NetworkModel{<:NativeACNetworkModel},
-) where {T <: _TRANSFORMER_CONTROL_TYPES}
+) where {T <: _TRANSFORMERS}
     _control_enabled(device_model) || return
 
     cons = add_constraints_container!(
