@@ -64,10 +64,27 @@ function _collect_reduction_exceptions(
         IOM.LOG_GROUP_NETWORK_CONSTRUCTION
     # Seeded with the caller's own exceptions; the template's rules add to them.
     buses = Set{Int}(get_reduction_exceptions(model))
+    _pin_dc_converter_buses!(buses, sys)
     for m in values(branch_models)
         _pin_irreducible_buses!(buses, m, sys)
     end
     return collect(buses)
+end
+
+# Rule 0: a converter's AC terminal must survive the reduction. Merging one away drops the
+# converter from the model without a word, so this is keyed on the system rather than on a
+# DeviceModel — the exposure exists whether or not the template happens to model the
+# converter's type. Unconditional, unlike PowerFlows' matching set, which skips `g == 0`
+# VSC lines because it treats an open DC link as unmodelable; POM builds device models for
+# whatever the template declares and has no such exclusion.
+function _pin_dc_converter_buses!(buses::Set{Int}, sys::PSY.System)
+    for line in PSY.get_available_components(PSY.TwoTerminalVSCLine, sys)
+        _push_component_buses!(buses, line)
+    end
+    for converter in PSY.get_available_components(PSY.InterconnectingConverter, sys)
+        _push_component_buses!(buses, converter)
+    end
+    return
 end
 
 _pin_irreducible_buses!(::Set{Int}, ::DeviceModel, ::PSY.System) = nothing

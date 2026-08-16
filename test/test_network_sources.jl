@@ -439,3 +439,27 @@ end
     @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
           IOM.ModelBuildStatus.BUILT
 end
+
+@testset "DC converter AC buses are pinned as reduction exceptions" begin
+    sys = PSB.build_system(PSISystems, "sys10_pjm_ac_dc")
+    converters = collect(PSY.get_available_components(PSY.InterconnectingConverter, sys))
+    # Non-vacuity: the assertions below prove nothing on a system with no converters.
+    @test !isempty(converters)
+
+    buses = Set{Int}()
+    POM._pin_dc_converter_buses!(buses, sys)
+    for converter in converters
+        @test PSY.get_number(PSY.get_bus(converter)) in buses
+    end
+    for line in PSY.get_available_components(PSY.TwoTerminalVSCLine, sys)
+        arc = PSY.get_arc(line)
+        @test PSY.get_number(PSY.get_from(arc)) in buses
+        @test PSY.get_number(PSY.get_to(arc)) in buses
+    end
+
+    # Falsifiable: the rule pins converter terminals, not every bus in the system.
+    all_buses = Set(
+        PSY.get_number(b) for b in PSY.get_available_components(PSY.ACBus, sys)
+    )
+    @test !isempty(setdiff(all_buses, buses))
+end
