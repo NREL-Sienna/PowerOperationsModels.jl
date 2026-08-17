@@ -297,7 +297,6 @@ _bus_map(y) = POM.PNM.get_bus_reduction_map(POM.PNM.get_network_reduction_data(y
 
 @testset "ZeroImpedanceBranchReduction is accepted in the spec and reaches the Ybus" begin
     sys = PSB.build_system(PSITestSystems, "case11_network_reductions")
-    # PNM rejects a ZeroImpedanceBranchReduction inside `network_reductions`.
     zibr = _zibr(0.002)
     ybus = POM._build_ybus(POM.NetworkReductionSpec(zibr), sys, Int[])
     @test POM.PNM.get_zero_impedance_reduction(_reductions(ybus)) == zibr

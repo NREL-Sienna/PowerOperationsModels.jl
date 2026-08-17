@@ -626,6 +626,7 @@ end
     psi_checkobjfun_test(model, GAEVF)
 end
 
+# psy6: disabled pending upstream work in PowerSystems, on the import side rather than the
 @testset "Test Hydro Pump Energy Dispatch Formulations 2" begin
     output_dir = mktempdir(; cleanup = true)
 

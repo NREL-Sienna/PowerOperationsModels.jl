@@ -62,13 +62,10 @@ function _build_ybus(
     sys::PSY.System,
     exceptions::Vector{Int},
 )
-    reductions, zero_impedance_reduction =
-        PNM.split_zero_impedance_reduction(source.reductions)
     return PNM.Ybus(
         sys;
-        network_reductions = reductions,
+        network_reductions = source.reductions,
         irreducible_buses = exceptions,
-        zero_impedance_reduction = zero_impedance_reduction,
     )
 end
 

@@ -218,6 +218,10 @@ function _reduced_ybus!(
     return ybus
 end
 
+# Every PTDF-family matrix wraps one of these, so the tolerance and uuid are set once.
+_factor_core(ybus::PNM.Ybus, sys::PSY.System) =
+    PNM.VirtualFactorCore(ybus; tol = PTDF_ZERO_TOL, system_uuid = IS.get_uuid(sys))
+
 #=
 The one source-aware Ybus resolution, dispatched on the source so every formulation
 family gets it. A source that derives the network from the system applies the build's
@@ -235,22 +239,17 @@ function _source_ybus(
     return _build_ybus(source, sys, exceptions)
 end
 
-function _source_ybus(
-    source::PrebuiltMatrixSource,
-    sys::PSY.System,
-    exceptions::Vector{Int},
-)
-    reduction = PNM.get_network_reduction_data(PNM.get_core(get_matrix(source)))
-    _validate_prebuilt_exceptions(reduction, exceptions)
-    return _prebuilt_ybus(source, reduction, sys)
-end
+_prebuilt_reduction(source::PrebuiltMatrixSource) =
+    PNM.get_network_reduction_data(PNM.get_core(get_matrix(source)))
+_prebuilt_reduction(source::PrebuiltCoreSource) =
+    PNM.get_network_reduction_data(get_core(source))
 
 function _source_ybus(
-    source::PrebuiltCoreSource,
+    source::Union{PrebuiltMatrixSource, PrebuiltCoreSource},
     sys::PSY.System,
     exceptions::Vector{Int},
 )
-    reduction = PNM.get_network_reduction_data(get_core(source))
+    reduction = _prebuilt_reduction(source)
     _validate_prebuilt_exceptions(reduction, exceptions)
     return _prebuilt_ybus(source, reduction, sys)
 end
@@ -380,7 +379,7 @@ function IOM.instantiate_network_model!(
     ybus = _reduced_ybus!(model, sys, exceptions)
     IOM.set_network_data!(
         model,
-        YbusNetworkData(ybus, deepcopy(PNM.get_network_reduction_data(ybus))),
+        YbusNetworkData(ybus, _owned_reduction(ybus)),
     )
     _finalize_network_reduction!(model, branch_models, number_of_steps)
     return
@@ -399,13 +398,9 @@ function IOM.instantiate_network_model!(
     _validate_network_and_branches(model, branch_models, sys)
     exceptions = _collect_reduction_exceptions(sys, model, branch_models)
     ybus = _reduced_ybus!(model, sys, exceptions)
-    reduction = deepcopy(PNM.get_network_reduction_data(ybus))
+    reduction = _owned_reduction(ybus)
     if IOM._template_has_outage_aware_branch(branch_models)
-        core = PNM.VirtualFactorCore(
-            ybus;
-            tol = PTDF_ZERO_TOL,
-            system_uuid = IS.get_uuid(sys),
-        )
+        core = _factor_core(ybus, sys)
         IOM.set_network_data!(
             model,
             DCPNetworkData(
@@ -461,11 +456,7 @@ function _ptdf_network_data(
     exceptions::Vector{Int},
 )
     ybus = _reduced_ybus!(model, sys, exceptions)
-    core = PNM.VirtualFactorCore(
-        ybus;
-        tol = PTDF_ZERO_TOL,
-        system_uuid = IS.get_uuid(sys),
-    )
+    core = _factor_core(ybus, sys)
     return _assemble_ptdf_data(core, PNM.VirtualPTDF(core), sys, branch_models)
 end
 
@@ -507,7 +498,7 @@ function _assemble_ptdf_data(
     sys::PSY.System,
     branch_models::BranchModelContainer,
 )
-    reduction = deepcopy(PNM.get_network_reduction_data(core))
+    reduction = _owned_reduction(core)
     if IOM._template_has_outage_aware_branch(branch_models)
         return PTDFNetworkData(
             ptdf,

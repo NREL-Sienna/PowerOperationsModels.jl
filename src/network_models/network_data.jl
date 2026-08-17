@@ -16,6 +16,9 @@ are the same reduction but not the same object, and only the latter carries the 
 maps. Read the reduction off the container, never off the matrix.
 =#
 
+# The one place the copy above is taken, so a new family cannot forget it.
+_owned_reduction(matrix) = deepcopy(PNM.get_network_reduction_data(matrix))
+
 """Ybus-only families: no factorization, no sensitivity matrices."""
 struct YbusNetworkData <: IOM.AbstractNetworkData
     ybus::PNM.Ybus
