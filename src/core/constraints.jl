@@ -200,10 +200,8 @@ struct ReferenceBusConstraint <: ConstraintType end
 """Rectangular-coordinate voltage magnitude bounds: vmin² ≤ vr² + vi² ≤ vmax²."""
 struct VoltageMagnitudeConstraint <: ConstraintType end
 """
-Terminal reactive-flow band for a transformer circuit whose control objective is
-`REACTIVE_POWER_FLOW`. Both directional flows are held inside the circuit's
-`controlled_quantity_limits`. Sparse, indexed by (circuit name, side, time step) with
-side ∈ 1:4 = (from-to lower, from-to upper, to-from lower, to-from upper).
+Imposed by transformer circuits with REACTIVE_POWER_FLOW control on a branch
+formulation with controls enabled.
 """
 struct ReactivePowerFlowControlConstraint <: ConstraintType end
 """

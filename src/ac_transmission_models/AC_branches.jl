@@ -53,10 +53,6 @@ get_variable_upper_bound(::Type{FlowActivePowerFromToVariable}, d::PSY.Monitored
 get_variable_lower_bound(::Type{FlowActivePowerFromToVariable}, d::PSY.MonitoredLine, ::Type{<:AbstractBranchFormulation}) = -1 * PSY.get_flow_limits(d, PSY.SU).from_to
 get_variable_upper_bound(::Type{FlowActivePowerToFromVariable}, d::PSY.MonitoredLine, ::Type{<:AbstractBranchFormulation}) = PSY.get_flow_limits(d, PSY.SU).to_from
 get_variable_lower_bound(::Type{FlowActivePowerToFromVariable}, d::PSY.MonitoredLine, ::Type{<:AbstractBranchFormulation}) = -1 * PSY.get_flow_limits(d, PSY.SU).to_from
-get_variable_upper_bound(::Type{FlowActivePowerFromToVariable}, d::PSY.TwoWindingTransformer, ::Type{<:AbstractBranchFormulation}) = _branch_rating(d)
-get_variable_lower_bound(::Type{FlowActivePowerFromToVariable}, d::PSY.TwoWindingTransformer, ::Type{<:AbstractBranchFormulation}) = _negated_rating(_branch_rating(d))
-get_variable_upper_bound(::Type{FlowActivePowerToFromVariable}, d::PSY.TwoWindingTransformer, ::Type{<:AbstractBranchFormulation}) = _branch_rating(d)
-get_variable_lower_bound(::Type{FlowActivePowerToFromVariable}, d::PSY.TwoWindingTransformer, ::Type{<:AbstractBranchFormulation}) = _negated_rating(_branch_rating(d))
 
 #! format: on
 function get_default_time_series_names(
@@ -172,7 +168,7 @@ end
 # the constituent branches may carry different DeviceModel preferences and there is
 # no defensible way to pick one. The PNM aggregators return system-base values
 # (no `PSY.SU`).
-function _get_parallel_branch_max_rating(model::DeviceModel, bp::PNM.BranchesParallel)
+function _parallel_branches_rating(model::DeviceModel, bp::PNM.BranchesParallel)
     method = get_attribute(model, PARALLEL_BRANCH_MAX_RATING_KEY)
     if method == "single_element_contingency"
         return PNM.get_single_element_contingency_rating(bp)
@@ -188,7 +184,7 @@ function _get_parallel_branch_max_rating(model::DeviceModel, bp::PNM.BranchesPar
     end
 end
 
-function _get_parallel_branch_max_rating(::DeviceModel, mbp::PNM.MixedBranchesParallel)
+function _parallel_branches_rating(::DeviceModel, mbp::PNM.MixedBranchesParallel)
     return PNM.get_sum_of_max_rating(mbp)
 end
 #################################### Flow Variable Bounds ##################################################
@@ -338,8 +334,7 @@ function _add_tap_control_variables!(
     U <: _TRANSFORMERS,
     F <: AbstractBranchFormulation,
 }
-    get_attribute(model, ENABLE_CONTROLS_KEY) === true || return
-    _warn_tap_control_nonconvexity(network_model)
+    _control_enabled(model) || return
 
     names = String[]
     circuits = PSY.TransformerCircuit[]
@@ -349,6 +344,7 @@ function _add_tap_control_variables!(
         push!(circuits, c)
     end
     isempty(names) && return
+    _warn_tap_control_nonconvexity(network_model)
     _validate_controlled_branch_not_reduced(network_model, U, names)
 
     time_steps = get_time_steps(container)
@@ -437,7 +433,7 @@ function branch_rate_bounds!(
         # It might have performance implications. Possibly separate this into other functions
         reduction_entry = all_branch_maps_by_type[reduction][B][arc]
         flow_limits = min_max_flow_limits(reduction_entry, device_model)
-        rating = branch_rating(reduction_entry, device_model)
+        rating = _reduction_rating(reduction_entry, device_model)
         rating_limits = (min = -rating, max = rating)
         for (V, var) in zip(variable_types, variables)
             limits = _directional_flow_limits(V, flow_limits, rating_limits)
@@ -460,19 +456,10 @@ end
 
 ################################## Rate Limits constraint_infos ############################
 
-"""
-Scalar branch rating for a reduction entry — the single source of truth for
-branch flow ratings. Parallel groups use the `PARALLEL_BRANCH_MAX_RATING_KEY`
-attribute; every other entry uses `PNM.get_equivalent_rating`. Extend that (not
-this) for new types. The PNM aggregators are system-base (no `PSY.SU`).
-"""
-function branch_rating(double_circuit::PNM.AbstractBranchesParallel, model::DeviceModel)
-    return _get_parallel_branch_max_rating(model, double_circuit)
-end
+_reduction_rating(entry::PNM.AbstractBranchesParallel, model::DeviceModel) =
+    _parallel_branches_rating(model, entry)
 
-function branch_rating(entry, ::DeviceModel)
-    return PNM.get_equivalent_rating(entry)
-end
+_reduction_rating(entry::PNM.BranchesSeries, ::DeviceModel) = PNM.get_equivalent_rating(entry)
 
 """
 Symmetric `(min, max)` flow limits from [`branch_rating`](@ref). Prefer this
@@ -480,7 +467,7 @@ over the formulation-only `get_min_max_limits` when the `DeviceModel` is in
 scope.
 """
 function min_max_flow_limits(entry, model::DeviceModel)
-    rating = branch_rating(entry, model)
+    rating = _reduction_rating(entry, model)
     return (min = -rating, max = rating)
 end
 
@@ -1341,7 +1328,7 @@ end
 # variables. Zero is a data error rather than "unlimited" as in MATPOWER-style data: `p² +
 # q² ≤ 0` would silently pin the branch to zero flow, deleting it from the network.
 function _directional_flow_rating(d::PSY.ACTransmission, ::DeviceModel)
-    rating = _branch_rating(d)
+    rating = PSY.get_rating(d)
     iszero(rating) && error(
         "Branch $(PSY.get_name(d)) has a zero rating; the flow limit would force zero \
          flow. Assign a non-zero thermal rating or use an unbounded formulation.",
@@ -1353,7 +1340,7 @@ function _directional_flow_rating(
     entry::PNM.AbstractReductionAggregate,
     device_model::DeviceModel,
 )
-    rating = branch_rating(entry, device_model)
+    rating = _reduction_rating(entry, device_model)
     iszero(rating) && error(
         "A reduced arc has a zero equivalent rating; the flow limit would force zero \
          flow. Assign non-zero thermal ratings to its member branches.",
@@ -1656,18 +1643,18 @@ function _voltage_products(
     ::String,
     from_bus::String,
     to_bus::String,
-    t::Int,
 )
     jump_model = get_jump_model(container)
     vm = get_variable(container, VoltageMagnitude, PSY.ACBus)
     va = get_variable(container, VoltageAngle, PSY.ACBus)
-    vmf, vmt = vm[from_bus, t], vm[to_bus, t]
-    vaf, vat = va[from_bus, t], va[to_bus, t]
+    vmf, vmt = vm[from_bus, :], vm[to_bus, :]
+    vaf, vat = va[from_bus, :], va[to_bus, :]
+    T = length(get_time_steps(container))
     return (
-        v2_fr = JuMP.@expression(jump_model, vmf^2),
-        v2_to = JuMP.@expression(jump_model, vmt^2),
-        vv_cos = JuMP.@expression(jump_model, vmf * vmt * cos(vaf - vat)),
-        vv_sin = JuMP.@expression(jump_model, vmf * vmt * sin(vaf - vat)),
+        v2_fr = JuMP.@expression(jump_model, [t=1:T], vmf[t]^2),
+        v2_to = JuMP.@expression(jump_model, [t=1:T], vmt[t]^2),
+        vv_cos = JuMP.@expression(jump_model, [t=1:T], vmf[t] * vmt[t] * cos(vaf[t] - vat[t])),
+        vv_sin = JuMP.@expression(jump_model, [t=1:T], vmf[t] * vmt[t] * sin(vaf[t] - vat[t])),
     )
 end
 
@@ -1678,40 +1665,40 @@ function _voltage_products(
     ::String,
     from_bus::String,
     to_bus::String,
-    t::Int,
 )
     jump_model = get_jump_model(container)
     vr = get_variable(container, VoltageReal, PSY.ACBus)
     vi = get_variable(container, VoltageImaginary, PSY.ACBus)
-    vr_fr, vr_to = vr[from_bus, t], vr[to_bus, t]
-    vi_fr, vi_to = vi[from_bus, t], vi[to_bus, t]
+    vr_fr, vr_to = vr[from_bus, :], vr[to_bus, :]
+    vi_fr, vi_to = vi[from_bus, :], vi[to_bus, :]
+    T = length(get_time_steps(container))
     return (
-        v2_fr = JuMP.@expression(jump_model, vr_fr^2 + vi_fr^2),
-        v2_to = JuMP.@expression(jump_model, vr_to^2 + vi_to^2),
-        vv_cos = JuMP.@expression(jump_model, vr_fr * vr_to + vi_fr * vi_to),
-        vv_sin = JuMP.@expression(jump_model, vi_fr * vr_to - vr_fr * vi_to),
+        v2_fr = JuMP.@expression(jump_model, [t=1:T], vr_fr[t]^2 + vi_fr[t]^2),
+        v2_to = JuMP.@expression(jump_model, [t=1:T], vr_to[t]^2 + vi_to[t]^2),
+        vv_cos = JuMP.@expression(jump_model, [t=1:T], vr_fr[t] * vr_to[t] + vi_fr[t] * vi_to[t]),
+        vv_sin = JuMP.@expression(jump_model, [t=1:T], vi_fr[t] * vr_to[t] - vr_fr[t] * vi_to[t]),
     )
 end
 
 function _voltage_products(
     container::OptimizationContainer,
     ::NetworkModel{LPACCNetworkModel},
-    ::Type{T},
+    ::Type{D},
     name::String,
     from_bus::String,
     to_bus::String,
-    t::Int,
-) where {T <: PSY.ACTransmission}
+) where {D <: PSY.ACTransmission}
     jump_model = get_jump_model(container)
     va = get_variable(container, VoltageAngle, PSY.ACBus)
     phi = get_variable(container, VoltageDeviation, PSY.ACBus)
-    cs = get_variable(container, CosineApproximation, T)
+    cs = get_variable(container, CosineApproximation, D)
     phi_fr, phi_to = phi[from_bus, t], phi[to_bus, t]
+    T = length(get_time_steps(container))
     return (
-        v2_fr = JuMP.@expression(jump_model, 1.0 + 2.0 * phi_fr),
-        v2_to = JuMP.@expression(jump_model, 1.0 + 2.0 * phi_to),
-        vv_cos = JuMP.@expression(jump_model, cs[name, t] + phi_fr + phi_to),
-        vv_sin = JuMP.@expression(jump_model, va[from_bus, t] - va[to_bus, t]),
+        v2_fr = JuMP.@expression(jump_model, [t=1:T], 1.0 + 2.0 * phi_fr[t]),
+        v2_to = JuMP.@expression(jump_model, [t=1:T], 1.0 + 2.0 * phi_to[t]),
+        vv_cos = JuMP.@expression(jump_model, [t=1:T], cs[name, t] + phi_fr[t] + phi_to[t]),
+        vv_sin = JuMP.@expression(jump_model, [t=1:T], va[from_bus, t] - va[to_bus, t]),
     )
 end
 
@@ -1732,7 +1719,6 @@ function _tapped_admittance(jump_model, adm, tap)
     )
 end
 
-# Voltage-only AC networks.
 function add_constraints!(
     container::OptimizationContainer,
     sys::PSY.System,
@@ -1767,43 +1753,43 @@ function add_constraints!(
         from_bus = g_geom.from_name
         to_bus = g_geom.to_name
 
+        vp = _voltage_products(container, network_model, T, name, from_bus, to_bus)
+        tap_var = _tap_controlled(device_model, g_geom) ? get_variable(container, TapRatioVariable, T) : nothing
         for t in time_steps
-            vp = _voltage_products(container, network_model, T, name, from_bus, to_bus, t)
-            tap = if _tap_controlled(device_model, g_geom)
-                get_variable(container, TapRatioVariable, T)[name, t]
-            else
-                adm.tap
-            end
+            tap = isnothing(tap_var) ? adm.tap : tap_var[name, t]
             y = _tapped_admittance(jump_model, adm, tap)
 
             cons_pft[name, t] = JuMP.@constraint(
                 jump_model,
                 pft[name, t] ==
-                y.g11 * vp.v2_fr + y.g12 * vp.vv_cos + y.b12 * vp.vv_sin +
+                y.g11 * vp.v2_fr[t] + y.g12 * vp.vv_cos[t] + y.b12 * vp.vv_sin[t] +
                 _slack_term(slacks.p_ft, name, t)
             )
             cons_ptf[name, t] = JuMP.@constraint(
                 jump_model,
                 ptf[name, t] ==
-                y.g22 * vp.v2_to + y.g21 * vp.vv_cos - y.b21 * vp.vv_sin +
+                y.g22 * vp.v2_to[t] + y.g21 * vp.vv_cos[t] - y.b21 * vp.vv_sin[t] +
                 _slack_term(slacks.p_tf, name, t),
             )
             cons_qft[name, t] = JuMP.@constraint(
                 jump_model,
                 qft[name, t] ==
-                -y.b11 * vp.v2_fr - y.b12 * vp.vv_cos + y.g12 * vp.vv_sin +
+                -y.b11 * vp.v2_fr[t] - y.b12 * vp.vv_cos[t] + y.g12 * vp.vv_sin[t] +
                 _slack_term(slacks.q_ft, name, t),
             )
             cons_qtf[name, t] = JuMP.@constraint(
                 jump_model,
                 qtf[name, t] ==
-                -y.b22 * vp.v2_to - y.b21 * vp.vv_cos - y.g21 * vp.vv_sin +
+                -y.b22 * vp.v2_to[t] - y.b21 * vp.vv_cos[t] - y.g21 * vp.vv_sin[t] +
                 _slack_term(slacks.q_tf, name, t),
             )
         end
     end
     return
 end
+
+_iter_branches(ts::_TRANSFORMERS) = ((c, _circuit_arc_name(t, c, i)) for t in ts for (i, c) in enumerate(PSY.get_circuits(t)))
+_iter_branches(ds) = ((d, PSY.get_name(d)) for d in ds)
 
 _voltage_magnitude(container, name, ::NetworkModel{ACPNetworkModel}) =
     get_variable(container, VoltageMagnitude, PSY.ACBus)[name, :]
@@ -1814,7 +1800,7 @@ _voltage_magnitude(
 ) =
     JuMP.@expression(
         get_jump_model(container),
-        [t in get_time_steps(container)],
+        [t=1:length(get_time_steps(container))],
         get_variable(container, VoltageReal, PSY.ACBus)[name, t]^2 +
         get_variable(container, VoltageImaginary, PSY.ACBus)[name, t]^2
     )
@@ -1848,26 +1834,23 @@ function _add_voltage_control_constraints!(
 
     time_steps = get_time_steps(container)
     jump_model = get_jump_model(container)
-    for d in devices
-        for (i, circuit) in enumerate(PSY.get_circuits(d))
-            _voltage_controlled(device_model, circuit) || continue
+    for (circuit, circuit_name) in _iter_branches(devices)
+        _voltage_controlled(device_model, circuit) || continue
 
-            bus = PSY.get_bus(sys, PSY.get_regulated_bus_number(circuit))
-            bus_name = PSY.get_name(bus)
-            bus_limits = PSY.get_voltage_limits(bus)
-            ctl_limits = PSY.get_controlled_quantity_limits(circuit)
-            # TODO: temporary pending PSY#1755
-            circuit_name = _circuit_arc_name(d, circuit, i)
-            (bus_limits.min <= ctl_limits.min <= ctl_limits.max <= bus_limits.max) || error(
-                "Bus limits for $bus_name disagree with control limits for circuit $circuit_name.",
-            )
+        bus = PSY.get_bus(sys, PSY.get_regulated_bus_number(circuit))
+        bus_name = PSY.get_name(bus)
+        bus_limits = PSY.get_voltage_limits(bus)
+        ctl_limits = PSY.get_controlled_quantity_limits(circuit)
+        # TODO: temporary pending PSY#1755
+        (bus_limits.min <= ctl_limits.min <= ctl_limits.max <= bus_limits.max) || error(
+            "Bus voltage limits for $bus_name disagree with control limits for circuit $circuit_name.",
+        )
 
-            lims = _voltage_limits(ctl_limits, network_model)
-            vm = _voltage_magnitude(container, bus_name, network_model)
-            for t in time_steps
-                cons[circuit_name, 1, t] = JuMP.@constraint(jump_model, vm[t] >= lims.min)
-                cons[circuit_name, 2, t] = JuMP.@constraint(jump_model, vm[t] <= lims.max)
-            end
+        lims = _voltage_limits(ctl_limits, network_model)
+        vm = _voltage_magnitude(container, bus_name, network_model)
+        for t in time_steps
+            cons[circuit_name, 1, t] = JuMP.@constraint(jump_model, vm[t] >= lims.min)
+            cons[circuit_name, 2, t] = JuMP.@constraint(jump_model, vm[t] <= lims.max)
         end
     end
     return
@@ -1903,22 +1886,19 @@ function _add_reactive_control_constraints!(
 
     time_steps = get_time_steps(container)
     jump_model = get_jump_model(container)
-    for d in devices
-        for (i, circuit) in enumerate(PSY.get_circuits(d))
-            _reactive_controlled(device_model, circuit) || continue
-            name = _circuit_arc_name(d, circuit, i)
-            lims = PSY.get_controlled_quantity_limits(circuit)
+    for (circuit, name) in _iter_branches(devices)
+        _reactive_controlled(device_model, circuit) || continue
+        lims = PSY.get_controlled_quantity_limits(circuit)
 
-            for t in time_steps
-                cons[name, 1, t] =
-                    JuMP.@constraint(jump_model, qft[name, t] >= lims.min)
-                cons[name, 2, t] =
-                    JuMP.@constraint(jump_model, qft[name, t] <= lims.max)
-                cons[name, 3, t] =
-                    JuMP.@constraint(jump_model, qtf[name, t] >= lims.min)
-                cons[name, 4, t] =
-                    JuMP.@constraint(jump_model, qtf[name, t] <= lims.max)
-            end
+        for t in time_steps
+            cons[name, 1, t] =
+                JuMP.@constraint(jump_model, qft[name, t] >= lims.min)
+            cons[name, 2, t] =
+                JuMP.@constraint(jump_model, qft[name, t] <= lims.max)
+            cons[name, 3, t] =
+                JuMP.@constraint(jump_model, qtf[name, t] >= lims.min)
+            cons[name, 4, t] =
+                JuMP.@constraint(jump_model, qtf[name, t] <= lims.max)
         end
     end
     return
@@ -2091,53 +2071,29 @@ end
 
 ################################## IVRNetworkModel branch constraints ##################
 
-_branch_arc(d::PSY.ACTransmission) = PSY.get_arc(d)
-_branch_arc(d::PSY.TwoWindingTransformer) = PSY.get_arc(PSY.get_circuit(d))
-
 function _min_endpoint_voltage_limit(branch::PSY.ACTransmission)
-    arc = _branch_arc(branch)
+    arc = PSY.get_arc(branch)
     # bus voltage limits are already per-unit
     vmin_fr = PSY.get_voltage_limits(PSY.get_from(arc)).min
     vmin_to = PSY.get_voltage_limits(PSY.get_to(arc)).min
     return min(vmin_fr, vmin_to)
 end
 
-# Series segments may themselves be parallel groups; recursion bottoms out at devices.
 function _min_endpoint_voltage_limit(entry::PNM.AbstractReductionAggregate)
     return minimum(_min_endpoint_voltage_limit(member) for member in entry)
 end
 
-# Compute the per-unit current rating bound for an IVR branch variable.
-# c_rating_a = rate_a / vmin  (system-base power / per-unit voltage → per-unit current).
-function _ivr_current_rating(branch::PSY.ACTransmission)
-    rate_a = _branch_rating(branch)
-    iszero(rate_a) && error(
-        "IVR: branch $(PSY.get_name(branch)) has zero rating — assign a non-zero thermal rating",
-    )
-    vmin = _min_endpoint_voltage_limit(branch)
-    vmin <= 0.0 && error(
-        "IVR: branch $(PSY.get_name(branch)) has non-positive endpoint voltage minimum ($vmin)",
-    )
-    return rate_a / vmin
-end
-
-_ivr_current_rating(branch::PSY.ACTransmission, ::DeviceModel, ::String) =
-    _ivr_current_rating(branch)
-
-# Reduced-arc twin: equivalent rating from PNM (min over a series chain; the
-# device-model attribute rule for parallel groups) over the minimum voltage bound
-# across every member terminal — the corridor current traverses all of them.
-function _ivr_current_rating(
-    entry::Union{PNM.BranchesSeries, PNM.AbstractBranchesParallel},
+function _current_rating_reduced(
+    entry::PNM.AbstractReductionAggregate,
     device_model::DeviceModel,
     entry_name::String,
 )
-    rate_a = branch_rating(entry, device_model)
+    rate_a = _reduction_rating(entry, device_model)
     iszero(rate_a) && error(
         "IVR: reduced arc $(entry_name) has zero equivalent rating — assign non-zero \
          thermal ratings to its member branches",
     )
-    vmin = _min_endpoint_voltage_limit(entry)
+    vmin = min_endpoint_voltage_limit(entry)
     vmin <= 0.0 && error(
         "IVR: reduced arc $(entry_name) has a non-positive member voltage minimum ($vmin)",
     )
@@ -2159,9 +2115,8 @@ function add_variables!(
     if isempty(network_reduction)
         names = [PSY.get_name(d) for d in devices]
         var = add_variable_container!(container, V, T, names, time_steps)
-        for d in devices
-            c_rating = _ivr_current_rating(d)
-            name = PSY.get_name(d)
+        for (branch, name) in _iter_branches(devices)
+            c_rating = _current_rating(d, device_model, name)
             for t in time_steps
                 var[name, t] = JuMP.@variable(
                     jump_model,
@@ -2183,7 +2138,7 @@ function add_variables!(
     for (name, (arc, reduction)) in get_name_to_arc_map_entries(network_reduction, T)
         entry = all_branch_maps_by_type[reduction][T][arc]
         has_entry, tracker_container = search_for_reduced_branch_variable!(tracker, arc, V)
-        c_rating = _ivr_current_rating(entry, device_model, name)
+        c_rating = _current_rating_reduced(entry, device_model, name)
         for t in time_steps
             if !has_entry
                 tracker_container[t] = JuMP.@variable(
@@ -2630,7 +2585,7 @@ function add_constraints!(
         end
 
     for g in geoms, t in time_steps
-        angle = va[g.from_name, t] - va[g.to_name, t] - g.shift_dc
+        angle = JuMP.@expression(jump_model, va[g.from_name, t] - va[g.to_name, t] - g.shift_dc)
         flow =
             if use_slacks
                 JuMP.@expression(
@@ -2644,7 +2599,7 @@ function add_constraints!(
             if _tap_controlled(device_model, g)
                 JuMP.@constraint(
                     jump_model,
-                    flow * tap_var[g.name, t] == g.b_dc * g.adm.tap * angle
+                    flow * tap_var[g.name, t] == g.b_dc * angle * g.adm.tap
                 )
             else
                 JuMP.@constraint(jump_model, flow == g.b_dc * angle)
@@ -2940,7 +2895,7 @@ function _set_dcpll_flow_bounds!(
     if isempty(network_reduction)
         for d in devices
             name = PSY.get_name(d)
-            rate = _branch_rating(d)
+            rate = PSY.get_rating(d)
             iszero(rate) &&
                 error("Branch $name has a zero rating; cannot bound DCPLL flows.")
             for t in time_steps
@@ -3055,12 +3010,12 @@ function add_constraints!(
         end
 
     for g in geoms, t in time_steps
-        angle = va[g.from_name, t] - va[g.to_name, t] - g.shift_dc
+        angle = JuMP.@expression(jump_model, va[g.from_name, t] - va[g.to_name, t] - g.shift_dc)
         cons[g.name, t] =
             if _tap_controlled(device_model, g)
                 JuMP.@constraint(
                     jump_model,
-                    pft[g.name, t] * tap_var[g.name, t] == g.b_dc * g.adm.tap * angle
+                    pft[g.name, t] * tap_var[g.name, t] == g.b_dc * angle * g.adm.tap
                 )
             else
                 JuMP.@constraint(jump_model, pft[g.name, t] == g.b_dc * angle)
