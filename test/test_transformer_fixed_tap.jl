@@ -1,13 +1,12 @@
 #########################################################################################
-# Off-nominal transformer tap under the native network models.
+# Fixed off-nominal transformer tap under the native network models: the tap as a constant
+# component property, with no control block (FIXED / UNDEFINED control objectives). Covers
+# the DC susceptance `b_dc = 1/(tap*x)` used by `BThetaBranchFlow`/`NetworkFlowConstraint`
+# and the Ybus two-port terms in `_tapped_admittance` (both in
+# `ac_transmission_models/AC_branches.jl`).
 #
-# These testsets cover only code that ships in the current module: the DC susceptance
-# `b_dc = 1/(tap*x)` used by `BThetaBranchFlow`/`NetworkFlowConstraint`, and the Ybus
-# two-port terms in `_tapped_admittance` (both in `ac_transmission_models/
-# AC_branches.jl`). They deliberately do NOT touch `TapControl` / `VoltageControlTap`,
-# whose formulation files are not yet included — those live in
-# `test_native_tapcontrol.jl` / `test_voltage_control_tap_models.jl` and stay disabled
-# until the formulations are re-enabled.
+# Tap CONTROL — the tap as a decision variable under a `TransformerControlObjective` — is
+# covered by `test_transformer_controls.jl`.
 #########################################################################################
 
 @testset "StaticBranch models transformer off-nominal tap under DCP (c_sys14)" begin

@@ -20,14 +20,7 @@ const TEST_DIR = @__DIR__
 # helpers, and `test_data/` are shared infrastructure, not standalone testsets — they
 # must not be run as tests (ParallelTestRunner's default discovery would pick them up).
 
-# psy6: disabled pending the transformer refactor. Both remaining entries dispatch on a
-# formulation that is still commented out of the module — `TapControl` in
-# `transformer_models.jl` and `VoltageControlTap` in `voltage_control_tap_models.jl` — so
-# their bodies cannot even be compiled yet. Re-enable them with those formulations.
-const DISABLED_TESTS = Set([
-    "test_native_tapcontrol",
-    "test_voltage_control_tap_models",
-])
+const DISABLED_TESTS = Set(String[])
 
 testsuite = Dict{String, Expr}(
     splitext(f)[1] => :(include($(joinpath(TEST_DIR, f)))) for
