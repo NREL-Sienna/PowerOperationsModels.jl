@@ -3,7 +3,7 @@
 #
 # These testsets cover only code that ships in the current module: the DC susceptance
 # `b_dc = 1/(tap*x)` used by `BThetaBranchFlow`/`NetworkFlowConstraint`, and the Ybus
-# two-port terms in `_pi_flow_terms` (both in `ac_transmission_models/
+# two-port terms in `_tapped_admittance` (both in `ac_transmission_models/
 # AC_branches.jl`). They deliberately do NOT touch `TapControl` / `VoltageControlTap`,
 # whose formulation files are not yet included — those live in
 # `test_native_tapcontrol.jl` / `test_voltage_control_tap_models.jl` and stay disabled
