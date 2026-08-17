@@ -69,14 +69,12 @@ function get_default_time_series_names(
     return Dict{Type{<:TimeSeriesParameter}, String}()
 end
 
+const _TRANSFORMERS = Union{PSY.TwoWindingTransformer, PSY.ThreeWindingTransformer}
+
 const ENABLE_CONTROLS_KEY = "enable_controls"
 
-_control_attribute(
-    ::Union{Type{PSY.TwoWindingTransformer}, Type{PSY.ThreeWindingTransformer}},
-) = (ENABLE_CONTROLS_KEY => false,)
+_control_attribute(::Union{Type{<:_TRANSFORMERS}}) = (ENABLE_CONTROLS_KEY => false,)
 _control_attribute(_) = ()
-
-_TRANSFORMERS = Union{PSY.TwoWindingTransformer, PSY.ThreeWindingTransformer}
 
 _control_enabled(m::DeviceModel{<:_TRANSFORMERS}) =
     get_attribute(m, ENABLE_CONTROLS_KEY) === true
