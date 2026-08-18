@@ -165,25 +165,13 @@ end
 
 #################################### Flow Variable Bounds ##################################################
 
-_branch_variable_bounds(
-    ::Type{V},
-    rep::RepresentativeBranch,
-    ::DeviceModel{T, F},
-) where {V <: VariableType, T <: PSY.ACTransmission, F <: AbstractBranchFormulation} =
+_branch_variable_bounds(::Type{V}, rep, ::DeviceModel{F}) where {V <: VariableType, F <: AbstractBranchFormulation} =
     (
         get_variable_lower_bound(V, rep.branch, F),
         get_variable_upper_bound(V, rep.branch, F),
     )
 
-_angle_limits(d::PSY.Line) = PSY.get_angle_limits(d)
-_angle_limits(d::PSY.MonitoredLine) = PSY.get_angle_limits(d)
-_angle_limits(::PSY.ACTransmission) = (min = -π / 2, max = π / 2)
-
-function _branch_variable_bounds(
-    ::Type{CosineApproximation},
-    rep::RepresentativeBranch,
-    ::DeviceModel{T, F},
-) where {T <: PSY.ACTransmission, F <: AbstractBranchFormulation}
+function _branch_variable_bounds(::Type{CosineApproximation}, rep, _)
     lims = _angle_limits(rep)
     if lims.min >= 0
         return (cos(lims.max), cos(lims.min))
@@ -194,17 +182,23 @@ function _branch_variable_bounds(
     end
 end
 
-function _branch_variable_bounds(
-    ::Type{<:AbstractBranchCurrentVariable},
-    rep::RepresentativeBranch,
-    device_model::DeviceModel{T, F},
-) where {T <: PSY.ACTransmission, F <: AbstractBranchFormulation}
+function _branch_variable_bounds(_, rep, device_model)
     rating = _current_rating(rep, device_model)
     return (-rating, rating)
 end
 
+_branch_variable_bounds(::Type{TapRatioVariable}) = (min = 0.0, max = 1.0)
+
 _branch_variable_start(::Type{CosineApproximation}) = 1.0
+_branch_variable_start(::Type{TapRatioVariable}) = 1.0
 _branch_variable_start(_) = nothing
+
+_is_control(::Type{TapRatioVariable}) = true
+_is_control(_) = false
+
+_branch_uses_control(::Type{TapRatioVariable}, branch) = _tap_controlled(branch)
+#_branch_uses_control(::Type{PhaseShiftVariable}, branch) = _phase_controlled(branch)
+_branch_uses_control(_, _) = true
 
 """
 Branch variables for reduction-aware networks. Every entry of a reduced arc
@@ -224,10 +218,15 @@ function add_variables!(
     reduced_branch_tracker = get_reduced_branch_tracker(network_model)
     start = _branch_variable_start(V)
 
-    # Every device name, not one per arc: members merged into a shared arc must still be
-    # registered on the variable axis, aliasing the arc's variables via the tracker.
-    branches = _all_branches(network_model, T)
-
+    branches = if _is_control(V)
+        members = RepresentativeBranch[]
+        _for_each_branch(_all_branches(network_model, T)) do branch
+            _branch_uses_control(V, branch) && push!(members, branch)
+        end
+        members
+    else
+        _all_branches(network_model, T)
+    end
     variable_container = add_variable_container!(
         container,
         V,
@@ -236,14 +235,14 @@ function add_variables!(
         time_steps,
     )
 
-    _for_each_branch(branches) do rep
+    _for_each_branch(branches) do branch
         has_entry, tracker_container = search_for_reduced_branch_variable!(
             reduced_branch_tracker,
-            rep.arc,
+            branch.arc,
             V,
         )
         if !has_entry
-            (lb, ub) = _branch_variable_bounds(V, rep, device_model)
+            (lb, ub) = _branch_variable_bounds(V, branch, device_model)
             for t in time_steps
                 var = JuMP.@variable(
                     jump_model,
@@ -256,7 +255,7 @@ function add_variables!(
             end
         end
         for t in time_steps
-            variable_container[rep.name, t] = tracker_container[t]
+            variable_container[branch.name, t] = tracker_container[t]
         end
     end
     return
@@ -279,9 +278,16 @@ function _add_tap_control_variables!(
 }
     _control_enabled(model) || return
     _warn_tap_control_nonconvexity(network_model)
-    add_variables!(container, TapRatioVariable, devices, device_model, network_model)
+    add_variables!(container, TapRatioVariable, devices, model, network_model)
     return
 end
+
+_add_tap_control_variables!(
+    ::OptimizationContainer,
+    ::DeviceModel{U},
+    ::IS.FlattenIteratorWrapper{U},
+    ::NetworkModel,
+) where {U <: PSY.ACTransmission} = nothing
 
 function _add_meta_flow_slack!(
     container::OptimizationContainer,
@@ -1516,23 +1522,23 @@ function _add_voltage_control_constraints!(
 
     time_steps = get_time_steps(container)
     jump_model = get_jump_model(container)
-    for (circuit, circuit_name) in _iter_branches(devices)
-        _voltage_controlled(device_model, circuit) || continue
+    _for_each_branch(_representative_branches(network_model, T, VoltageMagnitudeConstraint)) do rep
+        _voltage_controlled(device_model, rep) || return
 
-        bus = PSY.get_bus(sys, PSY.get_regulated_bus_number(circuit))
+        bus = PSY.get_bus(sys, _regulated_number(rep))
         bus_name = PSY.get_name(bus)
         bus_limits = PSY.get_voltage_limits(bus)
-        ctl_limits = PSY.get_controlled_quantity_limits(circuit)
+        ctl_limits = _quantity_limits(rep)
         # TODO: temporary pending PSY#1755
         (bus_limits.min <= ctl_limits.min <= ctl_limits.max <= bus_limits.max) || error(
-            "Bus voltage limits for $bus_name disagree with control limits for circuit $circuit_name.",
+                                                                                        "Bus voltage limits for $bus_name disagree with control limits for circuit $(rep.name).",
         )
 
         lims = _voltage_limits(ctl_limits, network_model)
         vm = _voltage_magnitude(container, bus_name, network_model)
         for t in time_steps
-            cons[circuit_name, 1, t] = JuMP.@constraint(jump_model, vm[t] >= lims.min)
-            cons[circuit_name, 2, t] = JuMP.@constraint(jump_model, vm[t] <= lims.max)
+            cons[rep.name, 1, t] = JuMP.@constraint(jump_model, vm[t] >= lims.min)
+            cons[rep.name, 2, t] = JuMP.@constraint(jump_model, vm[t] <= lims.max)
         end
     end
     return
@@ -1544,13 +1550,13 @@ _add_voltage_control_constraints!(
     ::IS.FlattenIteratorWrapper{T},
     ::DeviceModel{T},
     ::NetworkModel,
-) where {T} = nothing
+) where {T <: PSY.ACTransmission} = nothing
 
 function _add_reactive_control_constraints!(
     container::OptimizationContainer,
     devices::IS.FlattenIteratorWrapper{T},
     device_model::DeviceModel{T},
-    ::NetworkModel{<:NativeACNetworkModel},
+    network_model::NetworkModel{<:NativeACNetworkModel},
 ) where {T <: _TRANSFORMERS}
     _control_enabled(device_model) || return
 
@@ -1568,9 +1574,10 @@ function _add_reactive_control_constraints!(
 
     time_steps = get_time_steps(container)
     jump_model = get_jump_model(container)
-    for (circuit, name) in _iter_branches(devices)
-        _reactive_controlled(device_model, circuit) || continue
-        lims = PSY.get_controlled_quantity_limits(circuit)
+    _for_each_branch(_representative_branches(network_model, T, ReactivePowerFlowControlConstraint)) do rep
+        name = rep.name
+        _reactive_controlled(device_model, rep) || return
+        lims = _quantity_limits(rep)
 
         for t in time_steps
             cons[name, 1, t] =
@@ -1591,7 +1598,7 @@ _add_reactive_control_constraints!(
     ::IS.FlattenIteratorWrapper{T},
     ::DeviceModel{T},
     ::NetworkModel,
-) where {T} = nothing
+) where {T <: PSY.ACTransmission} = nothing
 
 function _add_transformer_control_constraints!(
     container::OptimizationContainer,
@@ -1599,14 +1606,21 @@ function _add_transformer_control_constraints!(
     devices::IS.FlattenIteratorWrapper{T},
     device_model::DeviceModel{T},
     network_model::NetworkModel,
-) where {T <: PSY.ACTransmission}
+) where {T <: _TRANSFORMERS}
     _add_voltage_control_constraints!(container, sys, devices, device_model, network_model)
     _add_reactive_control_constraints!(container, devices, device_model, network_model)
     return
 end
 
-################################## LPACCNetworkModel branch constraints ###############
+_add_transformer_control_constraints!(
+    ::OptimizationContainer,
+    ::PSY.System,
+    ::IS.FlattenIteratorWrapper{T},
+    ::DeviceModel{T},
+    ::NetworkModel,
+) where {T <: PSY.ACTransmission} = nothing
 
+################################## LPACCNetworkModel branch constraints ###############
 
 """
 Add the LPAC convex cosine relaxation for ACBranch under LPACCNetworkModel:
@@ -2192,16 +2206,6 @@ function add_constraints!(
     end
     return
 end
-
-# A branch constrains the angle difference when it carries angle-limit data (only
-# Line / MonitoredLine do) narrower than the PSY default ±π window.
-_constrains_angle_difference(::PSY.ACTransmission) = false
-# angle limits are in radians — no per-unit conversion
-_constrains_angle_difference(d::PSY.Line) =
-    _is_binding_angle_window(PSY.get_angle_limits(d))
-_constrains_angle_difference(d::PSY.MonitoredLine) =
-    _is_binding_angle_window(PSY.get_angle_limits(d))
-_is_binding_angle_window(lims) = !(lims.min ≈ -π && lims.max ≈ π)
 
 """
 Add branch angle-difference limit constraints for ACBranch under DCP/ACP/DCPLL/LPACC
