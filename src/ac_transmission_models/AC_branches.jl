@@ -189,117 +189,94 @@ function _parallel_branches_rating(::DeviceModel, mbp::PNM.MixedBranchesParallel
 end
 #################################### Flow Variable Bounds ##################################################
 
-function add_variables!(
-    container::OptimizationContainer,
-    ::Type{T},
-    network_model::NetworkModel{<:AbstractPTDFNetworkModel},
-    devices::IS.FlattenIteratorWrapper{U},
-    ::Type{F},
-) where {
-    T <: AbstractACActivePowerFlow,
-    U <: PSY.ACTransmission,
-    F <: AbstractBranchFormulation}
-    time_steps = get_time_steps(container)
-    net_reduction_data = get_network_reduction(network_model)
-    branch_names = get_branch_argument_variable_axis(net_reduction_data, devices)
-    reduced_branch_tracker = get_reduced_branch_tracker(network_model)
-    all_branch_maps_by_type = PNM.get_all_branch_maps_by_type(net_reduction_data)
+# Bounds are the only thing that varies across the branch variable families, so they are the
+# only thing `add_variables!` dispatches on. `entry` is the device itself for a direct branch
+# or PNM's equivalent for a reduced arc — the same contract `_directional_flow_rating` uses.
+_branch_variable_bounds(
+    ::Type{V},
+    entry,
+    ::DeviceModel{T, F},
+) where {V <: VariableType, T <: PSY.ACTransmission, F <: AbstractBranchFormulation} =
+    (get_variable_lower_bound(V, entry, F), get_variable_upper_bound(V, entry, F))
 
-    variable_container = add_variable_container!(
-        container,
-        T,
-        U,
-        branch_names,
-        time_steps,
-    )
+_branch_variable_bounds(
+    ::Type{CosineApproximation},
+    entry,
+    ::DeviceModel{T, F},
+) where {T <: PSY.ACTransmission, F <: AbstractBranchFormulation} =
+    _lpacc_cosine_bounds(entry)
 
-    for (name, (arc, reduction)) in PNM.get_name_to_arc_map(net_reduction_data, U)
-        # TODO: entry is not type stable here, it can return any type ACTransmission.
-        # It might have performance implications. Possibly separate this into other functions
-        reduction_entry = all_branch_maps_by_type[reduction][U][arc]
-        has_entry, tracker_container = search_for_reduced_branch_argument!(
-            reduced_branch_tracker,
-            arc,
-            T,
-        )
-        if has_entry
-            @assert !isempty(tracker_container) name arc reduction
-        end
-        ub = get_variable_upper_bound(T, reduction_entry, F)
-        lb = get_variable_lower_bound(T, reduction_entry, F)
-        for t in time_steps
-            if !has_entry
-                tracker_container[t] = JuMP.@variable(
-                    get_jump_model(container),
-                    base_name = "$(T)_$(U)_$(reduction)_{$(name), $(t)}",
-                )
-                ub !== nothing && JuMP.set_upper_bound(tracker_container[t], ub)
-                lb !== nothing && JuMP.set_lower_bound(tracker_container[t], lb)
-            end
-            variable_container[name, t] = tracker_container[t]
-        end
-    end
-    return
+function _branch_variable_bounds(
+    ::Type{<:AbstractBranchCurrentVariable},
+    entry,
+    device_model::DeviceModel{T, F},
+) where {T <: PSY.ACTransmission, F <: AbstractBranchFormulation}
+    rating = _current_rating(entry, device_model)
+    return (-rating, rating)
 end
 
-"""
-Branch flow (and flow-slack) variables for the native nodal network models.
+# LPAC's cosine variable needs a feasible starting point for the NLP solve; the flow and
+# current families take JuMP's default.
+_branch_variable_start(::Type{<:VariableType}) = nothing
+_branch_variable_start(::Type{CosineApproximation}) = 1.0
 
-Without an active network reduction this delegates to the generic per-device
-`add_variables!`. Under a reduction it mirrors the PTDF tracker pattern: the container
-axis is the reduction-entry names (`PNM` `name_to_arc_map`), and every entry of a reduced
-arc — series segments, parallel equivalents, across branch types — aliases the SAME
-underlying JuMP variable, registered once per arc on the branch-reduction tracker. The
+"""
+Branch variables for the PTDF and native nodal network models.
+
+The container axis is the reduction-entry names (`PNM`'s `name_to_arc_map`), and every entry
+of a reduced arc — series segments, parallel equivalents, across branch types — aliases the
+SAME underlying JuMP variable, registered once per arc on the branch-reduction tracker. The
 matching balance wiring and constraint builders then treat each arc exactly once.
+
+`devices` is dispatch-only: the axis comes from the reduction entries, which PNM builds from
+the branches surviving the `DeviceModel` filters.
 """
 function add_variables!(
     container::OptimizationContainer,
-    ::Type{T},
-    network_model::NetworkModel{<:NativeNodalNetworkModel},
-    devices::IS.FlattenIteratorWrapper{U},
-    ::Type{F},
-) where {
-    T <: Union{AbstractACActivePowerFlow, AbstractACReactivePowerFlow},
-    U <: PSY.ACTransmission,
-    F <: AbstractBranchFormulation,
-}
-    net_reduction_data = get_network_reduction(network_model)
-    if isempty(net_reduction_data)
-        add_variables!(container, T, devices, F)
-        return
-    end
+    ::Type{V},
+    ::IS.FlattenIteratorWrapper{T},
+    device_model::DeviceModel{T, F},
+    network_model::NetworkModel{
+        <:Union{AbstractPTDFNetworkModel, NativeNodalNetworkModel},
+    },
+) where {V <: VariableType, T <: PSY.ACTransmission, F <: AbstractBranchFormulation}
     time_steps = get_time_steps(container)
-    branch_names = get_branch_argument_variable_axis(net_reduction_data, devices)
-    reduced_branch_tracker = get_reduced_branch_tracker(network_model)
-    all_branch_maps_by_type = PNM.get_all_branch_maps_by_type(net_reduction_data)
     jump_model = get_jump_model(container)
+    network_reduction = get_network_reduction(network_model)
+    reduced_branch_tracker = get_reduced_branch_tracker(network_model)
+    all_branch_maps_by_type = PNM.get_all_branch_maps_by_type(network_reduction)
+    arc_map = get_name_to_arc_map_entries(network_reduction, T)
+    start = _branch_variable_start(V)
 
     variable_container = add_variable_container!(
         container,
+        V,
         T,
-        U,
-        branch_names,
+        collect(keys(arc_map)),
         time_steps,
     )
 
-    for (name, (arc, reduction)) in get_name_to_arc_map_entries(net_reduction_data, U)
-        reduction_entry = all_branch_maps_by_type[reduction][U][arc]
+    for (name, (arc, reduction)) in arc_map
+        entry = all_branch_maps_by_type[reduction][T][arc]
         has_entry, tracker_container = search_for_reduced_branch_variable!(
             reduced_branch_tracker,
             arc,
-            T,
+            V,
         )
-        ub = get_variable_upper_bound(T, reduction_entry, F)
-        lb = get_variable_lower_bound(T, reduction_entry, F)
-        for t in time_steps
-            if !has_entry
-                tracker_container[t] = JuMP.@variable(
+        if !has_entry
+            (lb, ub) = _branch_variable_bounds(V, entry, device_model)
+            for t in time_steps
+                var = JuMP.@variable(
                     jump_model,
-                    base_name = "$(T)_$(U)_$(reduction)_{$(name), $(t)}",
+                    base_name = "$(nameof(V))_$(nameof(T))_$(reduction)_{$(name), $(t)}",
                 )
-                ub !== nothing && JuMP.set_upper_bound(tracker_container[t], ub)
-                lb !== nothing && JuMP.set_lower_bound(tracker_container[t], lb)
+                lb !== nothing && JuMP.set_lower_bound(var, lb)
+                ub !== nothing && JuMP.set_upper_bound(var, ub)
+                start !== nothing && JuMP.set_start_value(var, start)
+                tracker_container[t] = var
             end
+        end
+        for t in time_steps
             variable_container[name, t] = tracker_container[t]
         end
     end
@@ -1328,7 +1305,7 @@ end
 # variables. Zero is a data error rather than "unlimited" as in MATPOWER-style data: `p² +
 # q² ≤ 0` would silently pin the branch to zero flow, deleting it from the network.
 function _directional_flow_rating(d::PSY.ACTransmission, ::DeviceModel)
-    rating = PSY.get_rating(d)
+    rating = PSY.get_rating(d, PSY.SU)
     iszero(rating) && error(
         "Branch $(PSY.get_name(d)) has a zero rating; the flow limit would force zero \
          flow. Assign a non-zero thermal rating or use an unbounded formulation.",
@@ -1712,7 +1689,7 @@ function _tapped_admittance(jump_model, adm, tap)
         b11 = JuMP.@expression(jump_model, adm.b / tap^2 + adm.b_fr),
         g12 = JuMP.@expression(jump_model, (-g_cos + b_sin) / tap),
         b12 = JuMP.@expression(jump_model, (-b_cos - g_sin) / tap),
-        g22 = JuMP.@expression(jump_model, (-g_cos - b_sin) / tap),
+        g21 = JuMP.@expression(jump_model, (-g_cos - b_sin) / tap),
         b21 = JuMP.@expression(jump_model, (g_sin - b_cos) / tap),
         g22 = adm.g + adm.g_to,
         b22 = adm.b + adm.b_to,
@@ -1949,67 +1926,6 @@ function _lpacc_cosine_bounds(d::PSY.ACTransmission)
 end
 
 """
-Create the bus-pair cosine variable (`cs`) for ACBranch under LPACCNetworkModel,
-indexed by branch name. Bounded by the cosine of the branch angle limits (Principle 0),
-start 1.0.
-"""
-function add_variables!(
-    container::OptimizationContainer,
-    ::Type{CosineApproximation},
-    devices::IS.FlattenIteratorWrapper{T},
-    network_model::NetworkModel{LPACCNetworkModel},
-) where {T <: PSY.ACTransmission}
-    time_steps = get_time_steps(container)
-    jump_model = get_jump_model(container)
-    network_reduction = get_network_reduction(network_model)
-    if isempty(network_reduction)
-        names = [PSY.get_name(d) for d in devices]
-        var = add_variable_container!(container, CosineApproximation, T, names, time_steps)
-        for d in devices
-            name = PSY.get_name(d)
-            (cmin, cmax) = _lpacc_cosine_bounds(d)
-            for t in time_steps
-                var[name, t] = JuMP.@variable(
-                    jump_model,
-                    base_name = "CosineApproximation_$(T)_{$(name), $(t)}",
-                    lower_bound = cmin,
-                    upper_bound = cmax,
-                    start = 1.0,
-                )
-            end
-        end
-        return
-    end
-    # Reduced case: `cs` approximates cos(θ_fr - θ_to) of the reduced arc, so all entries
-    # of an arc (across branch types) alias one tracker-registered variable, mirroring the
-    # flow variables. Equivalent entries have no angle-limit data and use the ±π/2 default.
-    names = get_branch_argument_variable_axis(network_reduction, devices)
-    tracker = get_reduced_branch_tracker(network_model)
-    all_branch_maps_by_type = PNM.get_all_branch_maps_by_type(network_reduction)
-    var = add_variable_container!(container, CosineApproximation, T, names, time_steps)
-    for (name, (arc, reduction)) in get_name_to_arc_map_entries(network_reduction, T)
-        entry = all_branch_maps_by_type[reduction][T][arc]
-        has_entry, tracker_container = search_for_reduced_branch_variable!(
-            tracker, arc, CosineApproximation,
-        )
-        (cmin, cmax) = _lpacc_cosine_bounds(entry)
-        for t in time_steps
-            if !has_entry
-                tracker_container[t] = JuMP.@variable(
-                    jump_model,
-                    base_name = "CosineApproximation_$(T)_$(reduction)_{$(name), $(t)}",
-                    lower_bound = cmin,
-                    upper_bound = cmax,
-                    start = 1.0,
-                )
-            end
-            var[name, t] = tracker_container[t]
-        end
-    end
-    return
-end
-
-"""
 Add the LPAC convex cosine relaxation for ACBranch under LPACCNetworkModel:
 
     cs ≤ 1 - (1 - cos(vad_max))/vad_max² · (va_fr - va_to)²
@@ -2083,75 +1999,16 @@ function _min_endpoint_voltage_limit(entry::PNM.AbstractReductionAggregate)
     return minimum(_min_endpoint_voltage_limit(member) for member in entry)
 end
 
-function _current_rating_reduced(
-    entry::PNM.AbstractReductionAggregate,
-    device_model::DeviceModel,
-    entry_name::String,
-)
-    rate_a = _reduction_rating(entry, device_model)
-    iszero(rate_a) && error(
-        "IVR: reduced arc $(entry_name) has zero equivalent rating — assign non-zero \
-         thermal ratings to its member branches",
-    )
-    vmin = min_endpoint_voltage_limit(entry)
+# Current rating of one entry: apparent-power rating over the lowest endpoint voltage it can
+# see, so the bound holds across the whole voltage band. Entry-dispatched like
+# `_directional_flow_rating`, so the direct-branch and reduced-arc cases share a caller.
+function _current_rating(entry, device_model::DeviceModel)
+    rate_a = _directional_flow_rating(entry, device_model)
+    vmin = _min_endpoint_voltage_limit(entry)
     vmin <= 0.0 && error(
-        "IVR: reduced arc $(entry_name) has a non-positive member voltage minimum ($vmin)",
+        "IVR: $(PNM.get_name(entry)) has a non-positive endpoint voltage minimum ($vmin)",
     )
     return rate_a / vmin
-end
-
-function add_variables!(
-    container::OptimizationContainer,
-    ::Type{V},
-    devices::IS.FlattenIteratorWrapper{T},
-    device_model::DeviceModel,
-    network_model::NetworkModel{IVRNetworkModel},
-) where {V <: AbstractBranchCurrentVariable, T <: PSY.ACTransmission}
-    time_steps = get_time_steps(container)
-    jump_model = get_jump_model(container)
-    network_reduction = get_network_reduction(network_model)
-    # base-name prefix built once (unqualified via nameof) instead of per (name, t)
-    var_prefix = "$(nameof(V))_$(nameof(T))"
-    if isempty(network_reduction)
-        names = [PSY.get_name(d) for d in devices]
-        var = add_variable_container!(container, V, T, names, time_steps)
-        for (branch, name) in _iter_branches(devices)
-            c_rating = _current_rating(d, device_model, name)
-            for t in time_steps
-                var[name, t] = JuMP.@variable(
-                    jump_model,
-                    base_name = "$(var_prefix)_{$(name), $(t)}",
-                    lower_bound = -c_rating,
-                    upper_bound = c_rating,
-                )
-            end
-        end
-        return
-    end
-    # Reduced case: branch currents are per-reduced-arc quantities like the flows, so all
-    # entries of an arc (across branch types) alias one tracker-registered variable, with
-    # the current rating derived from the reduction entry's equivalent parameters.
-    names = get_branch_argument_variable_axis(network_reduction, devices)
-    tracker = get_reduced_branch_tracker(network_model)
-    all_branch_maps_by_type = PNM.get_all_branch_maps_by_type(network_reduction)
-    var = add_variable_container!(container, V, T, names, time_steps)
-    for (name, (arc, reduction)) in get_name_to_arc_map_entries(network_reduction, T)
-        entry = all_branch_maps_by_type[reduction][T][arc]
-        has_entry, tracker_container = search_for_reduced_branch_variable!(tracker, arc, V)
-        c_rating = _current_rating_reduced(entry, device_model, name)
-        for t in time_steps
-            if !has_entry
-                tracker_container[t] = JuMP.@variable(
-                    jump_model,
-                    base_name = "$(var_prefix)_$(reduction)_{$(name), $(t)}",
-                    lower_bound = -c_rating,
-                    upper_bound = c_rating,
-                )
-            end
-            var[name, t] = tracker_container[t]
-        end
-    end
-    return
 end
 
 """
@@ -2360,7 +2217,7 @@ function add_constraints!(
 ) where {T <: PSY.ACTransmission, U <: AbstractBranchFormulation}
     entries = _branch_rating_entries(network_model, devices, T, CurrentLimitConstraint)
     rating2 = [
-        name => _rate_rhs_squared(_ivr_current_rating(entry, device_model, name)) for
+        name => _rate_rhs_squared(_current_rating(entry, device_model)) for
         (name, entry) in entries
     ]
     _add_current_magnitude_limits!(

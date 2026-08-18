@@ -856,20 +856,7 @@ function construct_device!(
 ) where {T <: PSY.ACTransmission, F <: AbstractSecurityConstrainedStaticBranch}
     devices = get_available_components(device_model, sys)
     if get_use_slacks(device_model)
-        add_variables!(
-            container,
-            FlowActivePowerSlackUpperBound,
-            network_model,
-            devices,
-            F,
-        )
-        add_variables!(
-            container,
-            FlowActivePowerSlackLowerBound,
-            network_model,
-            devices,
-            F,
-        )
+        _add_flow_slacks!(container, devices, device_model, network_model)
     end
 
     if haskey(get_time_series_names(device_model), BranchRatingTimeSeriesParameter)
@@ -957,22 +944,11 @@ function construct_device!(
     network_model::NetworkModel{DCPNetworkModel},
 ) where {T <: PSY.ACTransmission, F <: AbstractSecurityConstrainedStaticBranch}
     devices = get_available_components(device_model, sys)
-    add_variables!(container, FlowActivePowerVariable, network_model, devices, F)
+    add_variables!(
+        container, FlowActivePowerVariable, devices, device_model, network_model,
+    )
     if get_use_slacks(device_model)
-        add_variables!(
-            container,
-            FlowActivePowerSlackUpperBound,
-            network_model,
-            devices,
-            F,
-        )
-        add_variables!(
-            container,
-            FlowActivePowerSlackLowerBound,
-            network_model,
-            devices,
-            F,
-        )
+        _add_flow_slacks!(container, devices, device_model, network_model)
     end
     add_to_expression!(
         container,

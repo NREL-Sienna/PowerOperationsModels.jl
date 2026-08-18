@@ -55,8 +55,8 @@ function _collect_reduction_exceptions(
     for m in values(branch_models)
         _pin_time_series_branch_buses!(buses, m, sys)
         _pin_outage_buses!(buses, m, sys)
-        _pin_model_all_branches(buses, m)
-        _pin_transformer_controls(buses, m)
+        _pin_model_all_branches!(buses, m)
+        _pin_transformer_controls!(buses, m)
     end
     return collect(buses)
 end

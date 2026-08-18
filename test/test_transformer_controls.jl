@@ -23,7 +23,7 @@ function _controlled_sys14(
     PSY.set_regulated_bus_number!(circuit, regulated)
     PSY.set_controlled_quantity_limits!(circuit, quantity_limits)
     PSY.set_control_limits!(circuit, control_limits)
-    return sys, transformer, circuit, PSY.get_name(bus)
+    return sys, transformer, circuit, PSY.get_name(PSY.get_bus(sys, regulated))
 end
 
 function _controlled_template(
