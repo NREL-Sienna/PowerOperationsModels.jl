@@ -888,21 +888,20 @@ function add_energybalance_without_reserves!(
     return
 end
 
-# Reserve-assignment bounds for discharge (Up) / charge (Down):
-#   UB: power + up_assignment <= max
-#   LB: power - down_assignment >= min
-# Same shape for both directions, parametrized by the "assignment" expression pair and
-# power variable/limits; routed through `IOM.add_range_bound_constraint!`.
+# Reserve-assignment bounds per side. Reserves swap roles on the charge side (down
+# INCREASES charging, up DECREASES it), same convention as the deployment expressions:
+#   UB: power + increasing <= max   (discharge: Up;   charge: Down)
+#   LB: power - decreasing >= min   (discharge: Down; charge: Up)
 _reserve_assignment_power_var(::Type{ReserveDischargeConstraint}) = ActivePowerOutVariable
 _reserve_assignment_power_var(::Type{ReserveChargeConstraint}) = ActivePowerInVariable
-_reserve_assignment_up_expr(::Type{ReserveDischargeConstraint}) =
+_reserve_assignment_increasing_expr(::Type{ReserveDischargeConstraint}) =
     StorageReserveBalanceExpression{PSY.ReserveUp, UnscaledReserve, DischargeSide}
-_reserve_assignment_down_expr(::Type{ReserveDischargeConstraint}) =
+_reserve_assignment_decreasing_expr(::Type{ReserveDischargeConstraint}) =
     StorageReserveBalanceExpression{PSY.ReserveDown, UnscaledReserve, DischargeSide}
-_reserve_assignment_up_expr(::Type{ReserveChargeConstraint}) =
-    StorageReserveBalanceExpression{PSY.ReserveUp, UnscaledReserve, ChargeSide}
-_reserve_assignment_down_expr(::Type{ReserveChargeConstraint}) =
+_reserve_assignment_increasing_expr(::Type{ReserveChargeConstraint}) =
     StorageReserveBalanceExpression{PSY.ReserveDown, UnscaledReserve, ChargeSide}
+_reserve_assignment_decreasing_expr(::Type{ReserveChargeConstraint}) =
+    StorageReserveBalanceExpression{PSY.ReserveUp, UnscaledReserve, ChargeSide}
 _reserve_assignment_limits(::Type{ReserveDischargeConstraint}, d) =
     PSY.get_output_active_power_limits(d, PSY.SU)
 _reserve_assignment_limits(::Type{ReserveChargeConstraint}, d) =
@@ -927,8 +926,8 @@ function add_constraints!(
     time_steps = get_time_steps(container)
     jump_model = get_jump_model(container)
     power_var = get_variable(container, _reserve_assignment_power_var(T), V)
-    r_up = get_expression(container, _reserve_assignment_up_expr(T), V)
-    r_dn = get_expression(container, _reserve_assignment_down_expr(T), V)
+    r_inc = get_expression(container, _reserve_assignment_increasing_expr(T), V)
+    r_dec = get_expression(container, _reserve_assignment_decreasing_expr(T), V)
 
     con_ub = add_constraints_container!(container, T, V, names, time_steps; meta = "ub")
     con_lb = add_constraints_container!(container, T, V, names, time_steps; meta = "lb")
@@ -937,10 +936,10 @@ function add_constraints!(
         limits = _reserve_assignment_limits(T, d)
         IOM.add_range_bound_constraint!(
             IOM.UpperBound(), jump_model, con_ub, name, t,
-            power_var[name, t] + r_up[name, t], limits.max)
+            power_var[name, t] + r_inc[name, t], limits.max)
         IOM.add_range_bound_constraint!(
             IOM.LowerBound(), jump_model, con_lb, name, t,
-            power_var[name, t] - r_dn[name, t], limits.min)
+            power_var[name, t] - r_dec[name, t], limits.min)
     end
     return
 end
