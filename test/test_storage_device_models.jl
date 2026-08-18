@@ -387,6 +387,66 @@ end
     @test all(demand[t, "NSPIN"] > 1.0 for t in 1:24)
 end
 
+@testset "Energy/AS decoupling: reserve_coverage = false" begin
+    template = get_thermal_dispatch_template_network(CopperPlateNetworkModel)
+    device_model = DeviceModel(
+        EnergyReservoirStorage,
+        StorageDispatchWithReserves;
+        attributes = Dict{String, Any}(
+            "reservation" => true,
+            "cycling_limits" => false,
+            "energy_target" => false,
+            "reserve_coverage" => false,
+            # Deliberately true: the decoupling must suppress it (with a warning).
+            "complete_coverage" => true,
+            "regularization" => false,
+        ),
+    )
+    set_device_model!(template, device_model)
+    set_device_model!(template, RenewableDispatch, FixedOutput)
+    set_service_model!(template, ServiceModel(OnlineReserve{ReserveUp}, RangeReserve))
+    set_service_model!(template, ServiceModel(OnlineReserve{ReserveDown}, RangeReserve))
+    c_sys5_bat = PSB.build_system(PSITestSystems, "c_sys5_bat"; add_reserves = true)
+    _deactivate_unmodeled_ordc!(c_sys5_bat)
+    model = DecisionModel(template, c_sys5_bat)
+    @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
+          ModelBuildStatus.BUILT
+
+    constraints = IOM.get_constraints(model)
+    # No SOC coverage of any flavor: individual, end-of-period, or complete (the
+    # complete_coverage = true above must be suppressed by the decoupling).
+    coverage_types = (
+        ReserveCoverageConstraint,
+        ReserveCoverageConstraintEndOfPeriod,
+        ReserveCompleteCoverageConstraint,
+        ReserveCompleteCoverageConstraintEndOfPeriod,
+    )
+    @test all(k -> IOM.get_entry_type(k) ∉ coverage_types, keys(constraints))
+
+    # The reservation binary still exists: energy charge/discharge exclusivity is kept.
+    variables = IOM.get_variables(model)
+    resv_key = IOM.VariableKey(ReservationVariable, EnergyReservoirStorage)
+    @test haskey(variables, resv_key)
+
+    # ...but the reserve band is decoupled from it: no deployment power-limit row may
+    # reference the binary (the no-reservation bound builders are used instead).
+    ss_vars = Set(vec(variables[resv_key].data))
+    for ckey in keys(constraints)
+        IOM.get_entry_type(ckey) in (
+            POM.OutputActivePowerVariableLimitsConstraint,
+            POM.InputActivePowerVariableLimitsConstraint,
+        ) || continue
+        arr = constraints[ckey]
+        data = arr isa JuMP.Containers.DenseAxisArray ? arr.data : arr
+        for i in eachindex(data)
+            isassigned(data, i) || continue
+            func = JuMP.constraint_object(data[i]).func
+            func isa JuMP.GenericAffExpr || continue
+            @test isempty(intersect(Set(keys(func.terms)), ss_vars))
+        end
+    end
+end
+
 @testset "Test Storage Energy Target Constraint" begin
     template = get_thermal_dispatch_template_network(CopperPlateNetworkModel)
     device_model = DeviceModel(

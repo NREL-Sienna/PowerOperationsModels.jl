@@ -451,8 +451,12 @@ There is exactly one concrete storage formulation and one concrete hybrid formul
 
 ### [`StorageDispatchWithReserves`](@id storage_math_model)
 
-Attributes: `"reservation"` (default `true`), `"cycling_limits"`, `"energy_target"`,
-`"complete_coverage"`, `"regularization"` (all default `false`).
+Attributes: `"reservation"`, `"reserve_coverage"` (default `true`; `reserve_coverage = false`
+DECOUPLES energy and AS for day-ahead-style clearing: no SOC deployment-coverage constraints,
+reserve bands bounded by capability instead of the reservation binary's dispatch side, and
+`complete_coverage` ignored with a warning - the binary still governs energy exclusivity),
+`"cycling_limits"`, `"energy_target"`, `"complete_coverage"`, `"regularization"`
+(all default `false`).
 
 | Stage    | Emits                                                                                                                                                                                                                                                                                                                                               |
 |:-------- |:--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

@@ -120,6 +120,7 @@ function get_default_attributes(
         "reservation" => true,
         "cycling_limits" => false,
         "energy_target" => false,
+        "reserve_coverage" => true,
         "complete_coverage" => false,
         "regularization" => false,
     )
@@ -748,7 +749,8 @@ function add_constraints!(
     model::DeviceModel{V, StorageDispatchWithReserves},
     network_model::NetworkModel{X},
 ) where {V <: PSY.Storage, X <: AbstractNetworkModel}
-    if has_service_model(model)
+    # Decoupled AS: the SOC evolution carries no expected reserve-deployment energy.
+    if has_service_model(model) && get_attribute(model, "reserve_coverage")
         add_energybalance_with_reserves!(container, devices, model, network_model)
     else
         add_energybalance_without_reserves!(container, devices, model, network_model)
