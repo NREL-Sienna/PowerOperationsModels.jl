@@ -211,11 +211,6 @@ _include_constant_min_gen_power_in_constraint(
 # Section 6: Source ImportExport — both incremental and decremental offers
 #################################################################################
 
-# FIXME behavior change: we now always add PWL terms for both import and export. The
-# previous `isnothing(...)` guard is dead in the new PSY (offer curves default to
-# `ZERO_OFFER_CURVE`, not nothing), and we don't yet have a way to introspect TS-backed
-# curves to decide "trivially empty". Skipping when the curve is trivial (one-directional
-# source) would be the better behavior — revisit once we have a cheap emptiness check.
 function add_variable_cost_to_objective!(
     container::OptimizationContainer,
     ::Type{ActivePowerOutVariable},
@@ -223,7 +218,7 @@ function add_variable_cost_to_objective!(
     cost_function::IEC_TYPES,
     ::Type{ImportExportSourceModel},
 )
-    isnothing(get_output_offer_curves(cost_function)) && return
+    IOM.is_nontrivial_offer(get_output_offer_curves(cost_function)) || return
     add_pwl_term_delta!(
         IncrementalOffer(),
         container,
@@ -242,7 +237,7 @@ function add_variable_cost_to_objective!(
     cost_function::IEC_TYPES,
     ::Type{ImportExportSourceModel},
 )
-    isnothing(get_input_offer_curves(cost_function)) && return
+    IOM.is_nontrivial_offer(get_input_offer_curves(cost_function)) || return
     add_pwl_term_delta!(
         DecrementalOffer(),
         container,
