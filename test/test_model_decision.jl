@@ -170,6 +170,39 @@ end
     @test isfile(joinpath(variables_dir, "ActivePowerVariable__ThermalStandard.csv"))
 end
 
+@testset "System JSON written alongside outputs" begin
+    c_sys5 = PSB.build_system(PSITestSystems, "c_sys5")
+    template = get_thermal_standard_uc_template()
+
+    output_dir = mktempdir(; cleanup = true)
+    model = DecisionModel(template, c_sys5; optimizer = HiGHS_optimizer)
+    @test build!(model; output_dir = output_dir) == IOM.ModelBuildStatus.BUILT
+    @test solve!(model) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
+    sys_filename = joinpath(output_dir, IOM.make_system_filename(IOM.get_system(model)))
+    @test isfile(sys_filename)
+
+    mtime_before = mtime(sys_filename)
+    sleep(1)
+    @test solve!(model) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
+    @test mtime(sys_filename) == mtime_before
+
+    output_dir_no_write = mktempdir(; cleanup = true)
+    model_no_write = DecisionModel(
+        template,
+        c_sys5;
+        optimizer = HiGHS_optimizer,
+        system_to_file = false,
+    )
+    @test build!(model_no_write; output_dir = output_dir_no_write) ==
+          IOM.ModelBuildStatus.BUILT
+    @test solve!(model_no_write) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
+    sys_filename_no_write = joinpath(
+        output_dir_no_write,
+        IOM.make_system_filename(IOM.get_system(model_no_write)),
+    )
+    @test !isfile(sys_filename_no_write)
+end
+
 @testset "Test optimization debugging functions" begin
     c_sys5 = PSB.build_system(PSITestSystems, "c_sys5")
     template = get_thermal_standard_uc_template()
