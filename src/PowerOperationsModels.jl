@@ -302,6 +302,7 @@ include("energy_storage_models/storage_constructor.jl")
 include("common_models/market_bid_overrides.jl")
 
 # AC Transmission Models
+include("ac_transmission_models/RepresentativeBranch.jl")
 include("ac_transmission_models/AC_branches.jl")
 include("ac_transmission_models/security_constrained_branch.jl")
 include("ac_transmission_models/branch_constructor.jl")
