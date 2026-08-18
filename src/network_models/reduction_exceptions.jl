@@ -148,8 +148,8 @@ end
 
 _pin_model_all_branches!(::Set{Int}, ::DeviceModel) = nothing
 
-# A transformer circuit with a defined control objective on a transformer with
-# controls enabled must not be reduced away, nor can its regulated bus.
+# A transformer circuit with a bus-based control objective on a transformer
+# with controls enabled must not be reduced away, nor can its regulated bus.
 function _pin_transformer_controls!(
     buses::Set{Int},
     m::DeviceModel{_TRANSFORMERS},
@@ -157,7 +157,8 @@ function _pin_transformer_controls!(
     _control_enabled(m) || return
     for transformer in get_device_cache(m)
         for circuit in PSY.get_circuits(transformer)
-            _control_enabled(m) || continue
+            PSY.get_available(m) || continue
+            PSY.get_control_objective(circuit) in (PSY.TransformerControlObjective.VOLTAGE,) || continue
             _push_component_buses!(buses, circuit)
             push!(buses, get_regulated_bus(circuit))
         end

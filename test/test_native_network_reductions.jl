@@ -411,16 +411,52 @@ end
     #    @test occursin("absorbed by a network reduction", log)
 end
 
-# TODO: reenable with tap control
-@testset "tap regulated-bus resolution errors for non-retained bus numbers" begin
-    #    sys = PSB.build_system(PSITestSystems, "c_sys14")
-    #    tr = PSY.get_component(PSY.TwoWindingTransformer, sys, "Trans1")
-    #    PSY.set_regulated_bus_number!(PSY.get_circuit(tr), 999)
-    #    geom = POM._branch_geometry(tr)
-    #    number_to_name = Dict(1 => "Bus 1")
-    #    @test_throws ErrorException POM._tap_regulated_bus_name(tr, geom, number_to_name)
-    #    bus_by_number = Dict(1 => PSY.get_from(PSY.get_arc(tr)))
-    #    @test_throws ErrorException POM._tap_regulated_bus(tr, bus_by_number)
+@testset "a controlled circuit survives the network reduction" begin
+    # Controlled transformers pin their endpoint buses irreducible, so the circuit keeps
+    # its own arc (and therefore its own tap variable) even with reductions requested.
+    sys, _, _, _ = _controlled_sys14(VOLTAGE_CONTROL)
+    model, status = _build_controlled(
+        sys,
+        ACPNetworkModel;
+        optimizer = ipopt_optimizer,
+        reduce_radial_branches = true,
+        reduce_degree_two_branches = true,
+    )
+    @test status == IOM.ModelBuildStatus.BUILT
+    container = IOM.get_optimization_container(model)
+    @test axes(IOM.get_variable(container, TapRatioVariable, PSY.TwoWindingTransformer))[1] ==
+          ["Trans1"]
+end
+
+@testset "a controlled circuit merged with a parallel branch fails with a clear error" begin
+    sys, transformer, circuit, _ = _controlled_sys14(VOLTAGE_CONTROL)
+    arc = PSY.get_arc(circuit)
+    PSY.add_component!(
+        sys,
+        PSY.TwoWindingTransformer(;
+            name = "parallel_to_Trans1",
+            circuit = PSY.TransformerCircuit(;
+                available = true,
+                arc = arc,
+                r = PSY.get_r(circuit, PSY.SU),
+                x = PSY.get_x(circuit, PSY.SU),
+                tap = 1.0,
+                α = 0.0,
+                rating = PSY.get_rating(circuit, PSY.SU),
+                base_power = PSY.get_base_power(sys, PSY.NU),
+            ),
+            magnetizing_shunt = 0.0 + 0.0im,
+            shunt_location = PSY.TwoWindingTransformerShuntLocation.PRIMARY,
+        ),
+    )
+    template = _controlled_template(ACPNetworkModel)
+    model = DecisionModel(template, sys; optimizer = ipopt_optimizer)
+    out = mktempdir(; cleanup = true)
+    @test build!(model; output_dir = out, console_level = Logging.Error) ==
+          IOM.ModelBuildStatus.FAILED
+    log = read(joinpath(out, "operation_problem.log"), String)
+    @test occursin("Controlled transformer circuit", log)
+    @test occursin(PSY.get_name(transformer), log)
 end
 
 @testset "ACP + StaticBranchBounds use_slacks wires flow-definition slacks per reduced arc" begin

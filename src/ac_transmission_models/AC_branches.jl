@@ -1702,8 +1702,8 @@ function _voltage_products(
     )
 end
 
-# Ybus terms, supporting Float64 and VariableRef taps. PNM's ybus functions
-# use imaginary numbers which VariableRef doesn't support.
+# PNM.ybus_branch_entries-adjacent: supports variable tap, separates
+# condutance and susceptance.
 function _tapped_admittance(jump_model, adm, tap)
     g_cos, g_sin = adm.g * cos(adm.shift), adm.g * sin(adm.shift)
     b_cos, b_sin = adm.b * cos(adm.shift), adm.b * sin(adm.shift)
@@ -1712,7 +1712,7 @@ function _tapped_admittance(jump_model, adm, tap)
         b11 = JuMP.@expression(jump_model, adm.b / tap^2 + adm.b_fr),
         g12 = JuMP.@expression(jump_model, (-g_cos + b_sin) / tap),
         b12 = JuMP.@expression(jump_model, (-b_cos - g_sin) / tap),
-        g21 = JuMP.@expression(jump_model, (-g_cos - b_sin) / tap),
+        g22 = JuMP.@expression(jump_model, (-g_cos - b_sin) / tap),
         b21 = JuMP.@expression(jump_model, (g_sin - b_cos) / tap),
         g22 = adm.g + adm.g_to,
         b22 = adm.b + adm.b_to,
