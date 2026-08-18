@@ -3,7 +3,7 @@
     template_uc = PowerOperationsProblemTemplate(NetworkModel(
         DCPNetworkModel,
         #use_slacks=true,
-        #network_matrix =PTDF(sys_5),
+        #network_source = PrebuiltMatrixSource(VirtualPTDF(sys_5)),
         #duals=[CopperPlateBalanceConstraint],
     ))
 
@@ -28,7 +28,6 @@
         NetworkModel(
             PTDFNetworkModel;
             #use_slacks=true,
-            network_matrix = PTDF(sys_5),
             #duals=[CopperPlateBalanceConstraint],
         ),
     )
@@ -124,7 +123,7 @@ end
         )
     end
     template = PowerOperationsProblemTemplate(
-        NetworkModel(PTDFNetworkModel; network_matrix = PTDF(sys)),
+        NetworkModel(PTDFNetworkModel),
     )
     set_device_model!(template, ThermalStandard, ThermalDispatchNoMin)
     set_device_model!(template, PowerLoad, StaticPowerLoad)
@@ -172,7 +171,7 @@ end
     sys = _generate_test_hvdc_sys()
     for scheme in ("bin2", "nmdt")
         template = PowerOperationsProblemTemplate(
-            NetworkModel(PTDFNetworkModel; network_matrix = PTDF(sys)),
+            NetworkModel(PTDFNetworkModel),
         )
         set_device_model!(template, ThermalStandard, ThermalDispatchNoMin)
         set_device_model!(template, PowerLoad, StaticPowerLoad)

@@ -67,8 +67,10 @@ end
     sys = PSB.build_system(PSITestSystems, "c_sys14")
     net = NetworkModel(
         DCPNetworkModel;
-        reduce_radial_branches = true,
-        reduce_degree_two_branches = true,
+        network_source = NetworkReductionSpec(
+            PNM.RadialReduction(),
+            PNM.DegreeTwoReduction(),
+        ),
     )
     template = get_thermal_dispatch_template_network(net)
     # TODO: fails with HiGHS QP solver, why?
@@ -82,8 +84,10 @@ end
     sys = PSB.build_system(PSITestSystems, "c_sys14")
     net = NetworkModel(
         ACPNetworkModel;
-        reduce_radial_branches = true,
-        reduce_degree_two_branches = true,
+        network_source = NetworkReductionSpec(
+            PNM.RadialReduction(),
+            PNM.DegreeTwoReduction(),
+        ),
     )
     template = get_thermal_dispatch_template_network(net)
     model = DecisionModel(template, sys; optimizer = ipopt_optimizer)
@@ -1051,7 +1055,7 @@ end
     @test min(rate, limits.from_to, limits.to_from) != rate
 
     template = get_thermal_dispatch_template_network(
-        NetworkModel(PTDFNetworkModel; network_matrix = PTDF(sys)),
+        NetworkModel(PTDFNetworkModel),
     )
     set_device_model!(template, DeviceModel(PSY.MonitoredLine, StaticBranchBounds))
     model = DecisionModel(template, sys; optimizer = HiGHS_optimizer)

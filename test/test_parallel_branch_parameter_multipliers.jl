@@ -31,7 +31,7 @@
         )
 
         template = get_thermal_dispatch_template_network(
-            NetworkModel(PTDFNetworkModel; network_matrix = PTDF(sys)),
+            NetworkModel(PTDFNetworkModel),
         )
         set_device_model!(template, line_device_model)
         ps_model = DecisionModel(template, sys; optimizer = HiGHS_optimizer)
@@ -87,7 +87,7 @@ end
         )
 
         template = get_thermal_dispatch_template_network(
-            NetworkModel(PTDFNetworkModel; network_matrix = PTDF(sys)),
+            NetworkModel(PTDFNetworkModel),
         )
         set_device_model!(template, line_device_model)
         ps_model = DecisionModel(template, sys; optimizer = HiGHS_optimizer)
@@ -129,7 +129,7 @@ end
             Dict{String, Any}(POM.PARALLEL_BRANCH_MAX_RATING_KEY => method)
         end
         template = get_thermal_dispatch_template_network(
-            NetworkModel(PTDFNetworkModel; network_matrix = PTDF(sys)),
+            NetworkModel(PTDFNetworkModel),
         )
         set_device_model!(template, DeviceModel(Line, StaticBranch; attributes = attrs))
         ps_model = DecisionModel(template, sys; optimizer = HiGHS_optimizer)

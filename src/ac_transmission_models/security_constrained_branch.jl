@@ -408,7 +408,7 @@ function add_constraints!(
 }
     time_steps = get_time_steps(container)
 
-    net_reduction_data = network_model.network_reduction
+    net_reduction_data = get_network_reduction(network_model)
     all_branch_maps_by_type = PNM.get_all_branch_maps_by_type(net_reduction_data)
 
     resolved = _resolve_monitored_arcs(device_model, net_reduction_data)
@@ -611,7 +611,7 @@ function _add_modf_post_contingency_flow_expressions!(
     modf_matrix = get_contingency_matrix(network_model)
     registered_contingencies = PNM.get_registered_contingencies(modf_matrix)
 
-    net_reduction_data = network_model.network_reduction
+    net_reduction_data = get_network_reduction(network_model)
     resolved = _resolve_monitored_arcs(model, net_reduction_data)
 
     expression_container = _add_post_contingency_sparse_expression!(

@@ -5,26 +5,25 @@ function get_initial_conditions_template(
     # This is done to avoid passing the duals but also not re-allocating the PTDF when it
     # exists
 
+    main_network_model = get_network_model(model.template)
     network_model = NetworkModel(
         get_network_formulation(model.template);
-        use_slacks = get_use_slacks(get_network_model(model.template)),
-        network_matrix = get_network_matrix(get_network_model(model.template)),
-        # Carry the contingency matrix forward so security-constrained branch models
-        # (which read the registered contingencies off the network model's contingency matrix)
-        # can build inside the initial-conditions sub-model. Without this the IC
-        # build hits `get_registered_contingencies(nothing)`.
-        contingency_matrix = get_contingency_matrix(get_network_model(model.template)),
-        reduce_radial_branches = get_reduce_radial_branches(
-            get_network_model(model.template),
-        ),
+        use_slacks = get_use_slacks(main_network_model),
+        network_source = get_network_source(main_network_model),
+        reduction_exceptions = get_reduction_exceptions(main_network_model),
     )
     set_hvdc_network_model!(
         network_model,
         deepcopy(get_hvdc_network_model(model.template)),
     )
-    network_model.network_reduction =
-        deepcopy(get_network_reduction(get_network_model(model.template)))
-    network_model.subnetworks = get_subnetworks(get_network_model(model.template))
+    # The IC sub-model never runs `instantiate_network_model!`: it reads the main
+    # model's derived matrices and reduction rather than deriving its own, so the
+    # contingency matrix's registered contingencies are available to the
+    # security-constrained branch models. Sharing the source and the derived data by
+    # reference is what makes an IC/main network divergence structurally impossible —
+    # the IC build reads the reduction, it does not extend it.
+    IOM.set_network_data!(network_model, get_network_data(main_network_model))
+    network_model.subnetworks = get_subnetworks(main_network_model)
     # Initialization builds a fresh, empty EvaluationContainer: no power-flow (or other)
     # evaluations are run during initialization.
     network_model.evaluations = IOM.EvaluationContainer()
