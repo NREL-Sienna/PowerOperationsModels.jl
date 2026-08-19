@@ -549,6 +549,16 @@ function add_constraints!(
     return
 end
 
+# Is this cost curve zero-valued, i.e. it puts no price on the device's dispatch?
+_is_costless_offer(cost::PSY.LoadCost) = PSY.get_variable(cost) == zero(PSY.CostCurve)
+_is_costless_offer(cost::PSY.MarketBidCost) =
+    !IOM.is_nontrivial_offer(get_input_offer_curves(cost))
+# A real (non-placeholder) time-series key means a genuine decremental offer is attached;
+# whether its resolved values are all zero is unknowable before the series is read.
+_is_costless_offer(cost::PSY.MarketBidTimeSeriesCost) =
+    !IOM.is_nontrivial_offer(get_input_offer_curves(cost))
+_is_costless_offer(::PSY.OperationalCost) = false
+
 ############################## FormulationControllable Load Cost ###########################
 function add_to_objective_function!(
     container::OptimizationContainer,
@@ -560,13 +570,13 @@ function add_to_objective_function!(
     if has_service_model(model)
         for d in devices
             cost = PSY.get_operation_cost(d)
-            if cost isa PSY.LoadCost && PSY.get_variable(cost) == zero(PSY.CostCurve)
+            if _is_costless_offer(cost)
                 throw(
                     IS.ConflictingInputsError(
                         "PowerLoadDispatch load '$(PSY.get_name(d))' provides a reserve \
-                        service but its LoadCost value curve is zero; attach an \
-                        energy/VOLL value (e.g. set_operation_cost! with a priced \
-                        LoadCost) so its dispatch is pinned.",
+                        service but its cost curve is zero; attach an energy/VOLL value \
+                        (e.g. set_operation_cost! with a priced LoadCost, or a nonzero \
+                        MarketBidCost decremental offer) so its dispatch is pinned.",
                     ),
                 )
             end

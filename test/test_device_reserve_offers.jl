@@ -709,6 +709,18 @@ end
           IOM.ModelBuildStatus.FAILED
 end
 
+@testset "Costless market-bid load offering reserves fails loudly" begin
+    sys = deepcopy(PSB.build_system(PSITestSystems, "c_sys5_il"; add_reserves = true))
+    il = get_component(PSY.InterruptiblePowerLoad, sys, _IL_NAME)
+    set_operation_cost!(il, MarketBidCost())
+    model = DecisionModel(
+        _load_reserve_template(:up), sys;
+        optimizer = HiGHS_optimizer,
+    )
+    @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
+          IOM.ModelBuildStatus.FAILED
+end
+
 @testset "Co-provision: two up-services share one shed headroom" begin
     sys = deepcopy(PSB.build_system(PSITestSystems, "c_sys5_il"; add_reserves = true))
     il = get_component(PSY.InterruptiblePowerLoad, sys, _IL_NAME)
