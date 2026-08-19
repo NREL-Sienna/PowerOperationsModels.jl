@@ -1769,6 +1769,46 @@ end
     @test sub_a_total > sub_b_total
 end
 
+@testset "GroupStepwiseCostReserve: time-series group demand curve clears per hour" begin
+    # The group ORDC can be time-series-backed (`CostCurve{TimeSeriesPiecewiseIncrementalCurve}`,
+    # same Union as the single reserves); the parameter machinery
+    # (`process_stepwise_cost_reserve_parameters!`) must feed hour-varying blocks into the
+    # clearing. Demand cap alternates 40/80 MW by hour at a price far above both the member
+    # offer and any commitment cost, so the cleared group demand must track the alternation
+    # exactly - a static curve cannot. (A moderate price lets commitment economics under-buy;
+    # the point here is the hourly caps, so make the value decisive.)
+    sys, group = build_group_reserve_system(; group_curve = false)
+    init_times = [DateTime("2024-01-01T00:00:00"), DateTime("2024-01-02T00:00:00")]
+    horizon = 24
+    curves = [IS.PiecewiseStepData([0.0, isodd(h) ? 40.0 : 80.0], [9.0e4]) for h in 1:horizon]
+    data = Dict(it => copy(curves) for it in init_times)
+    PSY.add_time_series!(
+        sys,
+        group,
+        Deterministic("variable_cost", data, Hour(1)),
+    )
+    key = IS.ForecastKey(;
+        time_series_type = IS.Deterministic,
+        name = "variable_cost",
+        initial_timestamp = first(init_times),
+        resolution = Hour(1),
+        horizon = Hour(horizon),
+        interval = Hour(24),
+        count = 2,
+        features = Dict{String, Any}(),
+    )
+    PSY.set_variable!(group, PSY.make_market_bid_ts_curve(key, nothing, IS.NaturalUnit()))
+    @test PSY.has_demand_curve(group)
+
+    model = _solve_group_model(sys)
+    res = IOM.OptimizationProblemOutputs(model)
+    demand = read_variable(res, "ServiceRequirementVariable__GroupReserve__ReserveUp";
+        table_format = TableFormat.WIDE)
+    for t in 1:horizon
+        @test demand[t, "UP_GROUP"] ≈ (isodd(t) ? 40.0 : 80.0) atol = 1e-4
+    end
+end
+
 @testset "GroupStepwiseCostReserve: no group model -> no procurement" begin
     sys, _ = build_group_reserve_system()
     model = _solve_group_model(sys; include_group = false)
