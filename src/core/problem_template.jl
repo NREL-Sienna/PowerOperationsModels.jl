@@ -54,9 +54,9 @@ get_network_formulation(template::PowerOperationsProblemTemplate) =
 get_hvdc_network_model(template::PowerOperationsProblemTemplate) =
     template.network_model.hvdc_network_model
 
-# Returns `Vector{Type}`, not `Vector{DataType}`: a service component type can be a
-# UnionAll (e.g. PSY6 parameterized `ReserveDemandCurve{ReserveUp}` on a unit-system
-# type, leaving a trailing free parameter), which is not a `DataType`.
+# Returns `Vector{Type}`, not `Vector{DataType}`: a service's component type can be a
+# `UnionAll` rather than a concrete `DataType` when it carries an unapplied type parameter
+# (e.g. `OnlineReserve{ReserveUp}`, which still has a free unit-system parameter).
 function get_component_types(template::PowerOperationsProblemTemplate)::Vector{Type}
     return vcat(
         get_component_type.(values(get_device_models(template))),
@@ -81,12 +81,11 @@ end
 function get_model(
     template::PowerOperationsProblemTemplate,
     ::Type{T},
-    name::String = NO_SERVICE_NAME_PROVIDED,
 ) where {T <: PSY.Service}
-    if haskey(template.services, (name, Symbol(T)))
-        return template.services[(name, Symbol(T))]
+    if haskey(template.services, Symbol(T))
+        return template.services[Symbol(T)]
     else
-        error("Service $T $name not present in the template")
+        error("Service $T not present in the template")
     end
 end
 
@@ -163,25 +162,8 @@ function set_device_model!(
 end
 
 """
-Sets the service model in a template using a name and the service type and formulation.
-Builds a default ServiceModel with use_service_name set to true.
-"""
-function set_service_model!(
-    template::PowerOperationsProblemTemplate,
-    service_name::String,
-    service_type::Type{<:PSY.Service},
-    formulation::Type{<:AbstractServiceFormulation},
-)
-    set_service_model!(
-        template,
-        service_name,
-        ServiceModel(service_type, formulation; use_service_name = true),
-    )
-    return
-end
-
-"""
-Sets the service model in a template using a ServiceModel instance.
+Sets the service model in a template using the service type and formulation.
+One `ServiceModel` covers every service of its type in the system.
 """
 function set_service_model!(
     template::PowerOperationsProblemTemplate,
@@ -189,15 +171,6 @@ function set_service_model!(
     formulation::Type{<:AbstractServiceFormulation},
 )
     set_service_model!(template, ServiceModel(service_type, formulation))
-    return
-end
-
-function set_service_model!(
-    template::PowerOperationsProblemTemplate,
-    service_name::String,
-    model::ServiceModel{T, <:AbstractServiceFormulation},
-) where {T <: PSY.Service}
-    set_model!(template.services, (service_name, Symbol(T)), model)
     return
 end
 
@@ -211,6 +184,7 @@ end
 
 function _add_contributing_device_by_type!(
     service_model::ServiceModel,
+    service_name::String,
     contributing_device::T,
     incompatible_device_types::Set{DataType},
     modeled_devices::Set{DataType},
@@ -219,7 +193,14 @@ function _add_contributing_device_by_type!(
     if T ∈ incompatible_device_types || T ∉ modeled_devices
         return
     end
-    push!(get!(get_contributing_devices_map(service_model), T, T[]), contributing_device)
+    # Register in the nested `service_name -> device_type -> devices` map.
+    inner = get!(
+        Dict{DataType, Vector{<:IS.InfrastructureSystemsComponent}},
+        get_contributing_devices_map(service_model),
+        service_name,
+    )
+    # TODO(services stability): See issue #216.
+    push!(get!(Vector{T}, inner, T), contributing_device)
     return
 end
 
@@ -243,35 +224,40 @@ function _populate_contributing_devices!(
         empty!(service_models)
         return
     end
+    # Fill the per-service nested map for every available service of each type.
+    # `_add_contributing_device_by_type!` keeps only available, modeled, compatible devices,
+    # since PSY's mapping includes unavailable ones.
     for (service_key, service_model) in service_models
-        @debug "Populating service $(service_key)"
+        @debug "Populating service model $(service_key)"
         empty!(get_contributing_devices_map(service_model))
-        S = get_component_type(service_model)
-        service = PSY.get_component(S, sys, get_service_name(service_model))
-        if service === nothing
-            @info "The data doesn't include services of type $(S) and name $(get_service_name(service_model)), consider changing the service models" _group =
-                LOG_GROUP_SERVICE_CONSTUCTORS
-            continue
-        end
-        # Key by the concrete service type. `S` from the model can be a UnionAll
-        # (e.g. PSY6 parameterized `ReserveDemandCurve{ReserveUp}` on a unit-system
-        # type, leaving a trailing free parameter), but `get_contributing_device_mapping`
-        # keys by `typeof(service)`, so match that to avoid a KeyError.
-        service_devices_key = (type = typeof(service), name = PSY.get_name(service))
-        contributing_devices_ =
-            services_mapping[service_devices_key].contributing_devices
-        for d in contributing_devices_
-            _add_contributing_device_by_type!(
-                service_model,
-                d,
-                incompatible_device_types,
-                modeled_devices,
-            )
-        end
-        if isempty(get_contributing_devices_map(service_model))
-            error(
-                "The contributing devices for service $(PSY.get_name(service)) is empty. Add contributing devices to the service in the data to continue.",
-            )
+        service_type = get_component_type(service_model)
+        for service in get_available_components(service_model, sys)
+            service_name = PSY.get_name(service)
+            # Key by the concrete service instance type: the model's stored type can be a
+            # `UnionAll` (e.g. `OnlineReserve{ReserveUp}` with a free unit-system parameter), while
+            # `get_contributing_device_mapping` keys by `typeof(service)`.
+            service_devices_key = (type = typeof(service), name = service_name)
+            if haskey(services_mapping, service_devices_key)
+                for d in services_mapping[service_devices_key].contributing_devices
+                    _add_contributing_device_by_type!(
+                        service_model,
+                        service_name,
+                        d,
+                        incompatible_device_types,
+                        modeled_devices,
+                    )
+                end
+            end
+            # A reserve or interface with no available provider can never meet its requirement,
+            # so error rather than let it silently force slacks or go infeasible.
+            # GroupReserve aggregates other SERVICES: it is a deviceless `AbstractReserve`,
+            # so its empty device map is by design - do not "simplify" this exemption away.
+            if !(service_type <: PSY.GroupReserve) &&
+               isempty(get_contributing_devices_map(service_model, service_name))
+                error(
+                    "Service \"$(service_name)\" of type $(typeof(service)) has no available contributing devices/branches. Assign available contributing devices/branches to it in the system data, or remove its service model from the template.",
+                )
+            end
         end
     end
     return
@@ -279,7 +265,7 @@ end
 
 function _modify_device_model!(
     devices_template::Dict{Symbol, DeviceModel},
-    service_model::ServiceModel{<:PSY.Reserve, <:AbstractReservesFormulation},
+    service_model::ServiceModel{<:PSY.AbstractReserve, <:AbstractReservesFormulation},
     contributing_devices::Vector{<:PSY.Component},
 )
     # Type stability: explicitly type the Set to avoid widening
@@ -288,7 +274,9 @@ function _modify_device_model!(
             # add message here when it exists
             get_component_type(device_model) != dt && continue
             service_model in device_model.services && continue
-            # type instability: pushing to vector of abstract type
+            # TODO(services stability): `device_model.services` has an abstract element type, so
+            # this `push!`/iteration dynamic-dispatch; rooted in the IOM `DeviceModel.services`
+            # field, needs an IOM struct-typing pass (build-time only). See #216.
             push!(device_model.services, service_model)
         end
     end
@@ -296,9 +284,12 @@ function _modify_device_model!(
     return
 end
 
+# NonSpinningReserve awards ride ReservePowerConstraint (offline thermal headroom), not the
+# device range expressions, so device models must not register the service. Other reserve
+# formulations (e.g. an OfflineReserve ORDC under StepwiseCostReserve) register normally.
 function _modify_device_model!(
     ::Dict{Symbol, DeviceModel},
-    ::ServiceModel{<:PSY.ReserveNonSpinning, <:AbstractReservesFormulation},
+    ::ServiceModel{<:PSY.OfflineReserve, NonSpinningReserve},
     ::Vector{<:PSY.Component},
 )
     return
@@ -325,7 +316,7 @@ function _add_services_to_device_model!(template::PowerOperationsProblemTemplate
     devices_template = get_device_models(template)
     for (service_key, service_model) in service_models
         S = get_component_type(service_model)
-        (S <: PSY.AGC || S <: PSY.ConstantReserveGroup) && continue
+        (S <: PSY.AGC || S <: PSY.GroupReserve) && continue
         contributing_devices = get_contributing_devices(service_model)
         isempty(contributing_devices) && continue
         _modify_device_model!(devices_template, service_model, contributing_devices)
@@ -333,42 +324,7 @@ function _add_services_to_device_model!(template::PowerOperationsProblemTemplate
     return
 end
 
-function _populate_aggregated_service_model!(
-    template::PowerOperationsProblemTemplate,
-    sys::PSY.System,
-)
-    services_template = get_service_models(template)
-    for (key, service_model) in services_template
-        attributes = get_attributes(service_model)
-        use_slacks = service_model.use_slacks
-        duals = service_model.duals
-        if pop!(attributes, "aggregated_service_model", false)
-            delete!(services_template, key)
-            D = get_component_type(service_model)
-            B = get_formulation(service_model)
-            for service in get_available_components(service_model, sys)
-                new_key = (PSY.get_name(service), Symbol(D))
-                if !haskey(services_template, new_key)
-                    template.services[new_key] =
-                        ServiceModel(
-                            D,
-                            B,
-                            PSY.get_name(service);
-                            use_slacks = use_slacks,
-                            duals = duals,
-                            attributes = attributes,
-                        )
-                else
-                    error("Key $new_key already assigned in ServiceModel")
-                end
-            end
-        end
-    end
-    return
-end
-
 function finalize_template!(template::PowerOperationsProblemTemplate, sys::PSY.System)
-    _populate_aggregated_service_model!(template, sys)
     _populate_contributing_devices!(template, sys)
     _add_services_to_device_model!(template)
     return

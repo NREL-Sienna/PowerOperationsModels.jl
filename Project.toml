@@ -14,7 +14,9 @@ JSON3 = "0f8b85d8-7281-11e9-16c2-39a750bddbf1"
 JuMP = "4076af6c-e467-56ae-b986-b466b2749572"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 Logging = "56ddb016-857b-54e1-b83d-db4d58db5568"
+PowerCoreOpenAPIModels = "b7b40286-e793-417d-a9a0-b1583e4da1cb"
 PowerNetworkMatrices = "bed98974-b02a-5e2f-9fe0-a103f5c450dd"
+PowerOperationsOpenAPIModels = "a372b6d7-45a2-44c2-8199-6a724b72e8ff"
 PowerSystems = "bcd98974-b02a-5e2f-9ee0-a103f5c450dd"
 PrettyTables = "08abe8d2-0d0c-5749-adfa-8a2ac140af0d"
 ProgressMeter = "92933f4c-e287-5a05-a399-4b506db050ca"
@@ -26,11 +28,14 @@ TimerOutputs = "a759f4b9-e2f1-59dc-863e-4aeb61b1ea8f"
 PowerFlows = "94fada2c-fd9a-4e89-8d82-81405f5cb4f6"
 
 [sources]
-InfraStore = {path = "../../infrastore/julia/InfraStore.jl"}
+# LOCAL PATHS: IOM is on an unpushed `feat/rust-time-series-store` branch and IS/PSY are on
+# `feat/infrastore-integration`. Restore the git revs before pushing.
+InfrastructureSystems = {path = "../InfrastructureSystems.jl"}
 InfrastructureOptimizationModels = {path = "../InfrastructureOptimizationModels.jl"}
-InfrastructureSystems = {path = "../IS3.jl"}
+PowerSystems = {path = "../PowerSystems.jl"}
+PowerCoreOpenAPIModels = {url = "https://github.com/Sienna-Platform/PowerOpenAPIModels.git", rev = "main", subdir = "PowerCoreOpenAPIModels.jl"}
 PowerNetworkMatrices = {rev = "psy6", url = "https://github.com/Sienna-Platform/PowerNetworkMatrices.jl"}
-PowerSystems = {rev = "feat/rust-time-series-store", url = "https://github.com/Sienna-Platform/PowerSystems.jl"}
+PowerOperationsOpenAPIModels = {url = "https://github.com/Sienna-Platform/PowerOpenAPIModels.git", rev = "main", subdir = "PowerOperationsOpenAPIModels.jl"}
 
 [extensions]
 PowerFlowsExt = "PowerFlows"
@@ -41,7 +46,8 @@ DocStringExtensions = "~0.8, ~0.9"
 InfrastructureSystems = "3"
 InteractiveUtils = "1.11.0"
 JuMP = "^1.28"
-PowerFlows = "0.21, 0.22"
+PowerSystems = "^5.10"
+PowerFlows = "^0.24"
 PowerNetworkMatrices = "^0.24"
 PowerSystems = "^5.10"
 PrettyTables = "3"

@@ -25,6 +25,9 @@ The specified constraint is generally formulated as:
 """
 struct AreaParticipationAssignmentConstraint <: ConstraintType end
 struct BalanceAuxConstraint <: ConstraintType end
+# Links a device's per-service reserve OFFER blocks to its reserve award:
+# `Σ_k δ[(service, device, k, t)] == ActivePowerReserveVariable[(service, device, t)]`.
+struct ReserveOfferLinkingConstraint <: ConstraintType end
 """
 Struct to create the commitment constraint between the on, start, and stop variables.
 For more information check [ThermalGen Formulations](@ref ThermalGen-Formulations).
@@ -226,8 +229,8 @@ For more information check [Service Formulations](@ref service_formulations).
 The constraint is as follows:
 
 ```math
-r_{d,t} \\le \\text{Req} \\cdot \\text{PF} ,\\quad \\forall d\\in \\mathcal{D}_s, \\forall t\\in \\{1,\\dots, T\\} \\quad \\text{(for a ConstantReserve)} \\\\
-r_{d,t} \\le \\text{RequirementTimeSeriesParameter}_{t} \\cdot \\text{PF}\\quad  \\forall d\\in \\mathcal{D}_s, \\forall t\\in \\{1,\\dots, T\\}, \\quad \\text{(for a VariableReserve)}
+r_{d,t} \\le \\text{Req} \\cdot \\text{PF} ,\\quad \\forall d\\in \\mathcal{D}_s, \\forall t\\in \\{1,\\dots, T\\} \\quad \\text{(static requirement)} \\\\
+r_{d,t} \\le \\text{RequirementTimeSeriesParameter}_{t} \\cdot \\text{PF}\\quad  \\forall d\\in \\mathcal{D}_s, \\forall t\\in \\{1,\\dots, T\\}, \\quad \\text{(time-varying requirement)}
 ```
 """
 struct ParticipationFractionConstraint <: ConstraintType end
@@ -304,8 +307,8 @@ For more information check [Service Formulations](@ref service_formulations).
 The constraint is as follows:
 
 ```math
-\\sum_{d\\in\\mathcal{D}_s} r_{d,t} + r_t^\\text{sl} \\ge \\text{Req},\\quad \\forall t\\in \\{1,\\dots, T\\} \\quad \\text{(for a ConstantReserve)} \\\\
-\\sum_{d\\in\\mathcal{D}_s} r_{d,t} + r_t^\\text{sl} \\ge \\text{RequirementTimeSeriesParameter}_{t},\\quad \\forall t\\in \\{1,\\dots, T\\} \\quad \\text{(for a VariableReserve)}
+\\sum_{d\\in\\mathcal{D}_s} r_{d,t} + r_t^\\text{sl} \\ge \\text{Req},\\quad \\forall t\\in \\{1,\\dots, T\\} \\quad \\text{(static requirement)} \\\\
+\\sum_{d\\in\\mathcal{D}_s} r_{d,t} + r_t^\\text{sl} \\ge \\text{RequirementTimeSeriesParameter}_{t},\\quad \\forall t\\in \\{1,\\dots, T\\} \\quad \\text{(time-varying requirement)}
 ```
 """
 struct RequirementConstraint <: ConstraintType end
@@ -930,7 +933,7 @@ The specified constraint is formulated as:
 """
 struct StorageCyclingDischarge <: ConstraintType end
 
-## AS Provision Energy Constraints
+## Ancillary Service Provision Energy Constraints
 """
 Struct to specify the lower and upper bounds of the discharge variable considering reserves.
 

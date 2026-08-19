@@ -431,16 +431,17 @@ get_variable_multiplier(
 ) = 1.0
 
 # When the system-side ActivePowerReserveVariable is added by the service constructor for a HybridSystem,
-# direct it into the TotalReserveOffering channel keyed by HybridSystem (mirrors POM storage line 59).
+# direct it into the TotalReserveOffering channel keyed by HybridSystem (mirrors POM storage).
 get_expression_type_for_reserve(
     ::Type{ActivePowerReserveVariable},
     ::Type{<:PSY.HybridSystem},
-    ::Type{<:PSY.Reserve},
+    ::Type{<:PSY.AbstractReserve},
 ) = TotalReserveOffering
 
+# One capped bound over every AbstractReserve (online + offline).
 function get_variable_upper_bound(
     ::Type{ActivePowerReserveVariable},
-    r::PSY.Reserve,
+    r::PSY.AbstractReserve,
     d::PSY.HybridSystem,
     ::Type{<:AbstractReservesFormulation},
 )
@@ -448,17 +449,6 @@ function get_variable_upper_bound(
         PSY.get_output_active_power_limits(d, PSY.SU).max +
         PSY.get_input_active_power_limits(d, PSY.SU).max
     )
-end
-
-# Disambiguate against the generic ORDC method in services_models/reserves.jl.
-function get_variable_upper_bound(
-    ::Type{ActivePowerReserveVariable},
-    r::Union{PSY.ReserveDemandCurve, PSY.ReserveDemandTimeSeriesCurve},
-    d::PSY.HybridSystem,
-    ::Type{<:AbstractReservesFormulation},
-)
-    return PSY.get_output_active_power_limits(d, PSY.SU).max +
-           PSY.get_input_active_power_limits(d, PSY.SU).max
 end
 
 #################################################################################
@@ -562,7 +552,7 @@ function add_variables!(
             D,
             PSY.get_name.(participating),
             time_steps;
-            meta = "$(typeof(service))_$(PSY.get_name(service))",
+            meta = _service_container_meta(service),
         )
         for d in participating, t in time_steps
             name = PSY.get_name(d)
@@ -659,7 +649,7 @@ function _add_reserve_term!(
 }
     name = PSY.get_name(d)
     variable =
-        get_variable(container, U, V, "$(typeof(service))_$(PSY.get_name(service))")
+        get_variable(container, U, V, _service_container_meta(service))
     mult = get_variable_multiplier(U, d, W, service) * _reserve_scale(T, service)
     add_proportional_to_jump_expression!(expression[name, t], variable[name, t], mult)
     return
@@ -721,9 +711,9 @@ function add_to_expression!(
         name = PSY.get_name(d)
         for service in PSY.get_services(d)
             expression = get_expression(container, TotalReserveOffering, V,
-                "$(typeof(service))_$(PSY.get_name(service))")
+                _service_container_meta(service))
             variable =
-                get_variable(container, U, V, "$(typeof(service))_$(PSY.get_name(service))")
+                get_variable(container, U, V, _service_container_meta(service))
             mult = get_variable_multiplier(U, d, W, service)
             for t in time_steps
                 add_proportional_to_jump_expression!(
@@ -743,6 +733,7 @@ function add_to_expression!(
     container::OptimizationContainer,
     ::Type{T},
     ::Type{U},
+    service::V,
     devices::Vector{UV},
     service_model::ServiceModel{V, W},
 ) where {
@@ -752,15 +743,15 @@ function add_to_expression!(
     V <: PSY.Reserve,
     W <: AbstractReservesFormulation,
 }
+    s_name = PSY.get_name(service)
+    variable = get_variable(container, U, V)
     for d in devices
         name = PSY.get_name(d)
-        s_name = get_service_name(service_model)
-        expression = get_expression(container, T, UV, "$(V)_$(s_name)")
-        variable = get_variable(container, U, V, s_name)
+        expression = get_expression(container, T, UV, _service_container_meta(service))
         for t in get_time_steps(container)
             add_proportional_to_jump_expression!(
                 expression[name, t],
-                variable[name, t],
+                variable[(s_name, name, t)],
                 -1.0,
             )
         end
@@ -1532,7 +1523,7 @@ function _init_coverage_container!(
 ) where {T <: _ReserveCoverageT, V <: PSY.HybridSystem}
     return lazy_container_addition!(
         container, T, V, names, time_steps;
-        meta = "$(typeof(service))_$(PSY.get_name(service))_discharge",
+        meta = "$(_service_container_meta(service))_discharge",
     )
 end
 
@@ -1546,7 +1537,7 @@ function _init_coverage_container!(
 ) where {T <: _ReserveCoverageT, V <: PSY.HybridSystem}
     return lazy_container_addition!(
         container, T, V, names, time_steps;
-        meta = "$(typeof(service))_$(PSY.get_name(service))_charge",
+        meta = "$(_service_container_meta(service))_charge",
     )
 end
 
@@ -2073,8 +2064,8 @@ function add_constraints!(
             add_constraints_container!(container, HybridReserveAssignmentConstraint, V,
                 names, time_steps;
                 meta = "$(s_type)_$s_name")
-        # System-level reserve variable for this service
-        sys_reserve = get_variable(container, ActivePowerReserveVariable, s_type, s_name)
+        # System-level reserve variable for this service, keyed `(service, device, time)`.
+        sys_reserve = get_variable(container, ActivePowerReserveVariable, s_type)
         # Per-hybrid reserve variables for this service
         r_out = get_variable(
             container,
@@ -2093,7 +2084,7 @@ function add_constraints!(
             (service in PSY.get_services(d)) || continue
             constraint[name, t] = JuMP.@constraint(
                 get_jump_model(container),
-                r_out[name, t] + r_in[name, t] == sys_reserve[name, t]
+                r_out[name, t] + r_in[name, t] == sys_reserve[(s_name, name, t)]
             )
         end
     end

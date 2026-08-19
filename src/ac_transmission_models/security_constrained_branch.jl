@@ -408,7 +408,7 @@ function add_constraints!(
 }
     time_steps = get_time_steps(container)
 
-    net_reduction_data = network_model.network_reduction
+    net_reduction_data = get_network_reduction(network_model)
     all_branch_maps_by_type = PNM.get_all_branch_maps_by_type(net_reduction_data)
 
     resolved = _resolve_monitored_arcs(device_model, net_reduction_data)
@@ -566,6 +566,7 @@ function _build_post_contingency_flow_expressions_for_outage(
     modf_cols::Dict{Tuple{String, Tuple{Int64, Int64}}, Vector{Float64}},
     nodal_balance_expressions::Matrix{JuMP.AffExpr},
     entries::Vector{Tuple{DataType, String, Tuple{Int, Int}, String}},
+    net_reduction_data::IOM.AbstractInfrastructureNetworkReductionData,
 )
     results = Vector{Tuple{String, Vector{JuMP.AffExpr}}}(undef, length(entries))
     for (i, entry) in enumerate(entries)
@@ -576,6 +577,7 @@ function _build_post_contingency_flow_expressions_for_outage(
             time_steps,
             modf_col,
             nodal_balance_expressions,
+            -PNM.arc_dc_shift_injection(net_reduction_data, arc),
         )
         results[i] = (name, expressions)
     end
@@ -609,7 +611,7 @@ function _add_modf_post_contingency_flow_expressions!(
     modf_matrix = get_contingency_matrix(network_model)
     registered_contingencies = PNM.get_registered_contingencies(modf_matrix)
 
-    net_reduction_data = network_model.network_reduction
+    net_reduction_data = get_network_reduction(network_model)
     resolved = _resolve_monitored_arcs(model, net_reduction_data)
 
     expression_container = _add_post_contingency_sparse_expression!(
@@ -645,6 +647,7 @@ function _add_modf_post_contingency_flow_expressions!(
                 modf_cols,
                 nodal_injection_expressions,
                 entries,
+                net_reduction_data,
             )
         catch e
             @error "Post-contingency flow-expression task failed" outage_id =

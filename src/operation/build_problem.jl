@@ -87,7 +87,7 @@ function build_problem!(
         get_network_model(template),
         transmission_model.subnetworks,
         sys,
-        transmission_model.network_reduction.bus_reduction_map)
+        PNM.get_bus_reduction_map(get_network_reduction(transmission_model)))
 
     initialize_hvdc_system!(
         container,

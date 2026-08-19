@@ -42,6 +42,13 @@ requires_all_branch_models(::Type{AreaBalanceNetworkModel}) = false
 branches_modeled(::Type{CopperPlateNetworkModel}) = false
 branches_modeled(::Type{AreaBalanceNetworkModel}) = false
 
+# Aggregated formulations resolve injections by area name or subnetwork reference bus, never
+# through the reduction's bus map, so a reduction handed to one is computed and then ignored.
+# `_validate_network_source` rejects a non-default source rather than discarding it silently.
+honors_network_reduction(::Type{<:AbstractNetworkModel}) = true
+honors_network_reduction(::Type{CopperPlateNetworkModel}) = false
+honors_network_reduction(::Type{AreaBalanceNetworkModel}) = false
+
 # AC network models allocate a ReactivePowerBalance expression; active-power-only models do not
 # (see common_models/make_system_expressions.jl). Used to drop reactive-only device models.
 network_has_reactive_power(::Type{<:AbstractNetworkModel}) = true

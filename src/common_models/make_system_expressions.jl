@@ -148,7 +148,7 @@ end
 #################################################################################
 
 function _verify_area_subnetwork_topology(sys::PSY.System, subnetworks::Dict{Int, Set{Int}})
-    if length(subnetworks) < 1
+    if length(subnetworks) <= 1
         @debug "Only one subnetwork detected in the system. Area - Subnetwork topology check is valid."
         return
     end
@@ -156,7 +156,8 @@ function _verify_area_subnetwork_topology(sys::PSY.System, subnetworks::Dict{Int
     @warn "More than one subnetwork detected in AreaBalanceNetworkModel. Topology consistency checks must be conducted."
 
     area_map = PSY.get_aggregation_topology_mapping(PSY.Area, sys)
-    for (area, buses) in area_map
+    # Keyed by area name, not by the Area component.
+    for (area_name, buses) in area_map
         bus_numbers =
             [
                 PSY.get_number(b) for
@@ -169,7 +170,7 @@ function _verify_area_subnetwork_topology(sys::PSY.System, subnetworks::Dict{Int
             end
         end
         if length(subnets) > 1
-            @error "Area $(PSY.get_name(area)) is connected to multiple subnetworks $(subnets)."
+            @error "Area $(area_name) is connected to multiple subnetworks $(subnets)."
             throw(
                 IS.ConflictingInputsError(
                     "AreaBalanceNetworkModel doesn't support systems with Areas distributed across multiple asynchronous areas",

@@ -100,10 +100,7 @@ end
             initial_date = "2024-01-01",
         )
         template = get_thermal_dispatch_template_network(
-            NetworkModel(
-                PTDFNetworkModel;
-                network_matrix = PTDF_ref[sys],
-            ),
+            NetworkModel(PTDFNetworkModel),
         )
 
         set_device_model!(template, line_device_model)
@@ -190,10 +187,7 @@ end
             )
 
             template = get_thermal_dispatch_template_network(
-                NetworkModel(
-                    PTDFNetworkModel;
-                    network_matrix = PTDF(sys),
-                ),
+                NetworkModel(PTDFNetworkModel),
             )
             set_device_model!(template, line_device_model)
             set_device_model!(template, PSY.MonitoredLine, StaticBranch)
@@ -277,10 +271,7 @@ end
             )
 
             template = get_thermal_dispatch_template_network(
-                NetworkModel(
-                    PTDFNetworkModel;
-                    network_matrix = PTDF(sys),
-                ),
+                NetworkModel(PTDFNetworkModel),
             )
             set_device_model!(template, line_device_model)
             set_device_model!(template, PSY.MonitoredLine, StaticBranch)
@@ -363,10 +354,7 @@ end
             )
 
             template = get_thermal_dispatch_template_network(
-                NetworkModel(
-                    PTDFNetworkModel;
-                    network_matrix = PTDF(sys),
-                ),
+                NetworkModel(PTDFNetworkModel),
             )
             set_device_model!(template, line_device_model)
             ps_model = DecisionModel(template, sys; optimizer = HiGHS_optimizer)
@@ -454,14 +442,10 @@ end
                 initial_date = "2024-01-01",
             )
             nr = NetworkReduction[DegreeTwoReduction()]
-            ptdf = PTDF(sys; network_reductions = nr)
             template = get_thermal_dispatch_template_network(
                 NetworkModel(
                     PTDFNetworkModel;
-                    #network_matrix = ptdf,
-                    reduce_degree_two_branches = PNM.has_degree_two_reduction(
-                        ptdf.network_reduction_data,
-                    ),
+                    network_source = NetworkReductionSpec(nr),
                 ),
             )
             set_device_model!(template, line_device_model)
@@ -757,4 +741,65 @@ end
 
     container = IOM.get_optimization_container(model)
     @test !IOM.has_container_key(container, POM.BranchRatingTimeSeriesParameter, PSY.Line)
+end
+
+@testset "Branches sharing one rating forecast share a parameter row" begin
+    # Bulk `add_time_series!` stores one array for both lines, so both resolve to the same
+    # UUID. The UUID parameter axis must dedupe or JuMP rejects the repeated axis element.
+    sys = PSB.build_system(PSITestSystems, "c_sys5")
+    line_a = get_component(ACTransmission, sys, "1")
+    line_b = get_component(ACTransmission, sys, "2")
+    PSY.set_rating!(line_b, 2 * PSY.get_rating(line_a, PSY.SU) * PSY.SU)
+
+    data_ts =
+        collect(DateTime("2024-01-01T00:00:00"):Hour(1):DateTime("2024-01-01T23:00:00"))
+    rating_factors = vcat([fill(x, 6) for x in [0.99, 0.98, 1.0, 0.95]]...)
+    rating_data = SortedDict{Dates.DateTime, TimeSeries.TimeArray}()
+    for t in 1:2
+        rating_data[data_ts[1] + Day(t - 1)] =
+            TimeArray(data_ts .+ Day(t - 1), rating_factors)
+    end
+    PSY.add_time_series!(
+        sys,
+        [line_a, line_b],
+        PSY.Deterministic(
+            "branch_rating",
+            rating_data;
+            scaling_factor_multiplier = get_rating,
+        ),
+    )
+    branch_rating_hashes =
+        IS.get_time_series_hashes((line_a, line_b), PSY.Deterministic, "branch_rating")
+    @test branch_rating_hashes[IS.get_id(line_a)] ==
+          branch_rating_hashes[IS.get_id(line_b)]
+
+    template = get_thermal_dispatch_template_network(
+        NetworkModel(PTDFNetworkModel),
+    )
+    set_device_model!(
+        template,
+        DeviceModel(
+            Line,
+            StaticBranch;
+            time_series_names = Dict(
+                BranchRatingTimeSeriesParameter => "branch_rating",
+            ),
+        ),
+    )
+    model = DecisionModel(template, sys; optimizer = HiGHS_optimizer)
+    @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
+          IOM.ModelBuildStatus.BUILT
+
+    container = IOM.get_optimization_container(model)
+    param_container =
+        IOM.get_parameter(container, BranchRatingTimeSeriesParameter, PSY.Line)
+    # One parameter row for the shared series; still one multiplier row per branch.
+    @test length(axes(IOM.get_parameter_array(param_container))[1]) == 1
+    @test Set(axes(IOM.get_multiplier_array(param_container))[1]) == Set(["1", "2"])
+    @test jump_value.(IOM.get_parameter_column_refs(param_container, "1")) ==
+          jump_value.(IOM.get_parameter_column_refs(param_container, "2"))
+
+    # Sharing the profile does not merge the branches: each keeps its own rating scale.
+    multipliers = IOM.get_multiplier_array(param_container)
+    @test multipliers["2", 1] == 2 * multipliers["1", 1]
 end

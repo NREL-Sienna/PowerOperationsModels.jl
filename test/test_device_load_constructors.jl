@@ -13,6 +13,36 @@ test_path = mktempdir()
     @test solve!(ps_model) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
 end
 
+@testset "AreaBalance subnetwork topology check fires only above one subnetwork" begin
+    c_sys = PSB.build_system(PSISystems, "two_area_pjm_DA")
+    area_map = PSY.get_aggregation_topology_mapping(PSY.Area, c_sys)
+    buses = [
+        PSY.get_number(b) for b in first(values(area_map)) if
+        PSY.get_bustype(b) != PSY.ACBusTypes.ISOLATED
+    ]
+    @test length(buses) > 1
+
+    # A single subnetwork is the normal case for AreaBalance and must not warn: the
+    # network model now always populates at least one, where it used to be empty.
+    single = Dict(first(buses) => Set(buses))
+    @test_logs min_level = Logging.Warn POM._verify_area_subnetwork_topology(
+        c_sys,
+        single,
+    )
+
+    # Two subnetworks with one Area straddling both is the condition the check exists
+    # to reject, and it still throws.
+    split_at = length(buses) ÷ 2
+    straddling = Dict(
+        buses[1] => Set(buses[1:split_at]),
+        buses[split_at + 1] => Set(buses[(split_at + 1):end]),
+    )
+    @test_throws IS.ConflictingInputsError POM._verify_area_subnetwork_topology(
+        c_sys,
+        straddling,
+    )
+end
+
 @testset "AreaInterchange with a network model that reduces branches" begin
     # AreaInterchange <: PSY.Branch but connects Areas, not buses; it has no
     # arc. Building this with a network model that actually performs radial and
@@ -22,8 +52,10 @@ end
     transform_single_time_series!(c_sys, Hour(24), Hour(1))
     network = NetworkModel(
         DCPNetworkModel;
-        reduce_radial_branches = true,
-        reduce_degree_two_branches = true,
+        network_source = NetworkReductionSpec(
+            PNM.RadialReduction(),
+            PNM.DegreeTwoReduction(),
+        ),
     )
     template = get_thermal_dispatch_template_network(network)
     set_device_model!(template, AreaInterchange, StaticBranch)

@@ -1,6 +1,6 @@
 # PowerOperationsModels.jl — Claude Guide
 
-Platform-wide Sienna conventions (performance, type stability, formatter, environments, code style) live in `.claude/Sienna.md` — read it too. This file is repo-specific and does not restate them.
+Platform-wide Sienna conventions (performance, type stability, formatter, environments, code style) live in the `sienna-psy6` skill — invoke it. This file is repo-specific and does not restate them.
 
 ## Purpose & place in the stack
 
@@ -41,48 +41,23 @@ Every device/service/network formulation implements `construct_device!` (or `con
 
 `add_expressions!` must run before `add_constraints!` that consume those expressions. Not all device formulations are compatible with all network models — check existing method signatures before adding a new pair.
 
-## Repository Structure
+## Source layout — the non-obvious parts
 
-> Maintenance note: keep this current. Stale structure docs cause bad planning assumptions.
+`src/` is organized by device family (`static_injector_models/`, `energy_storage_models/`,
+`ac_transmission_models/`, `twoterminal_hvdc_models/`, `mt_hvdc_models/`, `hybrid_system_models/`,
+`services_models/`, `network_models/`), each pairing a model file with a `*_constructor.jl`. `core/`
+holds type definitions only; `common_models/` the shared builders; `operation/` the build and model
+drivers. What you can't see from `ls`:
 
-```
-src/
-  PowerOperationsModels.jl        # Main module: all imports, includes (load order), exports
-  area_interchange.jl             # Area interchange balance
-  core/                           # Type definitions (no heavy logic)
-    definitions.jl, physical_constant_definitions.jl
-    problem_types.jl              # PowerOperationModel chain (moved from IOM, PR #104)
-    interfaces.jl                 # incl. PowerFlowEvaluator wrapping PF models
-    variables.jl, auxiliary_variables.jl, constraints.jl, expressions.jl, parameters.jl
-    formulations.jl, network_formulations.jl   # native DCP/ACP/PTDF/CopperPlate/Area structs
-    bilinear_configs.jl, reserve_traits.jl
-    initial_conditions.jl, feedforward_interface.jl
-    default_interface_methods.jl, problem_template.jl
-  common_models/                  # Shared builders: add_expressions/add_parameters/add_to_expression,
-                                  #   objective_function, make_system_expressions, reserve_range_constraints,
-                                  #   quadratic_converter_loss, network_conditional, market_bid_*
-  initial_conditions/             # add_initial_condition, device_initial_conditions, update_*, initialization
-  static_injector_models/         # thermal/renewable/hydro/load/source/reactivepower + *_constructor.jl
-  energy_storage_models/          # storage_models.jl + storage_constructor.jl
-  hybrid_system_models/           # hybrid_systems.jl + hybridsystem_constructor.jl
-  ac_transmission_models/         # AC_branches.jl, security_constrained_branch.jl (MODF SC), branch_constructor.jl
-  twoterminal_hvdc_models/        # TwoTerminalDC_branches.jl
-  mt_hvdc_models/                 # HVDCsystems.jl (multi-terminal) + constructor
-  services_models/                # reserves, reserve_group, transmission_interface, service_slacks; agc.jl is
-                                  #   currently NOT included (TODO: needs _get_ace_error)
-  network_models/                 # network_reductions, instantiate_network_model, copperplate_model, area_balance_model,
-                                  #   dcp_model, acp_model, acr_model, lpacc_model, dcpll_model, hvdc_networks,
-                                  #   hvdc_network_constructor, network_slack_variables, network_constructor
-  operation/                      # build_problem, decision_model, emulation_model, template_validation
-  utils/                          # psy_utils, generate_valid_formulations, print
-ext/PowerFlowsExt/                # PowerFlows.jl weakdep extension: PowerFlowsExt.jl, pf_data_update.jl,
-                                  #   pf_headroom.jl, pf_input_mapping.jl, pf_solve_and_aux.jl
-test/                            # ParallelTestRunner; test_*.jl auto-discovered; test_utils/ shared helpers
-scripts/formatter/               # formatter_code.jl + Project.toml
-docs/                            # make.jl, make_tutorials.jl, src/
-```
-
-Native network formulations are `*NetworkModel` structs in `core/network_formulations.jl` (`DCPNetworkModel`, `ACPNetworkModel`, `ACRNetworkModel`, `IVRNetworkModel`, `LPACCNetworkModel`, `NFANetworkModel`, `DCPLLNetworkModel`, plus `CopperPlateNetworkModel`/`AreaBalanceNetworkModel`/`PTDFNetworkModel`), built directly against JuMP with no PowerModels.jl dependency.
+- `core/problem_types.jl` — the `PowerOperationModel` chain, moved out of IOM by PR #104.
+- `core/interfaces.jl` — includes `PowerFlowEvaluator`, which wraps PF models.
+- `services_models/agc.jl` is **not included** in the module (TODO: needs `_get_ace_error`).
+- `ext/PowerFlowsExt/` — the PowerFlows.jl weakdep extension. Code must work when PF is not loaded.
+- Native network formulations are `*NetworkModel` structs in `core/network_formulations.jl`
+  (`DCPNetworkModel`, `ACPNetworkModel`, `ACRNetworkModel`, `IVRNetworkModel`, `LPACCNetworkModel`,
+  `NFANetworkModel`, `DCPLLNetworkModel`, plus `CopperPlateNetworkModel` /
+  `AreaBalanceNetworkModel` / `PTDFNetworkModel`) — built directly against JuMP with **no
+  PowerModels.jl dependency**, despite the familiar names.
 
 ## Imports / aliases
 
@@ -142,7 +117,7 @@ Solvers: `HiGHS` (LP/MILP), `Ipopt` (NLP), `SCS` (SDP) — helpers `HiGHS_optimi
 
 - Status: `IOM.ModelBuildStatus.BUILT`, `IOM.RunStatus.SUCCESSFULLY_FINALIZED` (not `_FINISHED`).
 - Results: `res = IOM.OptimizationProblemOutputs(model)` (not `OptimizationProblemResults`); `read_variable(res, "VarType__DeviceType"; table_format = TableFormat.WIDE)`. Keys use `"__"` delimiter (e.g. `"FlowActivePowerVariable__Line"`, `"VoltageAngle__ACBus"`). Base power: `IOM.get_model_base_power(res)`.
-- Units gotcha: `FlowActivePowerVariable` output is MW (natural units, `convert_output_to_natural_units=true`); `VoltageAngle` is unitless. Native DC ohm law (pu): `p_pu == -imag(get_series_admittance(line, PSY.SU)) * (va_from - va_to - shift)`.
+- Units gotcha: `FlowActivePowerVariable` output is MW (natural units, `convert_output_to_natural_units=true`); `VoltageAngle` is unitless. Native DC ohm law (pu): `p_pu == b * (va_from - va_to - shift)` with the DC susceptance `b = PNM.get_series_susceptance(branch, PSY.SU)` (= `1/(tap*x)`, tap-divided for transformers) — not the r-inclusive π-model susceptance.
 - Template helper `get_thermal_dispatch_template_network(NetworkModel(<Formulation>))` and reduction kwargs `NetworkModel(DCPNetworkModel; reduce_radial_branches=true, reduce_degree_two_branches=true)` come from `test/test_utils/`.
 - Reduction test systems: `c_sys5`/`c_sys14` reduce nothing (assert build+solve only). Use `case11_network_reductions` (purpose-built ~4 series arcs) or matpower cases for real reductions — but those lack forecast data, so a full `DecisionModel` `build!` errors; for white-box reduction tests build `NetworkReductionData` directly via `PNM.Ybus(sys; network_reductions=[...])` + `deepcopy(PNM.get_network_reduction_data(ybus))`.
 

@@ -159,8 +159,14 @@ function mock_construct_devices!(
     # Mirror the real build (`build_problem!`): device `add_to_expression!` maps every
     # bus through `get_mapped_bus_number(network_reduction, ...)`, so the network model
     # must carry a reduction. The mock applies none, so use the identity reduction.
-    IOM.get_network_model(template).network_reduction =
-        PNM.get_network_reduction_data(PNM.Ybus(IOM.get_system(problem)))
+    mock_ybus = PNM.Ybus(IOM.get_system(problem))
+    IOM.set_network_data!(
+        IOM.get_network_model(template),
+        POM.YbusNetworkData(
+            mock_ybus,
+            PNM.get_network_reduction_data(mock_ybus),
+        ),
+    )
     IOM.get_optimization_container(problem).built_for_recurrent_solves =
         built_for_recurrent_solves
     POM.initialize_system_expressions!(

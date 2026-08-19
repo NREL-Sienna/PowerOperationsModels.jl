@@ -84,7 +84,7 @@ end
 function generate_service_formulation_combinations()
     combos = []
     for (d, f) in Iterators.product(
-        IS.get_all_concrete_subtypes(PSY.Service),
+        _leaf_service_types(PSY.Service),
         IS.get_all_concrete_subtypes(AbstractServiceFormulation),
     )
         if !isempty(methodswith(ServiceModel{d, f}, construct_service!; supertypes = true))
@@ -93,4 +93,25 @@ function generate_service_formulation_combinations()
     end
 
     return combos
+end
+
+# `IS.get_all_concrete_subtypes` drops parametric leaf types (a `UnionAll` is neither
+# concrete nor abstract), and every psy6 reserve type carries a free unit-system
+# parameter. Collect those leaves as-is - the bare `UnionAll` (`OfflineReserve`,
+# `OnlineReserve`) is exactly the shape a `ServiceModel` is declared with.
+function _leaf_service_types(::Type{T}) where {T}
+    types = Vector{Union{DataType, UnionAll}}()
+    _collect_leaf_service_types!(types, T)
+    return types
+end
+
+function _collect_leaf_service_types!(types, ::Type{T}) where {T}
+    for sub in subtypes(T)
+        if isabstracttype(sub)
+            _collect_leaf_service_types!(types, sub)
+        else
+            push!(types, sub)
+        end
+    end
+    return
 end

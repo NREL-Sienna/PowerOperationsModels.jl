@@ -1,3 +1,14 @@
+# Deactivate demand-curve reserves (ORDC1 in `c_sys5_bat`) so a template registering
+# `ServiceModel(OnlineReserve{Dir}, RangeReserve)` models only the requirement reserves
+# (Reserve3 up, Reserve4 down); one `ServiceModel` covers every service of its type, so an
+# available ORDC would be swept into the same model and widen the tests' scope.
+function _deactivate_unmodeled_ordc!(sys)
+    for r in PSY.get_components(PSY.has_demand_curve, PSY.OnlineReserve, sys)
+        PSY.set_available!(r, false)
+    end
+    return sys
+end
+
 # TODO these all error due to add_event_model = true, which isn't supported in POM.
 #=
 @testset "Storage Basic Storage With DC - PF" begin
@@ -252,18 +263,43 @@ end =#
     set_device_model!(template, RenewableDispatch, FixedOutput)
     set_service_model!(
         template,
-        ServiceModel(VariableReserve{ReserveUp}, RangeReserve, "Reserve3"),
+        ServiceModel(OnlineReserve{ReserveUp}, RangeReserve),
     )
     set_service_model!(
         template,
-        ServiceModel(VariableReserve{ReserveDown}, RangeReserve, "Reserve4"),
+        ServiceModel(OnlineReserve{ReserveDown}, RangeReserve),
     )
 
     c_sys5_bat = PSB.build_system(PSITestSystems, "c_sys5_bat"; add_reserves = true)
+    _deactivate_unmodeled_ordc!(c_sys5_bat)
     model = DecisionModel(template, c_sys5_bat)
     @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
           ModelBuildStatus.BUILT
-    moi_tests(model, 458, 0, 574, 286, 125, true)
+    # Complete-coverage constraints are built once per unique service type and side (each
+    # sums every same-direction service), so the battery's two up-reserves share a single
+    # 24-row container per coverage family.
+    moi_tests(model, 458, 0, 526, 286, 125, true)
+
+    # Silent-failure guard: each storage total-reserve balance row must hold exactly three
+    # terms (charge + discharge - award). If the service-device wiring is skipped, the award
+    # term vanishes while every constraint count still matches, letting storage "provide"
+    # reserves with no physical backing.
+    constraints = IOM.get_constraints(model)
+    for (service_type, s_name) in (
+        (OnlineReserve{ReserveUp}, "Reserve3"),
+        (OnlineReserve{ReserveDown}, "Reserve4"),
+    )
+        key = IOM.ConstraintKey(
+            StorageTotalReserveConstraint,
+            service_type,
+            "$(s_name)_$EnergyReservoirStorage",
+        )
+        con = constraints[key]
+        @test all(
+            length(JuMP.constraint_object(con[n, t]).func.terms) == 3
+            for n in axes(con)[1], t in axes(con)[2]
+        )
+    end
 
     device_model = DeviceModel(
         EnergyReservoirStorage,
@@ -280,7 +316,135 @@ end =#
     model = DecisionModel(template, c_sys5_bat)
     @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
           ModelBuildStatus.BUILT
-    moi_tests(model, 434, 0, 574, 286, 125, false)
+    moi_tests(model, 434, 0, 526, 286, 125, false)
+end
+
+@testset "OfflineReserve (non-spin) as ORDC supplied by storage" begin
+    sys = PSB.build_system(PSITestSystems, "c_sys5_bat"; add_reserves = false)
+    nspin = OfflineReserve(;
+        name = "NSPIN",
+        available = true,
+        time_frame = 30.0,
+        sustained_time = 3600.0,
+        variable = make_market_bid_curve(
+            [0.0, 20.0, 40.0], [60.0, 10.0], 0.0; power_units = IS.NaturalUnit(),
+        ),
+    )
+    bat = get_component(EnergyReservoirStorage, sys, "Bat")
+    thermals = collect(get_components(ThermalStandard, sys))
+    add_service!(sys, nspin, vcat(PSY.Device[thermals...], bat))
+
+    template = get_thermal_dispatch_template_network(CopperPlateNetworkModel)
+    set_device_model!(
+        template,
+        DeviceModel(
+            EnergyReservoirStorage,
+            StorageDispatchWithReserves;
+            attributes = Dict{String, Any}(
+                "reservation" => true,
+                "cycling_limits" => false,
+                "energy_target" => false,
+                "complete_coverage" => true,
+                "regularization" => false,
+            ),
+        ),
+    )
+    set_device_model!(template, RenewableDispatch, FixedOutput)
+    set_service_model!(template, ServiceModel(OfflineReserve, StepwiseCostReserve))
+
+    model = DecisionModel(template, sys; optimizer = HiGHS_optimizer)
+    @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
+          ModelBuildStatus.BUILT
+
+    # The up-side SOC coverage rows must exist for the non-spin product (it routes as an
+    # upward reserve), including the complete-coverage family.
+    container = IOM.get_optimization_container(model)
+    meta = POM._service_container_meta(nspin)
+    @test IOM.has_container_key(
+        container, ReserveCoverageConstraint, EnergyReservoirStorage,
+        "$(meta)_discharge",
+    )
+    @test IOM.has_container_key(
+        container, POM.ReserveCompleteCoverageConstraint, EnergyReservoirStorage,
+        "$(OfflineReserve{IS.NaturalUnit})_discharge",
+    )
+
+    # Balance rows carry charge + discharge - award: the award term is wired, not skipped.
+    con = IOM.get_constraints(model)[IOM.ConstraintKey(
+        StorageTotalReserveConstraint, OfflineReserve, "NSPIN_$EnergyReservoirStorage",
+    )]
+    @test all(
+        length(JuMP.constraint_object(con[n, t]).func.terms) == 3
+        for n in axes(con)[1], t in axes(con)[2]
+    )
+
+    @test solve!(model) == RunStatus.SUCCESSFULLY_FINALIZED
+    res = IOM.OptimizationProblemOutputs(model)
+    demand = read_variable(
+        res, "ServiceRequirementVariable__OfflineReserve";
+        table_format = TableFormat.WIDE,
+    )
+    @test all(demand[t, "NSPIN"] > 1.0 for t in 1:24)
+end
+
+@testset "Energy/AS decoupling: reserve_coverage = false" begin
+    template = get_thermal_dispatch_template_network(CopperPlateNetworkModel)
+    device_model = DeviceModel(
+        EnergyReservoirStorage,
+        StorageDispatchWithReserves;
+        attributes = Dict{String, Any}(
+            "reservation" => true,
+            "cycling_limits" => false,
+            "energy_target" => false,
+            "reserve_coverage" => false,
+            # Deliberately true: the decoupling must suppress it (with a warning).
+            "complete_coverage" => true,
+            "regularization" => false,
+        ),
+    )
+    set_device_model!(template, device_model)
+    set_device_model!(template, RenewableDispatch, FixedOutput)
+    set_service_model!(template, ServiceModel(OnlineReserve{ReserveUp}, RangeReserve))
+    set_service_model!(template, ServiceModel(OnlineReserve{ReserveDown}, RangeReserve))
+    c_sys5_bat = PSB.build_system(PSITestSystems, "c_sys5_bat"; add_reserves = true)
+    _deactivate_unmodeled_ordc!(c_sys5_bat)
+    model = DecisionModel(template, c_sys5_bat)
+    @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
+          ModelBuildStatus.BUILT
+
+    constraints = IOM.get_constraints(model)
+    # No SOC coverage of any flavor: individual, end-of-period, or complete (the
+    # complete_coverage = true above must be suppressed by the decoupling).
+    coverage_types = (
+        ReserveCoverageConstraint,
+        ReserveCoverageConstraintEndOfPeriod,
+        ReserveCompleteCoverageConstraint,
+        ReserveCompleteCoverageConstraintEndOfPeriod,
+    )
+    @test all(k -> IOM.get_entry_type(k) ∉ coverage_types, keys(constraints))
+
+    # The reservation binary still exists: energy charge/discharge exclusivity is kept.
+    variables = IOM.get_variables(model)
+    resv_key = IOM.VariableKey(ReservationVariable, EnergyReservoirStorage)
+    @test haskey(variables, resv_key)
+
+    # ...but the reserve band is decoupled from it: no deployment power-limit row may
+    # reference the binary (the no-reservation bound builders are used instead).
+    ss_vars = Set(vec(variables[resv_key].data))
+    for ckey in keys(constraints)
+        IOM.get_entry_type(ckey) in (
+            POM.OutputActivePowerVariableLimitsConstraint,
+            POM.InputActivePowerVariableLimitsConstraint,
+        ) || continue
+        arr = constraints[ckey]
+        data = arr isa JuMP.Containers.DenseAxisArray ? arr.data : arr
+        for i in eachindex(data)
+            isassigned(data, i) || continue
+            func = JuMP.constraint_object(data[i]).func
+            func isa JuMP.GenericAffExpr || continue
+            @test isempty(intersect(Set(keys(func.terms)), ss_vars))
+        end
+    end
 end
 
 @testset "Test Storage Energy Target Constraint" begin
@@ -371,14 +535,15 @@ end
     set_device_model!(template, RenewableDispatch, FixedOutput)
     set_service_model!(
         template,
-        ServiceModel(VariableReserve{ReserveUp}, RangeReserve, "Reserve3"),
+        ServiceModel(OnlineReserve{ReserveUp}, RangeReserve),
     )
     set_service_model!(
         template,
-        ServiceModel(VariableReserve{ReserveDown}, RangeReserve, "Reserve4"),
+        ServiceModel(OnlineReserve{ReserveDown}, RangeReserve),
     )
 
     c_sys5_bat = PSB.build_system(PSITestSystems, "c_sys5_bat"; add_reserves = true)
+    _deactivate_unmodeled_ordc!(c_sys5_bat)
     model = DecisionModel(template, c_sys5_bat)
     @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
           ModelBuildStatus.BUILT
@@ -434,14 +599,15 @@ end
     set_device_model!(template, RenewableDispatch, FixedOutput)
     set_service_model!(
         template,
-        ServiceModel(VariableReserve{ReserveUp}, RangeReserve, "Reserve3"),
+        ServiceModel(OnlineReserve{ReserveUp}, RangeReserve),
     )
     set_service_model!(
         template,
-        ServiceModel(VariableReserve{ReserveDown}, RangeReserve, "Reserve4"),
+        ServiceModel(OnlineReserve{ReserveDown}, RangeReserve),
     )
 
     c_sys5_bat = PSB.build_system(PSITestSystems, "c_sys5_bat"; add_reserves = true)
+    _deactivate_unmodeled_ordc!(c_sys5_bat)
     model = DecisionModel(template, c_sys5_bat; optimizer = ipopt_optimizer)
     @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
           ModelBuildStatus.BUILT
@@ -464,14 +630,15 @@ end
     set_device_model!(template, RenewableDispatch, FixedOutput)
     set_service_model!(
         template,
-        ServiceModel(VariableReserve{ReserveUp}, RangeReserve, "Reserve3"),
+        ServiceModel(OnlineReserve{ReserveUp}, RangeReserve),
     )
     set_service_model!(
         template,
-        ServiceModel(VariableReserve{ReserveDown}, RangeReserve, "Reserve4"),
+        ServiceModel(OnlineReserve{ReserveDown}, RangeReserve),
     )
 
     c_sys5_bat = PSB.build_system(PSITestSystems, "c_sys5_bat"; add_reserves = true)
+    _deactivate_unmodeled_ordc!(c_sys5_bat)
     model = DecisionModel(template, c_sys5_bat; optimizer = ipopt_optimizer)
     @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
           ModelBuildStatus.BUILT

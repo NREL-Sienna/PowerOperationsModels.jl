@@ -16,7 +16,7 @@ function _show_method(
     table = [
         "Network Model" string(get_network_formulation(network_model))
         "Slacks" get_use_slacks(network_model)
-        "PTDF" !isnothing(get_network_matrix(network_model))
+        "Network Data" !isnothing(get_network_data(network_model))
         "Duals" isempty(get_duals(network_model)) ? "None" : string.(get_duals(network_model))
         "HVDC Network Model" isnothing(get_hvdc_network_model(network_model)) ? "None" : replace(string(get_hvdc_network_model(network_model)), r"[()]" => "")
     ]
@@ -77,28 +77,14 @@ function _show_method(
     services = get_service_models(template)
     if !isempty(services)
         println(io)
-        if isempty(first(keys(services))[1])
-            header = ["Service Type", "Formulation", "Slacks", "Aggregated Model"]
-        else
-            header = ["Name", "Service Type", "Formulation", "Slacks", "Aggregated Model"]
-        end
-
+        # Service models are keyed per type (`Symbol(service_type)`), one model per type -
+        # no per-name entries, so the table is just type / formulation / slacks.
+        header = ["Service Type", "Formulation", "Slacks"]
         table = Matrix{String}(undef, length(services), length(header))
-        for (ix, (key, model)) in enumerate(services)
-            if isempty(key[1])
-                table[ix, 1] = string(get_component_type(model))
-                table[ix, 2] = string(get_formulation(model))
-                table[ix, 3] = string(model.use_slacks)
-                table[ix, 4] =
-                    string(get(model.attributes, "aggregated_service_model", "false"))
-            else
-                table[ix, 1] = key[1]
-                table[ix, 2] = string(get_component_type(model))
-                table[ix, 3] = string(get_formulation(model))
-                table[ix, 4] = string(model.use_slacks)
-                table[ix, 5] =
-                    string(get(model.attributes, "aggregated_service_model", "false"))
-            end
+        for (ix, (_, model)) in enumerate(services)
+            table[ix, 1] = string(get_component_type(model))
+            table[ix, 2] = string(get_formulation(model))
+            table[ix, 3] = string(model.use_slacks)
         end
 
         PrettyTables.pretty_table(

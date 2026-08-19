@@ -441,7 +441,13 @@ function make_tutorials()
 
                 outputfile = string("generated_", replace("$file", ".jl" => ""))
 
-                # Generate markdown
+                # Generate markdown with the Documenter flavor (so `@ref`/`@extref` links and
+                # `!!! admonition` blocks render). Code-block execution follows the `execute`
+                # opt-in: tutorials marked `EXECUTE = TRUE` keep Documenter `@example` blocks
+                # (run at `makedocs` time, output captured); all others have their `@example`
+                # fences rewritten to plain `julia` blocks that Documenter does not execute - so
+                # a tutorial needing solvers or data the docs environment does not carry still
+                # builds, and the downloadable script/notebook remains fully runnable.
                 Literate.markdown(infile_path,
                     tutorial_outputdir;
                     name = outputfile,
@@ -449,11 +455,15 @@ function make_tutorials()
                     flavor = Literate.DocumenterFlavor(),
                     documenter = true,
                     postprocess = (
-                        content -> add_download_links(
-                            insert_md(content),
-                            file,
-                            string(outputfile, ".ipynb"),
-                        )
+                        content -> begin
+                            content = add_download_links(
+                                insert_md(content),
+                                file,
+                                string(outputfile, ".ipynb"),
+                            )
+                            execute ? content :
+                            replace(content, r"```@example[^\n]*" => "```julia")
+                        end
                     ),
                     execute = execute)
 

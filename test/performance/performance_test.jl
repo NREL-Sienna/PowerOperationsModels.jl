@@ -43,11 +43,11 @@ function set_device_models!(template::PowerOperationsProblemTemplate, uc::Bool =
     set_device_model!(template, TwoWindingTransformer, StaticBranchUnbounded)
     set_service_model!(
         template,
-        ServiceModel(VariableReserve{ReserveUp}, RangeReserve),
+        ServiceModel(OnlineReserve{ReserveUp}, RangeReserve),
     )
     set_service_model!(
         template,
-        ServiceModel(VariableReserve{ReserveDown}, RangeReserve),
+        ServiceModel(OnlineReserve{ReserveDown}, RangeReserve),
     )
     return template
 end

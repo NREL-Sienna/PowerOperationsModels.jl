@@ -31,24 +31,15 @@ function _shunt_susceptance_limits(d::PSY.SwitchedAdmittance)
 end
 
 function _shunt_susceptance_limits(d::PSY.FACTSControlDevice)
-    # max_shunt_current is stored in MVA at unity voltage. At V = 1 pu the
-    # reactive power equals B * V² = B, so dividing by the system base (MVA)
-    # converts to per-unit susceptance on system base.
-    qmax_mva = PSY.get_max_shunt_current(d)
-    s_base = PSY.get_base_power(d)
-    if !isfinite(qmax_mva) || iszero(qmax_mva)
+    # max_shunt_current is stored in MVA at unity voltage. At V = 1 pu the reactive power
+    # equals B * V² = B, so its system-base per-unit value IS the susceptance bound.
+    b_max = PSY.get_max_shunt_current(d, PSY.SU)
+    if !isfinite(b_max) || iszero(b_max)
         error(
             "FACTSControlDevice $(PSY.get_name(d)) has zero/invalid max_shunt_current; ",
             "cannot bound susceptance",
         )
     end
-    if !isfinite(s_base) || iszero(s_base)
-        error(
-            "FACTSControlDevice $(PSY.get_name(d)) has zero/invalid system base power; ",
-            "cannot convert max_shunt_current to per unit",
-        )
-    end
-    b_max = qmax_mva / s_base
     return (min = -b_max, max = b_max)
 end
 

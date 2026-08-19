@@ -97,12 +97,13 @@ _add_static_branch_btheta_expression!(
 ) = nothing
 
 # StaticBranch under DCP carries its flow as the BThetaBranchFlow expression
-# (`-b * (va_fr - va_to - shift)`), so it must be built here — in the network's own
+# (`b * (va_fr - va_to - shift)`), so it must be built here — in the network's own
 # ArgumentConstructStage, right after `VoltageAngle` is created — rather than from the
 # branch's own ArgumentConstructStage, which build_problem.jl runs BEFORE this one (branch
 # arguments, then network arguments, then device Model stage, then network Model stage
 # that closes the nodal balance). This is the only point in the build order where
 # `VoltageAngle` exists AND the nodal balance is still open for writes.
+# TODO: Maybe we build all argument stages first, including networks?
 function _add_static_branch_btheta_expression!(
     container::OptimizationContainer,
     sys::PSY.System,
@@ -116,13 +117,13 @@ function _add_static_branch_btheta_expression!(
 end
 
 # psy6: disabled pending transformer refactor
-# Transformer3W has three star arcs per device, so it can't use the single-arc expression
+# ThreeWindingTransformer has three star arcs per device, so it can't use the single-arc expression
 # above; it keeps its own FlowActivePowerVariable-per-winding decomposition in
-# branch_constructor.jl (`DeviceModel{PSY.Transformer3W, StaticBranch}`).
+# branch_constructor.jl (`DeviceModel{PSY.ThreeWindingTransformer, StaticBranch}`).
 # _add_static_branch_btheta_expression!(
 #     ::OptimizationContainer,
 #     ::PSY.System,
-#     ::DeviceModel{PSY.Transformer3W, StaticBranch},
+#     ::DeviceModel{PSY.ThreeWindingTransformer, StaticBranch},
 #     ::NetworkModel{DCPNetworkModel},
 # ) = nothing
 
@@ -141,8 +142,8 @@ function construct_network!(
     return
 end
 
-# Generic active-power-only Argument stage: CopperPlate, AreaBalance, PTDF, AreaPTDF,
-# NFA. No voltage variables; only the (active) balance slacks.
+# Generic active-power-only Argument stage: CopperPlate, AreaBalance, NFA
+# No voltage variables; only the (active) balance slacks.
 function construct_network!(
     container::OptimizationContainer,
     sys::PSY.System,
@@ -151,6 +152,37 @@ function construct_network!(
     ::ArgumentConstructStage,
 )
     _add_balance_slack_variables!(container, sys, model; reactive = false)
+    return
+end
+
+function _add_dc_phase_shift_injections!(
+    container::OptimizationContainer,
+    model::NetworkModel{<:AbstractPTDFNetworkModel},
+)
+    network_reduction = get_network_reduction(model)
+    nodal_expr = get_expression(container, ActivePowerBalance, PSY.ACBus)
+    time_steps = get_time_steps(container)
+    for arc in PNM.get_arc_axis(network_reduction)
+        injection = PNM.arc_dc_shift_injection(network_reduction, arc)
+        iszero(injection) && continue
+        from_no, to_no = arc
+        for t in time_steps
+            JuMP.add_to_expression!(nodal_expr[from_no, t], injection)
+            JuMP.add_to_expression!(nodal_expr[to_no, t], -injection)
+        end
+    end
+    return
+end
+
+function construct_network!(
+    container::OptimizationContainer,
+    sys::PSY.System,
+    model::NetworkModel{<:AbstractPTDFNetworkModel},
+    ::PowerOperationsProblemTemplate,
+    ::ArgumentConstructStage,
+)
+    _add_balance_slack_variables!(container, sys, model; reactive = false)
+    _add_dc_phase_shift_injections!(container, model)
     return
 end
 

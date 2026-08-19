@@ -38,6 +38,27 @@ function construct_device!(
         network_model,
     )
 
+    # With reserves, the dispatch limits move to the range expressions so awards consume
+    # shed/forecast headroom (load direction map in electric_loads.jl).
+    if has_service_model(model)
+        add_to_expression!(
+            container,
+            ActivePowerRangeExpressionLB,
+            ActivePowerVariable,
+            devices,
+            model,
+            network_model,
+        )
+        add_to_expression!(
+            container,
+            ActivePowerRangeExpressionUB,
+            ActivePowerVariable,
+            devices,
+            model,
+            network_model,
+        )
+    end
+
     if haskey(get_time_series_names(model), ActivePowerTimeSeriesParameter)
         add_parameters!(container, ActivePowerTimeSeriesParameter, devices, model)
     end
@@ -59,14 +80,33 @@ function construct_device!(
             sys,
         )
 
-    add_constraints!(
-        container,
-        ActivePowerVariableLimitsConstraint,
-        ActivePowerVariable,
-        devices,
-        model,
-        network_model,
-    )
+    if has_service_model(model)
+        add_constraints!(
+            container,
+            ActivePowerVariableLimitsConstraint,
+            ActivePowerRangeExpressionLB,
+            devices,
+            model,
+            network_model,
+        )
+        add_constraints!(
+            container,
+            ActivePowerVariableLimitsConstraint,
+            ActivePowerRangeExpressionUB,
+            devices,
+            model,
+            network_model,
+        )
+    else
+        add_constraints!(
+            container,
+            ActivePowerVariableLimitsConstraint,
+            ActivePowerVariable,
+            devices,
+            model,
+            network_model,
+        )
+    end
     add_constraints!(
         container,
         ReactivePowerVariableLimitsConstraint,
@@ -116,6 +156,27 @@ function construct_device!(
         network_model,
     )
 
+    # With reserves, the dispatch limits move to the range expressions so awards consume
+    # shed/forecast headroom (load direction map in electric_loads.jl).
+    if has_service_model(model)
+        add_to_expression!(
+            container,
+            ActivePowerRangeExpressionLB,
+            ActivePowerVariable,
+            devices,
+            model,
+            network_model,
+        )
+        add_to_expression!(
+            container,
+            ActivePowerRangeExpressionUB,
+            ActivePowerVariable,
+            devices,
+            model,
+            network_model,
+        )
+    end
+
     if haskey(get_time_series_names(model), ActivePowerTimeSeriesParameter)
         add_parameters!(container, ActivePowerTimeSeriesParameter, devices, model)
     end
@@ -139,14 +200,33 @@ function construct_device!(
             sys,
         )
 
-    add_constraints!(
-        container,
-        ActivePowerVariableLimitsConstraint,
-        ActivePowerVariable,
-        devices,
-        model,
-        network_model,
-    )
+    if has_service_model(model)
+        add_constraints!(
+            container,
+            ActivePowerVariableLimitsConstraint,
+            ActivePowerRangeExpressionLB,
+            devices,
+            model,
+            network_model,
+        )
+        add_constraints!(
+            container,
+            ActivePowerVariableLimitsConstraint,
+            ActivePowerRangeExpressionUB,
+            devices,
+            model,
+            network_model,
+        )
+    else
+        add_constraints!(
+            container,
+            ActivePowerVariableLimitsConstraint,
+            ActivePowerVariable,
+            devices,
+            model,
+            network_model,
+        )
+    end
     add_feedforward_constraints!(container, model, devices)
 
     add_to_objective_function!(

@@ -2556,9 +2556,9 @@ function _get_branch_map(network_model::NetworkModel)
             area_from, area_to = _get_area_from_to(reduction_entry)
             if area_from != area_to
                 branch_typed_dict = get!(
+                    Dict{DataType, Vector{String}},
                     inter_area_branch_map,
                     (PSY.get_name(area_from), PSY.get_name(area_to)),
-                    Dict{DataType, Vector{String}}(),
                 )
                 _add_to_branch_map!(branch_typed_dict, reduction_entry, name)
             end
@@ -2706,9 +2706,9 @@ function _add_hvdc_inter_area_branches_of_type!(
         area_from, area_to = _get_area_from_to(device)
         if area_from != area_to
             branch_typed_dict = get!(
+                Dict{DataType, Vector{String}},
                 inter_area_branch_map,
                 (PSY.get_name(area_from), PSY.get_name(area_to)),
-                Dict{DataType, Vector{String}}(),
             )
             _add_to_branch_map!(branch_typed_dict, device, PSY.get_name(device))
         end
@@ -2766,94 +2766,6 @@ function construct_device!(
     add_feedforward_constraints!(container, device_model, devices)
     return
 end
-
-# psy6: disabled pending transformer refactor
-# ################################################################################
-# # Transformer3W DCP / ACP construct_device! dispatches.
-# #
-# # These bypass the generic ACTransmission AC ArgumentConstructStage methods
-# # (which assume a single arc per device and fail on Transformer3W's
-# # get_primary_star_arc / get_secondary_star_arc / get_tertiary_star_arc).
-# # The actual variable creation, ohms, and rate-limit logic lives in
-# # ac_transmission_models/AC_branches.jl under the "Transformer3W explicit
-# # star-arc decomposition" section.
-# ################################################################################
-#
-# ############################################################################
-# ####################### Two-Terminal VSC HVDC Construct ####################
-# ############################################################################
-#
-# function construct_device!(
-#     container::OptimizationContainer,
-#     sys::PSY.System,
-#     ::ArgumentConstructStage,
-#     device_model::DeviceModel{PSY.Transformer3W, StaticBranch},
-#     network_model::NetworkModel{DCPNetworkModel},
-# )
-#     devices = get_available_components(device_model, sys)
-#     _add_three_winding_flow_variables!(container, devices, network_model)
-#     add_to_expression!(
-#         container, ActivePowerBalance, FlowActivePowerVariable,
-#         devices, device_model, network_model,
-#     )
-#     add_feedforward_arguments!(container, device_model, devices)
-#     return
-# end
-#
-# function construct_device!(
-#     container::OptimizationContainer,
-#     sys::PSY.System,
-#     ::ModelConstructStage,
-#     device_model::DeviceModel{PSY.Transformer3W, StaticBranch},
-#     network_model::NetworkModel{DCPNetworkModel},
-# )
-#     devices = get_available_components(device_model, sys)
-#     add_constraints!(container, FlowRateConstraint, devices, device_model, network_model)
-#     add_constraints!(
-#         container, sys, NetworkFlowConstraint, devices, device_model, network_model,
-#     )
-#     add_feedforward_constraints!(container, device_model, devices)
-#     add_to_objective_function!(container, devices, device_model, DCPNetworkModel)
-#     add_constraint_dual!(container, sys, device_model)
-#     return
-# end
-#
-# function construct_device!(
-#     container::OptimizationContainer,
-#     sys::PSY.System,
-#     ::ArgumentConstructStage,
-#     device_model::DeviceModel{PSY.Transformer3W, StaticBranch},
-#     network_model::NetworkModel{ACPNetworkModel},
-# )
-#     devices = get_available_components(device_model, sys)
-#     _add_three_winding_flow_variables!(container, devices, network_model)
-#     _wire_static_branch_flow_to_balance!(container, devices, device_model, network_model)
-#     add_feedforward_arguments!(container, device_model, devices)
-#     return
-# end
-#
-# function construct_device!(
-#     container::OptimizationContainer,
-#     sys::PSY.System,
-#     ::ModelConstructStage,
-#     device_model::DeviceModel{PSY.Transformer3W, StaticBranch},
-#     network_model::NetworkModel{ACPNetworkModel},
-# )
-#     devices = get_available_components(device_model, sys)
-#     add_constraints!(
-#         container, FlowRateConstraintFromTo, devices, device_model, network_model,
-#     )
-#     add_constraints!(
-#         container, FlowRateConstraintToFrom, devices, device_model, network_model,
-#     )
-#     add_constraints!(
-#         container, sys, NetworkFlowConstraint, devices, device_model, network_model,
-#     )
-#     add_feedforward_constraints!(container, device_model, devices)
-#     add_to_objective_function!(container, devices, device_model, ACPNetworkModel)
-#     add_constraint_dual!(container, sys, device_model)
-#     return
-# end
 
 function construct_device!(
     container::OptimizationContainer,

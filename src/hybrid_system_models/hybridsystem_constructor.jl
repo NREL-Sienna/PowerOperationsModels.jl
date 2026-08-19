@@ -182,7 +182,7 @@ function _add_hybrid_reserve_arguments!(
     for s in services
         lazy_container_addition!(container, TotalReserveOffering, T,
             PSY.get_name.(devices), time_steps;
-            meta = "$(typeof(s))_$(PSY.get_name(s))")
+            meta = _service_container_meta(s))
     end
     # Only storage hybrids have subcomponent reserve variables to aggregate into the
     # offering; storage-less hybrids feed it via the PCC reserve path instead.

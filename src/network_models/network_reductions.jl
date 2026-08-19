@@ -156,7 +156,7 @@ function search_for_reduced_branch_expression!(
     ::Type{T},
     ::Type{U},
 ) where {T <: ExpressionType, U <: VariableType}
-    wired_arcs = get!(tracker.expression_dict, (T, U), Set{Tuple{Int, Int}}())
+    wired_arcs = get!(Set{Tuple{Int, Int}}, tracker.expression_dict, (T, U))
     already_wired = arc_tuple in wired_arcs
     if !already_wired
         push!(wired_arcs, arc_tuple)
@@ -187,6 +187,7 @@ function get_branch_argument_parameter_axes(
     ::Type{V},
     ts_name::String;
     interval::Dates.Millisecond = IOM.UNSET_INTERVAL,
+    resolution::Dates.Millisecond = IOM.UNSET_RESOLUTION,
 ) where {T <: IS.InfrastructureSystemsComponent, V <: IS.TimeSeriesData}
     return get_branch_argument_parameter_axes(
         net_reduction_data,
@@ -194,6 +195,7 @@ function get_branch_argument_parameter_axes(
         V,
         ts_name;
         interval = interval,
+        resolution = resolution,
     )
 end
 
@@ -216,8 +218,10 @@ function get_branch_argument_parameter_axes(
     ::Type{V},
     ts_name::String;
     interval::Dates.Millisecond = IOM.UNSET_INTERVAL,
+    resolution::Dates.Millisecond = IOM.UNSET_RESOLUTION,
 ) where {T <: IS.InfrastructureSystemsComponent, V <: IS.TimeSeriesData}
     is_interval = IOM._to_is_interval(interval)
+    is_resolution = IOM._to_is_resolution(resolution)
     name_axis = Vector{String}()
     ts_hash_axis = Vector{String}()
     arc_map = get(PNM.get_name_to_arc_maps(net_reduction_data), T, nothing)
@@ -236,13 +240,13 @@ function get_branch_argument_parameter_axes(
     # One catalog query resolves the content hash of every branch's stored array;
     # branches sharing an array share a hash, which is what keys the parameter rows.
     hashes = IS.get_time_series_hashes(devices_with_time_series, V, ts_name;
-        interval = is_interval)
+        interval = is_interval, resolution = is_resolution)
     for (name, device) in zip(name_axis, devices_with_time_series)
         ts_hash = get(hashes, IS.get_id(device), nothing)
         if ts_hash === nothing
             error(
                 "Time series $V:$ts_name for branch $name does not match " *
-                "interval=$interval.",
+                "interval=$interval, resolution=$resolution.",
             )
         end
         push!(ts_hash_axis, ts_hash)
@@ -316,17 +320,17 @@ function get_branch_argument_constraint_axis(
     constraint_map_by_type = get_constraint_map_by_type(reduced_branch_tracker)
     name_axis = get_name_to_arc_map_entries(net_reduction_data, T)
     arc_tuples_with_constraints =
-        get!(constraint_tracker, U, Set{Tuple{Int, Int}}())
+        get!(Set{Tuple{Int, Int}}, constraint_tracker, U)
     constraint_map = get!(
-        constraint_map_by_type,
-        U,
         Dict{
             Type{<:IS.InfrastructureSystemsComponent},
             IOM.SortedDict{String, Tuple{Tuple{Int, Int}, String}},
-        }(),
+        },
+        constraint_map_by_type,
+        U,
     )
     constraint_submap =
-        get!(constraint_map, T, IOM.SortedDict{String, Tuple{Tuple{Int, Int}, String}}())
+        get!(IOM.SortedDict{String, Tuple{Tuple{Int, Int}, String}}, constraint_map, T)
     for (branch_name, name_axis_tuple) in name_axis
         arc_tuple = name_axis_tuple[1]
         if !(arc_tuple in arc_tuples_with_constraints)
@@ -335,28 +339,6 @@ function get_branch_argument_constraint_axis(
         end
     end
     return collect(keys(constraint_submap))
-end
-
-# Verify a user-provided contingency matrix was built with the same network reduction
-# as the active reduction (derived from the network matrix). Equality of the bus
-# reduction map is the decisive check: it fixes the reduced bus/arc numbering
-# the post-contingency builder uses to index `modf_matrix[arc, outage_spec]`.
-function _validate_provided_modf_reduction!(
-    modf::PNM.VirtualMODF,
-    network_reduction::PNM.NetworkReductionData,
-)
-    if PNM.get_bus_reduction_map(modf.network_reduction_data) !=
-       PNM.get_bus_reduction_map(network_reduction)
-        throw(
-            IS.ConflictingInputsError(
-                "The provided contingency matrix was built with a different network \
-                reduction than the active reduction derived from the network \
-                matrix. Rebuild the MODF with a consistent network reduction, \
-                or omit it so it is recalculated automatically.",
-            ),
-        )
-    end
-    return
 end
 
 """

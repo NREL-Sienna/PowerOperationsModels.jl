@@ -192,15 +192,15 @@ end
     set_device_model!(template, HydroTurbine, HydroDispatchRunOfRiver)
     set_service_model!(
         template,
-        ServiceModel(VariableReserve{ReserveUp}, RangeReserve, "Reserve5"),
+        ServiceModel(OnlineReserve{ReserveUp}, RangeReserve),
     )
     set_service_model!(
         template,
-        ServiceModel(VariableReserve{ReserveDown}, RangeReserve, "Reserve6"),
+        ServiceModel(OnlineReserve{ReserveDown}, RangeReserve),
     )
     set_service_model!(
         template,
-        ServiceModel(ReserveDemandCurve{ReserveUp}, StepwiseCostReserve, "ORDC1"),
+        ServiceModel(OnlineReserve{ReserveUp}, StepwiseCostReserve),
     )
 
     c_sys5_hyd = PSB.build_system(
@@ -439,12 +439,12 @@ end
     )
 
     # Fix reserve parameters
-    reg_up = only(get_components(VariableReserve{ReserveUp}, c_sys5_hy))
-    reg_dn = only(get_components(VariableReserve{ReserveDown}, c_sys5_hy))
-    set_deployed_fraction!(reg_up, 0.0)
-    set_deployed_fraction!(reg_dn, 0.0)
-    set_requirement!(reg_up, 0.01 * PSY.SU)
-    set_requirement!(reg_dn, 0.01 * PSY.SU)
+    reserve_up = only(get_components(OnlineReserve{ReserveUp}, c_sys5_hy))
+    reserve_down = only(get_components(OnlineReserve{ReserveDown}, c_sys5_hy))
+    set_deployed_fraction!(reserve_up, 0.0)
+    set_deployed_fraction!(reserve_down, 0.0)
+    set_requirement!(reserve_up, 0.01 * PSY.SU)
+    set_requirement!(reserve_down, 0.01 * PSY.SU)
 
     hydro_budget = 24
     eps = 1e-6
@@ -453,11 +453,11 @@ end
 
     # Update Service allocation
     # Remove reg up from hydro, but leave reg dn
-    remove_service!(hy, reg_up)
+    remove_service!(hy, reserve_up)
 
     # Add reg up to thermals
     for th in get_components(ThermalStandard, c_sys5_hy)
-        add_service!(th, reg_up, c_sys5_hy)
+        add_service!(th, reserve_up, c_sys5_hy)
     end
 
     max_power = get_max_active_power(hy, PSY.SU)
@@ -497,8 +497,8 @@ end
             attributes = Dict("hydro_budget" => true,
                 "hydro_budget_interval" => Hour(hydro_budget))),
     )
-    set_service_model!(template_uc, VariableReserve{ReserveUp}, RangeReserve)
-    set_service_model!(template_uc, VariableReserve{ReserveDown}, RangeReserve)
+    set_service_model!(template_uc, OnlineReserve{ReserveUp}, RangeReserve)
+    set_service_model!(template_uc, OnlineReserve{ReserveDown}, RangeReserve)
     model = DecisionModel(
         template_uc,
         c_sys5_hy;
@@ -511,6 +511,89 @@ end
 
     @test solve!(model; output_dir = output_dir) ==
           IS.Simulation.RunStatus.SUCCESSFULLY_FINALIZED
+end
+
+@testset "HydroEnergyOutput down-reserve term is guarded by the down expression" begin
+    # Regression test: aux vars for HydroEnergyOutput were being calculated incorrectly
+    # due to copy-paste error that mixed up/down containers
+    # TODO: true correctness test, checking the computed values of the aux variables.
+    output_dir = mktempdir(; cleanup = true)
+
+    c_sys5_hy = PSB.build_system(
+        PSITestSystems,
+        "c_sys5_hy";
+        add_single_time_series = true,
+        add_reserves = true,
+    )
+
+    # The hydro unit is the sole contributing device for both reserves in this system, so
+    # the down requirement guarantees a nonzero down award to detect.
+    reserve_up = only(get_components(OnlineReserve{ReserveUp}, c_sys5_hy))
+    reserve_down = only(get_components(OnlineReserve{ReserveDown}, c_sys5_hy))
+    set_deployed_fraction!(reserve_up, 0.0)
+    set_deployed_fraction!(reserve_down, 0.5)
+    set_requirement!(reserve_up, 0.01 * PSY.SU)
+    set_requirement!(reserve_down, 0.01 * PSY.SU)
+
+    transform_single_time_series!(c_sys5_hy, Hour(4), Hour(4))
+
+    template = PowerOperationsProblemTemplate()
+    set_device_model!(template, ThermalStandard, ThermalBasicUnitCommitment)
+    set_device_model!(template, RenewableDispatch, RenewableFullDispatch)
+    set_device_model!(template, PowerLoad, StaticPowerLoad)
+    set_device_model!(template, RenewableNonDispatch, FixedOutput)
+    set_device_model!(template, HydroDispatch, HydroDispatchRunOfRiver)
+    set_service_model!(template, OnlineReserve{ReserveUp}, RangeReserve)
+    set_service_model!(template, OnlineReserve{ReserveDown}, RangeReserve)
+
+    model = DecisionModel(
+        template,
+        c_sys5_hy;
+        optimizer = HiGHS_optimizer,
+        store_variable_names = true,
+    )
+
+    @test build!(model; output_dir = output_dir) == ModelBuildStatus.BUILT
+    @test solve!(model; output_dir = output_dir) ==
+          IS.Simulation.RunStatus.SUCCESSFULLY_FINALIZED
+
+    container = IOM.get_optimization_container(model)
+    hy_name = PSY.get_name(only(get_components(HydroDispatch, c_sys5_hy)))
+    time_steps = IOM.get_time_steps(container)
+
+    dn_expr = IOM.get_expression(
+        container,
+        HydroServedReserveDownExpression,
+        HydroDispatch,
+    )
+    p_var = IOM.get_variable(container, ActivePowerVariable, HydroDispatch)
+    aux = IOM.get_aux_variable(container, HydroEnergyOutput, HydroDispatch)
+
+    served_dn = [IOM.jump_value(dn_expr[hy_name, t]) for t in time_steps]
+    p = [IOM.jump_value(p_var[hy_name, t]) for t in time_steps]
+    # A zero down award would make the assertions below vacuous.
+    @test all(served_dn .> 1e-8)
+
+    # Hourly resolution, and `deployed_fraction` on the up reserve is 0, so the expected
+    # energy output reduces to `p - served_dn`.
+    expected = p .- served_dn
+    @test all(isapprox.([aux[hy_name, t] for t in time_steps], expected; atol = 1e-8))
+
+    # Drop the up container. The down term must survive: it is guarded by its own
+    # container, not by the up one.
+    delete!(
+        IOM.get_expressions(container),
+        IOM.ExpressionKey(HydroServedReserveUpExpression, HydroDispatch),
+    )
+    POM.calculate_aux_variable_value!(
+        container,
+        IOM.AuxVarKey{HydroEnergyOutput, HydroDispatch}(""),
+        c_sys5_hy,
+    )
+
+    @test all(isapprox.([aux[hy_name, t] for t in time_steps], expected; atol = 1e-8))
+    # Guard against the specific regression: dropping the down term leaves exactly `p`.
+    @test !any(isapprox.([aux[hy_name, t] for t in time_steps], p; atol = 1e-8))
 end
 
 ################################################

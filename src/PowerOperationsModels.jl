@@ -12,6 +12,10 @@ import Logging
 import PowerNetworkMatrices
 # Brought into namespace so the `export PTDF` / `export VirtualPTDF` below resolve (re-export to POM users)
 import PowerNetworkMatrices: PTDF, VirtualPTDF
+# Brought into namespace so `NetworkReductionSpec(RadialReduction())` resolves unqualified
+# after `using PowerOperationsModels` (re-export to POM users)
+import PowerNetworkMatrices:
+    RadialReduction, DegreeTwoReduction, WardReduction, ZeroImpedanceBranchReduction
 import PowerSystems
 import PowerSystems: get_component
 import PrettyTables
@@ -19,7 +23,7 @@ import ProgressMeter
 import Serialization
 import SparseArrays
 import TimerOutputs
-import InteractiveUtils: methodswith
+import InteractiveUtils: methodswith, subtypes
 
 using DocStringExtensions
 using JSON3
@@ -307,6 +311,9 @@ include("ac_transmission_models/branch_constructor.jl")
 
 # Network Models
 include("network_models/network_reductions.jl")
+include("network_models/reduction_exceptions.jl")
+include("network_models/network_sources.jl")
+include("network_models/network_data.jl")
 include("network_models/instantiate_network_model.jl")
 include("network_models/network_slack_variables.jl")
 include("network_models/copperplate_model.jl")
@@ -321,6 +328,7 @@ include("network_models/network_constructor.jl")
 # Services Models
 include("services_models/service_slacks.jl")
 include("services_models/reserves.jl")
+include("services_models/reserve_offers.jl")
 include("services_models/reserve_group.jl")
 # include("services_models/agc.jl")  # TODO: needs _get_ace_error
 include("services_models/transmission_interface.jl")
@@ -914,7 +922,8 @@ export VoltageDispatchHVDCNetworkModel
 export AbstractServiceFormulation
 export AbstractReservesFormulation
 export PIDSmoothACE
-export GroupReserve
+export GroupRangeReserve
+export GroupStepwiseCostReserve
 export RangeReserve
 export StepwiseCostReserve
 export RampReserve
@@ -959,9 +968,19 @@ export AbstractReactivePowerNetworkModel
 export NFANetworkModel
 export DCPLLNetworkModel
 
+# Network source declarations (network_models/network_sources.jl); the derived
+# network-data containers stay unexported — they are build outputs, not user inputs.
+export NetworkReductionSpec
+export PrebuiltMatrixSource
+export PrebuiltCoreSource
+
 # PowerNetworkMatrices
 export PTDF
 export VirtualPTDF
+export RadialReduction
+export DegreeTwoReduction
+export WardReduction
+export ZeroImpedanceBranchReduction
 
 # Other utilities
 export get_name

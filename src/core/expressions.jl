@@ -8,7 +8,8 @@ struct InterfaceTotalFlow <: ExpressionType end
 struct PTDFBranchFlow <: ExpressionType end
 
 """
-Branch active-power flow expression for the B-θ (DC) network model: `-b·(θ_from - θ_to - shift)`.
+Branch active-power flow expression for the B-θ (DC) network model: `b·(θ_from - θ_to - shift)`,
+with the DC susceptance `b = 1/(tap·x)` and the DC phase shift.
 Under `DCPNetworkModel` with `StaticBranch` the flow is this expression (not a decision
 variable); `FlowRateConstraint` rows are written directly on it. Reportable as an output,
 mirroring `PTDFBranchFlow`.

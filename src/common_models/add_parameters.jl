@@ -31,38 +31,53 @@ function add_parameters!(
     return
 end
 
+# Per-type service time-series parameter: all services of the type share one container
+# keyed `(ParameterType, ServiceType)`, axed by service name.
+#
+# `U` is decoupled from the model's component type `V`: a `ServiceModel` can be declared with a
+# partially applied type, e.g. `OnlineReserve{ReserveDown}` (a `UnionAll` with a free unit-system
+# parameter), while the vector holds concrete `OnlineReserve{ReserveDown, NaturalUnit}` instances.
+# `Vector` is invariant, so no single type variable can bind both. Container keys are unaffected
+# (`canonical_component_type` strips the unit parameter).
 function add_parameters!(
     container::OptimizationContainer,
     ::Type{T},
-    service::U,
-    model::ServiceModel{U, V},
-) where {T <: TimeSeriesParameter, U <: PSY.Service, V <: AbstractServiceFormulation}
-    if get_rebuild_model(get_settings(container)) &&
-       has_container_key(container, T, U, PSY.get_name(service))
+    services::Vector{U},
+    model::ServiceModel{V, W},
+) where {
+    T <: TimeSeriesParameter,
+    U <: PSY.Service,
+    V <: PSY.Service,
+    W <: AbstractServiceFormulation,
+}
+    if get_rebuild_model(get_settings(container)) && has_container_key(container, T, V)
         return
     end
-    _add_parameters!(container, T, service, model)
+    _add_parameters!(container, T, services, model)
     return
 end
 
+# Per-type operating reserve demand curve (ORDC) PWL cost params: all the type's services
+# share one container (names axis + tranche axis).
+# Element type decoupled from the `ServiceModel`'s component type; see `add_parameters!` above.
 function add_parameters!(
     container::OptimizationContainer,
     ::Type{T},
-    service::U,
-    model::ServiceModel{U, V},
+    services::Vector{U},
+    model::ServiceModel{V, W},
 ) where {
     T <: Union{
         AbstractPiecewiseLinearSlopeParameter,
         AbstractPiecewiseLinearBreakpointParameter,
     },
-    U <: PSY.ReserveDemandTimeSeriesCurve,
-    V <: AbstractServiceFormulation,
+    U <: PSY.AbstractReserve,
+    V <: PSY.AbstractReserve,
+    W <: AbstractServiceFormulation,
 }
-    if get_rebuild_model(get_settings(container)) &&
-       has_container_key(container, T, U, PSY.get_name(service))
+    if get_rebuild_model(get_settings(container)) && has_container_key(container, T, U)
         return
     end
-    _add_parameters!(container, T, service, model)
+    _add_parameters!(container, T, services, model)
     return
 end
 
@@ -280,7 +295,7 @@ function _add_time_series_parameters!(
     end
     time_steps = get_time_steps(container)
 
-    net_reduction_data = network_model.network_reduction
+    net_reduction_data = get_network_reduction(network_model)
     reduced_branch_tracker = get_reduced_branch_tracker(network_model)
     all_branch_maps_by_type = PNM.get_all_branch_maps_by_type(net_reduction_data)
 
@@ -288,6 +303,7 @@ function _add_time_series_parameters!(
     ts_name = _get_time_series_name(T, first(devices), model)
     model_interval = get_interval(get_settings(container))
     ts_interval = model_interval
+    model_resolution = get_resolution(get_settings(container))
     device_name_axis, ts_hash_axis =
         get_branch_argument_parameter_axes(
             net_reduction_data,
@@ -295,6 +311,7 @@ function _add_time_series_parameters!(
             ts_type,
             ts_name;
             interval = ts_interval,
+            resolution = model_resolution,
         )
     if isempty(device_name_axis)
         @info "No devices with time series $ts_name found for $D devices. Skipping parameter addition."
@@ -310,7 +327,9 @@ function _add_time_series_parameters!(
         D,
         ts_type,
         ts_name,
-        ts_hash_axis,
+        # Branches can share one stored array, so the hash axis is deduplicated; the
+        # per-branch row lookups below already key by hash and name separately.
+        unique(ts_hash_axis),
         device_name_axis,
         additional_axes,
         time_steps,
@@ -352,6 +371,7 @@ function _add_time_series_parameters!(
                 device_with_time_series,
                 ts_name;
                 interval = ts_interval,
+                resolution = model_resolution,
             )
             ts_vals =
                 IOM.unwrap_for_param.((param_instance,), raw_ts_vals, (additional_axes,))
@@ -412,7 +432,7 @@ _get_time_series_name(
             DecrementalPiecewiseLinearBreakpointParameter,
         },
     },
-    service::PSY.ReserveDemandTimeSeriesCurve,
+    service::PSY.AbstractReserve,
     ::ServiceModel,
 ) = IS.get_name(IS.get_time_series_key(PSY.get_variable(service)))
 
@@ -544,14 +564,14 @@ calc_additional_axes(
     W <: AbstractDeviceFormulation,
 } where {D <: PSY.Component} = ()
 
+# Element type decoupled from the `ServiceModel`'s component type; see `add_parameters!` above.
 calc_additional_axes(
     ::OptimizationContainer,
     ::Type{T},
-    ::U,
+    ::Union{Vector{<:PSY.Service}, IS.FlattenIteratorWrapper{<:PSY.Service}},
     ::ServiceModel{D, W},
 ) where {
     T <: ParameterType,
-    U <: Union{Vector{D}, IS.FlattenIteratorWrapper{D}},
     W <: AbstractServiceFormulation,
 } where {D <: PSY.Service} = ()
 
@@ -560,42 +580,52 @@ calc_additional_axes(
 #################################################################################
 
 function get_max_tranches(component::PSY.Component, piecewise_ts::IS.TimeSeriesKey)
-    data = PSY.get_data(PSY.get_time_series(component, piecewise_ts))
-    return IOM.get_max_tranches(data)
+    return IOM.get_max_tranches(_ordc_ts_data(PSY.get_time_series(component, piecewise_ts)))
 end
 
+# A real `Deterministic` exposes its windows via `get_data`. The `transform_single_time_series!`
+# product (`DeterministicSingleTimeSeries`) has no `get_data`, but its wrapped `SingleTimeSeries`
+# holds the same per-hour curves as a `TimeArray`, which `IOM.get_max_tranches` also accepts.
+_ordc_ts_data(ts) = PSY.get_data(ts)
+_ordc_ts_data(ts::IS.DeterministicSingleTimeSeries) =
+    PSY.get_data(IS.get_single_time_series(ts))
+
+# Batch form (mirrors the device methods below): size the tranche axis to the largest tranche
+# count across the type's services; shorter per-hour curves are padded in `unwrap_for_param`.
+#
+# Element type decoupled from the `ServiceModel`'s component type; see `add_parameters!` above.
+# Only time-series-backed ORDCs reach here (the caller filters on `_ordc_is_ts`), so the
+# `get_time_series_key`/`get_max_tranches` reads are valid.
 function calc_additional_axes(
     ::OptimizationContainer,
     ::Type{P},
-    service::U,
-    ::ServiceModel{U, W},
+    services::Vector{<:PSY.AbstractReserve},
+    ::ServiceModel{<:PSY.AbstractReserve, W},
 ) where {
     P <: AbstractPiecewiseLinearSlopeParameter,
-    U <: PSY.ReserveDemandTimeSeriesCurve,
     W <: AbstractServiceFormulation,
 }
-    ts_key = IS.get_time_series_key(PSY.get_variable(service))
-    max_tranches = get_max_tranches(service, ts_key)
+    max_tranches = maximum(services) do service
+        get_max_tranches(service, IS.get_time_series_key(PSY.get_variable(service)))
+    end
     return (IOM.make_tranche_axis(max_tranches),)
 end
 
 function calc_additional_axes(
     ::OptimizationContainer,
     ::Type{P},
-    service::U,
-    ::ServiceModel{U, W},
+    services::Vector{<:PSY.AbstractReserve},
+    ::ServiceModel{<:PSY.AbstractReserve, W},
 ) where {
     P <: AbstractPiecewiseLinearBreakpointParameter,
-    U <: PSY.ReserveDemandTimeSeriesCurve,
     W <: AbstractServiceFormulation,
 }
-    ts_key = IS.get_time_series_key(PSY.get_variable(service))
-    max_tranches = get_max_tranches(service, ts_key)
+    max_tranches = maximum(services) do service
+        get_max_tranches(service, IS.get_time_series_key(PSY.get_variable(service)))
+    end
     return (IOM.make_tranche_axis(max_tranches + 1),)  # one more breakpoint than tranches
 end
 
-# Axes are sized to the batch-wide maximum tranche count; shorter per-hour curves
-# are padded in `unwrap_for_param`.
 function _device_offer_curve_ts_key(
     ::Type{
         <:Union{
@@ -624,6 +654,8 @@ function _device_offer_curve_ts_key(
     return IS.get_time_series_key(PSY.get_value_curve(get_input_offer_curves(op_cost)))
 end
 
+# Axes are sized to the batch-wide maximum tranche count; shorter per-hour curves
+# are padded in `unwrap_for_param`.
 function calc_additional_axes(
     ::OptimizationContainer,
     ::Type{T},
@@ -654,33 +686,22 @@ function calc_additional_axes(
     return (IOM.make_tranche_axis(max_tranches + 1),)  # one more breakpoint than tranches
 end
 
-# The shared `_add_objective_function_parameters!` helper holds the active components
-# as a vector, but `calc_additional_axes` is called differently per model: devices have
-# collection forms, while a service is passed singly (its concrete two-parameter type
-# can't unify with the ServiceModel's partially-applied component type through an
-# invariant `Vector`, and its forms take one service). Dispatch on the model type.
+# Both device and service `calc_additional_axes` take the whole batch, so forward the
+# collection `_add_objective_function_parameters!` already holds.
 _calc_additional_axes(
     container::OptimizationContainer,
     ::Type{P},
     active,
-    model::DeviceModel,
+    model::Union{DeviceModel, ServiceModel},
 ) where {P <: ParameterType} = calc_additional_axes(container, P, active, model)
-_calc_additional_axes(
-    container::OptimizationContainer,
-    ::Type{P},
-    active,
-    model::ServiceModel,
-) where {P <: ParameterType} = calc_additional_axes(container, P, only(active), model)
 
 #################################################################################
 # _add_parameters! for ObjectiveFunctionParameter
 #################################################################################
 
-# Shared body for ObjectiveFunctionParameter cost params (slope/breakpoint,
-# cost-at-min, startup/shutdown). Devices are batched into one names-axis container
-# (`meta` empty); ORDC services pass a 1-element collection with `meta = name`
-# because services are constructed one `ServiceModel` at a time (one container per
-# service, not a shared names-axis batch). `W` is the device/service formulation.
+# Shared body for ObjectiveFunctionParameter cost params (slope/breakpoint, cost-at-min,
+# startup/shutdown). Devices and reserve-demand-curve services alike are batched into one
+# names-axis container with empty `meta`, filled per member. `W` is the formulation.
 function _add_objective_function_parameters!(
     container::OptimizationContainer,
     ::Type{T},
@@ -781,87 +802,123 @@ end
 #################################################################################
 # _add_parameters! for time-varying ORDC slope/breakpoint cost parameters
 #
-# Same cost-parameter machinery as the device path, but per-service: pass the
-# single service as a 1-element collection and key the container by `meta = name`
-# (services are constructed one ServiceModel at a time, so they can't share a
-# names-axis batch the way devices do).
+# Same cost-parameter machinery as the device path: batch all the type's services into one
+# container (names axis + tranche axis), the tranche axis sized to the batch-wide maximum via
+# `calc_additional_axes`. Read back name-keyed by the delta-PWL machinery.
+# Element type decoupled from the `ServiceModel`'s component type; see `add_parameters!` above.
 #################################################################################
 
 function _add_parameters!(
     container::OptimizationContainer,
     ::Type{T},
-    service::U,
-    model::ServiceModel{U, V},
+    services::Vector{U},
+    model::ServiceModel{V, W},
 ) where {
     T <: Union{
         AbstractPiecewiseLinearSlopeParameter,
         AbstractPiecewiseLinearBreakpointParameter,
     },
-    U <: PSY.ReserveDemandTimeSeriesCurve,
-    V <: AbstractServiceFormulation,
+    U <: PSY.AbstractReserve,
+    V <: PSY.AbstractReserve,
+    W <: AbstractServiceFormulation,
 }
-    _add_objective_function_parameters!(
-        container, T, [service], model, V; meta = PSY.get_name(service),
-    )
+    _add_objective_function_parameters!(container, T, services, model, W)
     return
 end
 
 #################################################################################
 # _add_parameters! for ServiceModel TimeSeriesParameter
 #################################################################################
-
+# Element type decoupled from the `ServiceModel`'s component type; see `add_parameters!` above.
 function _add_parameters!(
     container::OptimizationContainer,
     ::Type{T},
-    service::U,
-    model::ServiceModel{U, V},
-) where {T <: TimeSeriesParameter, U <: PSY.Service, V <: AbstractServiceFormulation}
+    services::Vector{U},
+    model::ServiceModel{V, W},
+) where {
+    T <: TimeSeriesParameter,
+    U <: PSY.Service,
+    V <: PSY.Service,
+    W <: AbstractServiceFormulation,
+}
     ts_type = get_default_time_series_type(container)
     if !(ts_type <: Union{PSY.AbstractDeterministic, PSY.StaticTimeSeries})
         error("add_parameters! for TimeSeriesParameter is not compatible with $ts_type")
     end
     ts_name = get_time_series_names(model)[T]
     time_steps = get_time_steps(container)
-    name = PSY.get_name(service)
     model_interval = get_interval(get_settings(container))
-    ts_interval = model_interval
+    is_ts_interval = _to_is_interval(model_interval)
+    model_resolution = get_resolution(get_settings(container))
+    is_ts_resolution = _to_is_resolution(model_resolution)
+    names = [PSY.get_name(s) for s in services]
+
+    # Services can share one stored array, so the hash parameter axis is deduplicated while
+    # the multiplier axis stays one row per service, joined by the name -> hash map.
+    # `resolution` accompanies `interval` so an off-resolution series is rejected, not read.
     ts_hashes = IS.get_time_series_hashes(
-        (service,),
+        services,
         ts_type,
         ts_name;
-        interval = _to_is_interval(ts_interval),
+        resolution = is_ts_resolution,
+        interval = is_ts_interval,
     )
-    ts_hash = get(ts_hashes, IS.get_id(service), nothing)
-    if ts_hash === nothing
-        error(
-            "Time series $(ts_type):$(ts_name) for $U, $name does not match " *
-            "interval=$ts_interval.",
-        )
+    service_ts_hashes = Dict{String, String}()
+    initial_values = Dict{String, AbstractArray}()
+    for (name, service) in zip(names, services)
+        ts_hash = get(ts_hashes, IS.get_id(service), nothing)
+        if ts_hash === nothing
+            error(
+                "Time series $(ts_type):$(ts_name) for $U, $name does not match " *
+                "interval=$model_interval, resolution=$model_resolution.",
+            )
+        end
+        service_ts_hashes[name] = ts_hash
+        if !haskey(initial_values, ts_hash)
+            initial_values[ts_hash] = IOM.get_time_series_initial_values!(
+                container,
+                ts_type,
+                service,
+                ts_name;
+                interval = model_interval,
+                resolution = model_resolution,
+            )
+        end
     end
-    @debug "adding" T U _group = IOM.LOG_GROUP_OPTIMIZATION_CONTAINER
-    additional_axes = calc_additional_axes(container, T, [service], model)
+
+    hash_axis = collect(keys(initial_values))
+    additional_axes = calc_additional_axes(container, T, services, model)
+    # Key the container by the MODEL's component type `V`, not the element type `U`: readers
+    # fetch with `SR` from the `ServiceModel`, and the two diverge when the model is declared
+    # with a broader type (e.g. `ServiceModel{OnlineReserve, ...}` covering both directions).
     parameter_container = add_param_container!(container, T,
-        U,
+        V,
         ts_type,
         ts_name,
-        [ts_hash],
-        [name],
+        hash_axis,
+        names,
         additional_axes,
-        time_steps;
-        meta = name,
+        time_steps,
     )
-
     IOM.set_subsystem!(IOM.get_attributes(parameter_container), IOM.get_subsystem(model))
     jump_model = get_jump_model(container)
-    ts_vector = IOM.get_time_series(container, service, T, name; interval = ts_interval)
-    multiplier = get_multiplier_value(T, service, V)
+    attributes = IOM.get_attributes(parameter_container)
     parent_param = IOM.get_parameter_array_data(parameter_container)
     parent_mult = IOM.get_multiplier_array_data(parameter_container)
-    IOM._set_multiplier_at!(parent_mult, multiplier, 1)
-    for t in time_steps
-        IOM._set_parameter_at!(parent_param, jump_model, ts_vector[t], 1, t)
+
+    # Parameter rows follow `hash_axis`, multiplier rows follow `names`; the two differ in
+    # length when services share a series.
+    for (i, ts_hash) in enumerate(hash_axis)
+        ts_vector = initial_values[ts_hash]
+        for t in time_steps
+            IOM._set_parameter_at!(parent_param, jump_model, ts_vector[t], i, t)
+        end
     end
-    IOM.add_component_name!(IOM.get_attributes(parameter_container), name, ts_hash)
+    for (i, service) in enumerate(services)
+        name = names[i]
+        IOM._set_multiplier_at!(parent_mult, get_multiplier_value(T, service, W), i)
+        IOM.add_component_name!(attributes, name, service_ts_hashes[name])
+    end
     return
 end
 
@@ -1097,6 +1154,12 @@ function _add_parameters!(
     W <: AbstractReservesFormulation,
 } where {D <: PSY.Component}
     @debug "adding" T D U _group = IOM.LOG_GROUP_OPTIMIZATION_CONTAINER
+    # TODO: per-service keying when service feedforwards are ported. Unreachable today, since
+    # service feedforwards are no-op stubs in POM. `get_contributing_devices(model)` flattens
+    # across all services of the type, so this builds a device-name-keyed parameter with no
+    # service axis, inconsistent with the `(service, device, time)` reserve variables it must
+    # feed forward against. Re-key by `(service, device)` reading
+    # `get_contributing_devices(model, service_name)` before wiring service feedforwards.
     contributing_devices = IOM.get_contributing_devices(model)
     names = [PSY.get_name(device) for device in contributing_devices]
     time_steps = get_time_steps(container)
@@ -1104,8 +1167,7 @@ function _add_parameters!(
         S,
         key,
         names,
-        time_steps;
-        meta = get_service_name(model),
+        time_steps,
     )
     jump_model = get_jump_model(container)
     parent_mult = IOM.get_multiplier_array_data(parameter_container)

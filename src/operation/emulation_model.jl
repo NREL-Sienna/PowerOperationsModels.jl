@@ -279,6 +279,15 @@ function run!(
                     outputs = OptimizationProblemOutputs(model)
                     serialize_outputs(outputs, IOM.get_output_dir(model))
                     export_problem_outputs && export_outputs(outputs)
+                    if IOM.get_system_to_file(IOM.get_settings(model))
+                        sys = IOM.get_system(model)
+                        sys_filename = joinpath(
+                            IOM.get_output_dir(model),
+                            IOM.make_system_filename(sys),
+                        )
+                        # Re-solving into an existing directory must not rewrite the system and its time series.
+                        !ispath(sys_filename) && PSY.to_json(sys, sys_filename)
+                    end
                 end
                 @info "\n$(RUN_OPERATION_MODEL_TIMER)\n"
             catch e
