@@ -1383,7 +1383,7 @@ function _voltage_products(
     va = get_variable(container, VoltageAngle, PSY.ACBus)
     phi = get_variable(container, VoltageDeviation, PSY.ACBus)
     cs = get_variable(container, CosineApproximation, D)
-    phi_fr, phi_to = phi[from_bus, t], phi[to_bus, t]
+    phi_fr, phi_to = phi[from_bus, :], phi[to_bus, :]
     T = length(get_time_steps(container))
     return (
         v2_fr = JuMP.@expression(jump_model, [t=1:T], 1.0 + 2.0 * phi_fr[t]),

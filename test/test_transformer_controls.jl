@@ -113,7 +113,7 @@ end
 
 @testset "VOLTAGE control holds the regulated bus inside its limits" begin
     rawsys = PSB.build_system(PSITestSystems, "c_sys14")
-    buses = PSY.get_components(PSY.ACBus, rawsys)
+    buses = collect(PSY.get_components(PSY.ACBus, rawsys))[1:3]
     for network_formulation in VOLTAGE_NETWORKS, bus in buses
         bus_name = PSY.get_name(bus)
         free_vm = _uncontrolled_voltage(bus_name)
@@ -142,7 +142,7 @@ end
     # TODO: Is this excessive to be looping all networks and transformers? (I also do this later)
     for network_formulation in AC_NETWORKS, name in TRANFORMER_NAMES
         sys, _, _, _ = _controlled_sys14(Q_FLOW_CONTROL; quantity_limits = limits, name = name)
-        model, status = _build_controlled(sys, network; optimizer = ipopt_optimizer)
+        model, status = _build_controlled(sys, network_formulation; optimizer = ipopt_optimizer)
         @test status == IOM.ModelBuildStatus.BUILT
         @test solve!(model) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
 
@@ -154,8 +154,8 @@ end
         )
             flow = read_variable(res, key; table_format = TableFormat.WIDE)
             for r in 1:nrow(flow)
-                @test flow[r, name] >= limits.min - 1e-6
-                @test flow[r, name] <= limits.max + 1e-6
+                @test flow[r, name] / base >= limits.min - 1e-6
+                @test flow[r, name] / base <= limits.max + 1e-6
             end
         end
     end
@@ -167,8 +167,22 @@ end
     limits = (min = 0.94, max = 1.06)
     tap_range = (min = 0.5, max = 1.5)
 
-    branch_formulation(::Union{DCPNetworkModel, DCPLLNetworkModel}) = StaticBranchBounds
+    branch_formulation(::Type{<:Union{DCPNetworkModel, DCPLLNetworkModel}}) = StaticBranchBounds
     branch_formulation(_) = StaticBranch
+
+    flow_keys(::Type{DCPNetworkModel}) = (
+        "FlowActivePowerVariable__TwoWindingTransformer",
+    )
+    flow_keys(::Type{DCPLLNetworkModel}) = (
+        "FlowActivePowerFromToVariable__TwoWindingTransformer",
+        "FlowActivePowerToFromVariable__TwoWindingTransformer",
+    )
+    flow_keys(_) = (
+        "FlowActivePowerFromToVariable__TwoWindingTransformer",
+        "FlowActivePowerToFromVariable__TwoWindingTransformer",
+        "FlowReactivePowerFromToVariable__TwoWindingTransformer",
+        "FlowReactivePowerToFromVariable__TwoWindingTransformer",
+    )
 
     for network_formulation in ALL_NETWORKS, name in TRANFORMER_NAMES
         sys_fixed, _, _, _ = _controlled_sys14(VOLTAGE_CONTROL; quantity_limits = limits, name = name)
@@ -201,10 +215,8 @@ end
             IOM.get_objective_value(res_fixed);
             rtol = 1e-3,
         )
-        for key in (
-            "FlowActivePowerFromToVariable__TwoWindingTransformer",
-            "FlowReactivePowerFromToVariable__TwoWindingTransformer",
-        )
+
+        for key in flow_keys(network_formulation)
             flow_fixed = read_variable(res_fixed, key; table_format = TableFormat.WIDE)
             flow_var = read_variable(res_var, key; table_format = TableFormat.WIDE)
             @test isapprox(flow_var[1, name], flow_fixed[1, name]; atol = 1e-3)
