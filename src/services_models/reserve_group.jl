@@ -129,7 +129,7 @@ function add_constraints!(
 
     for t in time_steps
         vars = member_vars[t]
-        resource_expression = IOM.get_hinted_aff_expr(length(vars))
+        resource_expression = get_hinted_aff_expr(length(vars))
         for var in vars
             JuMP.add_to_expression!(resource_expression, var)
         end

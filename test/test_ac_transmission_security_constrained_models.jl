@@ -121,7 +121,7 @@ end
                 i for i in eachindex(modf_col) if
                 abs(modf_col[i]) > POM.PTDF_ZERO_TOL
             ]
-            expected = IOM.get_hinted_aff_expr(length(nz_idx))
+            expected = POM.get_hinted_aff_expr(length(nz_idx))
             for i in nz_idx
                 JuMP.add_to_expression!(expected, modf_col[i], nodal_balance[i, t])
             end
@@ -249,7 +249,7 @@ end
                 i for i in eachindex(ptdf_col) if abs(ptdf_col[i]) > POM.PTDF_ZERO_TOL
             ]
             for t in time_steps
-                expected = IOM.get_hinted_aff_expr(length(nz_idx))
+                expected = POM.get_hinted_aff_expr(length(nz_idx))
                 for i in nz_idx
                     JuMP.add_to_expression!(expected, ptdf_col[i], nodal_balance[i, t])
                 end
@@ -356,7 +356,7 @@ end
             nz_idx = [
                 i for i in eachindex(modf_col) if abs(modf_col[i]) > POM.PTDF_ZERO_TOL
             ]
-            expected = IOM.get_hinted_aff_expr(length(nz_idx))
+            expected = POM.get_hinted_aff_expr(length(nz_idx))
             for i in nz_idx
                 JuMP.add_to_expression!(expected, modf_col[i], nodal_balance[i, t])
             end

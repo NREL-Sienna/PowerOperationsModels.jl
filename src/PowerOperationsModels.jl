@@ -232,6 +232,7 @@ import InfrastructureOptimizationModels:
 # These define concrete Variable, Expression, Constraint, and Parameter types
 # and extend should_write_resulting_value/convert_output_to_natural_units
 #################################################################################
+include("utils/jump_utils.jl")
 include("core/definitions.jl")
 include("core/problem_types.jl")
 include("core/interfaces.jl")

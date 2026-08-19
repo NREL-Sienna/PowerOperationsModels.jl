@@ -184,7 +184,7 @@ function _sum_service_reserves(
 ) where {
     U <: Union{Vector{D}, IS.FlattenIteratorWrapper{D}},
 } where {D <: PSY.Component}
-    acc = IOM.get_hinted_aff_expr(length(contributing_devices) + extra)
+    acc = get_hinted_aff_expr(length(contributing_devices) + extra)
     for d in contributing_devices
         JuMP.add_to_expression!(acc, reserve_variable[(service_name, PSY.get_name(d), t)])
     end
