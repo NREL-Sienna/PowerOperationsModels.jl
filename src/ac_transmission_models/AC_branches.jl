@@ -187,7 +187,7 @@ function _branch_variable_bounds(_, rep, device_model)
     return (-rating, rating)
 end
 
-_branch_variable_bounds(::Type{TapRatioVariable}) = (min = 0.0, max = 1.0)
+_branch_variable_bounds(::Type{TapRatioVariable}, rep, _) = _control_limits(rep)
 
 _branch_variable_start(::Type{CosineApproximation}) = 1.0
 _branch_variable_start(::Type{TapRatioVariable}) = 1.0
@@ -246,7 +246,7 @@ function add_variables!(
             for t in time_steps
                 var = JuMP.@variable(
                     jump_model,
-                    base_name = "$(nameof(V))_$(nameof(T))_$(rep.reduction)_{$(rep.name), $(t)}",
+                    base_name = "$(nameof(V))_$(nameof(T))_$(branch.reduction)_{$(branch.name), $(t)}",
                 )
                 lb !== nothing && JuMP.set_lower_bound(var, lb)
                 ub !== nothing && JuMP.set_upper_bound(var, ub)
@@ -267,6 +267,23 @@ _warn_tap_control_nonconvexity(
     @warn "Tap control makes $N network models non-convex. Use Ipopt or change circuit controls."
 _warn_tap_control_nonconvexity(_) = nothing
 
+function _validate_controlled_branch_not_reduced(
+    network_model::NetworkModel,
+    ::Type{T},
+) where {T <: _TRANSFORMERS}
+    isempty(get_network_reduction(network_model)) && return
+    _for_each_branch(_all_branches(network_model, T)) do rep
+        _control_enabled(_get_circuit(rep.branch)) || return
+        rep.reduction == DIRECT_BRANCH_MAP && return
+        error(
+            "Controlled transformer circuit $(rep.name) was merged into a reduced arc \
+             ($(rep.reduction)). Either remove the parallel branch or disable control \
+             for this circuit.",
+        )
+    end
+    return
+end
+
 function _add_tap_control_variables!(
     container::OptimizationContainer,
     model::DeviceModel{U, F},
@@ -277,6 +294,7 @@ function _add_tap_control_variables!(
     F <: AbstractBranchFormulation,
 }
     _control_enabled(model) || return
+    _validate_controlled_branch_not_reduced(network_model, U)
     _warn_tap_control_nonconvexity(network_model)
     add_variables!(container, TapRatioVariable, devices, model, network_model)
     return
@@ -1012,25 +1030,6 @@ function _price_slack_upper!(
             add_to_objective_invariant_expression!(
                 container,
                 variable_up[name, t] * CONSTRAINT_VIOLATION_SLACK_COST,
-            )
-        end
-    end
-    return
-end
-
-function _validate_controlled_branch_not_reduced(
-    network_model::NetworkModel,
-    ::Type{T},
-    controlled_names,
-) where {T <: PSY.ACTransmission}
-    network_reduction = get_network_reduction(network_model)
-    isempty(network_reduction) && return
-    arc_map = get_name_to_arc_map_entries(network_reduction, T)
-    for name in controlled_names
-        entry = get(arc_map, name, nothing)
-        if entry === nothing || entry[2] != DIRECT_BRANCH_MAP
-            error(
-                "Controlled transformer circuit $(name) was merged with a parallel branch. Either remove the parallel branch or disable control for this circuit.",
             )
         end
     end

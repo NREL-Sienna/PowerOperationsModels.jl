@@ -7,27 +7,197 @@ const AC_NETWORKS = (VOLTAGE_NETWORKS..., IVRNetworkModel)
 const DC_NETWORKS = (DCPNetworkModel, DCPLLNetworkModel)
 const ALL_NETWORKS = (AC_NETWORKS..., DC_NETWORKS...)
 
-const TRANFORMER_NAMES = ["Trans1", "Trans2", "Trans3", "Trans4"]
+const TRANSFORMER_NAMES = ["Trans1", "Trans2", "Trans3", "Trans4"]
+
+const T3W_NAME = "ThreeWindingTransformer_busD"
+const T3W_WINDINGS = ["$(T3W_NAME)_winding_$i" for i in 1:3]
+const T3W_TERMINALS = (101, 102)
+const T3W_STAR_NUMBER = 103
+
+################################### two-winding fixture ################################
 
 function _controlled_sys14(
     objective;
-    name = "Trans1",
+    circuit_index = 1,
     regulated = 9,
     quantity_limits = (min = 0.95, max = 1.05),
     control_limits = (min = 0.9, max = 1.1),
 )
     sys = PSB.build_system(PSITestSystems, "c_sys14")
+    name = TRANSFORMER_NAMES[circuit_index]
     transformer = PSY.get_component(PSY.TwoWindingTransformer, sys, name)
     circuit = PSY.get_circuit(transformer)
     PSY.set_control_objective!(circuit, objective)
     PSY.set_regulated_bus_number!(circuit, regulated)
     PSY.set_controlled_quantity_limits!(circuit, quantity_limits)
     PSY.set_control_limits!(circuit, control_limits)
-    return sys, transformer, circuit, PSY.get_name(PSY.get_bus(sys, regulated))
+    return (
+        sys = sys,
+        device = transformer,
+        circuit = circuit,
+        regulated_name = PSY.get_name(PSY.get_bus(sys, regulated)),
+        axis_name = name,
+    )
 end
 
+_first_three_bus_numbers(sys) =
+    [PSY.get_number(b) for b in collect(PSY.get_components(PSY.ACBus, sys))[1:3]]
+
+################################## three-winding fixture ###############################
+
+"""
+`c_sys5_ml` plus a three-winding transformer: two new terminal buses carrying a load and a
+generator so every winding sees flow, a star bus, and `T3W_NAME` arcing each terminal into
+the star. PSB ships no system with a `ThreeWindingTransformer`, so the device is built here;
+the topology mirrors the fixture in `test_device_branch_constructors.jl`.
+
+The added buses get a wider voltage band than that fixture's `(0.95, 1.05)`: the VOLTAGE
+objective errors unless the bus limits bracket the control band, and the control band the
+tests use is derived from a free solve.
+"""
+function _sys5_with_3w()
+    sys = PSB.build_system(PSITestSystems, "c_sys5_ml")
+    busD = PSY.get_component(PSY.ACBus, sys, "nodeD")
+
+    function _add_bus!(number, name)
+        bus = PSY.ACBus(;
+            number = number,
+            name = name,
+            available = true,
+            bustype = PSY.ACBusTypes.PQ,
+            angle = 0.0,
+            magnitude = 1.0,
+            voltage_limits = (min = 0.9, max = 1.1),
+            base_voltage = 230.0,
+            area = PSY.get_area(busD),
+            load_zone = PSY.get_load_zone(busD),
+        )
+        PSY.add_component!(sys, bus)
+        return bus
+    end
+
+    terminal_1 = _add_bus!(T3W_TERMINALS[1], "Bus3WT_1")
+    terminal_2 = _add_bus!(T3W_TERMINALS[2], "Bus3WT_2")
+    star_bus = _add_bus!(T3W_STAR_NUMBER, "Star_Bus_T3W")
+
+    PSY.add_component!(
+        sys,
+        PSY.PowerLoad(;
+            name = "Load_Bus3WT",
+            available = true,
+            bus = terminal_1,
+            active_power = 0.5,
+            reactive_power = 0.1,
+            base_power = 100.0,
+            max_active_power = 0.5,
+            max_reactive_power = 0.1,
+        ),
+    )
+    PSY.add_component!(
+        sys,
+        PSY.ThermalStandard(;
+            name = "Gen_Bus3WT",
+            available = true,
+            status = true,
+            bus = terminal_2,
+            active_power = 0.4,
+            reactive_power = 0.0,
+            rating = 0.5,
+            prime_mover_type = PSY.PrimeMovers.ST,
+            fuel = PSY.ThermalFuels.COAL,
+            active_power_limits = (min = 0.0, max = 0.5),
+            reactive_power_limits = (min = -0.3, max = 0.3),
+            ramp_limits = (up = 0.5, down = 0.5),
+            operation_cost = PSY.ThermalGenerationCost(;
+                variable = PSY.CostCurve(PSY.LinearCurve(0.0)),
+                start_up = 0.0,
+                shut_down = 0.0,
+                fixed = 0.0,
+            ),
+            base_power = 100.0,
+            time_limits = nothing,
+        ),
+    )
+
+    _star_leg(from) = PSY.TransformerCircuit(;
+        available = true,
+        arc = PSY.Arc(; from = from, to = star_bus),
+        r = 0.01,
+        x = 0.1,
+        rating = 1.0,
+        base_power = 100.0,
+    )
+    PSY.add_component!(
+        sys,
+        PSY.ThreeWindingTransformer(;
+            name = T3W_NAME,
+            primary_circuit = _star_leg(busD),
+            secondary_circuit = _star_leg(terminal_1),
+            tertiary_circuit = _star_leg(terminal_2),
+            star_bus = star_bus,
+        ),
+    )
+    return sys
+end
+
+function _controlled_sys3w(
+    objective;
+    circuit_index = 1,
+    regulated = nothing,
+    quantity_limits = (min = 0.95, max = 1.05),
+    control_limits = (min = 0.9, max = 1.1),
+)
+    sys = _sys5_with_3w()
+    transformer = PSY.get_component(PSY.ThreeWindingTransformer, sys, T3W_NAME)
+    circuit = PSY.get_circuits(transformer)[circuit_index]
+    # Each winding arcs terminal -> star, so the from-bus is this winding's own terminal.
+    number = isnothing(regulated) ?
+             PSY.get_number(PSY.get_from(PSY.get_arc(circuit))) : regulated
+    PSY.set_control_objective!(circuit, objective)
+    PSY.set_regulated_bus_number!(circuit, number)
+    PSY.set_controlled_quantity_limits!(circuit, quantity_limits)
+    PSY.set_control_limits!(circuit, control_limits)
+    return (
+        sys = sys,
+        device = transformer,
+        circuit = circuit,
+        regulated_name = PSY.get_name(PSY.get_bus(sys, number)),
+        axis_name = T3W_WINDINGS[circuit_index],
+    )
+end
+
+_t3w_adjacent_bus_numbers(_) = [T3W_TERMINALS..., T3W_STAR_NUMBER]
+
+#################################### case descriptors ##################################
+
+# One entry per transformer arity. Every testset below runs the whole tuple, so the two
+# arities stay in lockstep; `circuit_indices` selects which circuit of the device carries
+# the control objective (the transformer for two-winding, the winding for three-winding).
+const TWO_WINDING_CASE = (
+    device_type = PSY.TwoWindingTransformer,
+    make = _controlled_sys14,
+    plain = () -> PSB.build_system(PSITestSystems, "c_sys14"),
+    circuit_indices = 1:length(TRANSFORMER_NAMES),
+    axis_names = TRANSFORMER_NAMES,
+    voltage_bus_numbers = _first_three_bus_numbers,
+)
+
+const THREE_WINDING_CASE = (
+    device_type = PSY.ThreeWindingTransformer,
+    make = _controlled_sys3w,
+    plain = _sys5_with_3w,
+    circuit_indices = 1:3,
+    axis_names = T3W_WINDINGS,
+    voltage_bus_numbers = _t3w_adjacent_bus_numbers,
+)
+
+const TRANSFORMER_CASES = (TWO_WINDING_CASE, THREE_WINDING_CASE)
+
+######################################## helpers #######################################
+
 function _controlled_template(
-    network_formulation;
+    network_formulation,
+    device_type;
     enable = true,
     formulation = StaticBranch,
     kwargs...,
@@ -37,7 +207,7 @@ function _controlled_template(
     set_device_model!(
         template,
         DeviceModel(
-            PSY.TwoWindingTransformer,
+            device_type,
             formulation;
             attributes = Dict(
                 POM.ENABLE_CONTROLS_KEY => enable
@@ -49,14 +219,16 @@ end
 
 function _build_controlled(
     sys,
-    network_formulation;
+    network_formulation,
+    device_type;
     enable = true,
     optimizer,
     formulation = StaticBranch,
     kwargs...,
 )
     template = _controlled_template(
-        network_formulation; enable = enable, formulation = formulation, kwargs...,
+        network_formulation, device_type;
+        enable = enable, formulation = formulation, kwargs...,
     )
     model = DecisionModel(template, sys; optimizer = optimizer)
     status = build!(model; output_dir = mktempdir(; cleanup = true))
@@ -66,70 +238,152 @@ end
 _has_tap_variable(container) =
     any(k -> occursin("TapRatioVariable", string(k)), keys(IOM.get_variables(container)))
 
+_variable_key(variable, device_type) = "$(nameof(variable))__$(nameof(device_type))"
+
+# The regulated quantity each AC formulation actually constrains, converted back to a bus
+# voltage magnitude so every formulation can be checked against the same per-unit band.
+# Mirrors `_voltage_magnitude`/`_voltage_limits` in `AC_branches.jl`.
+function _voltage_magnitudes(res, bus_name, ::Type{ACPNetworkModel})
+    vm = read_variable(res, "VoltageMagnitude__ACBus"; table_format = TableFormat.WIDE)
+    return vm[!, bus_name]
+end
+
+function _voltage_magnitudes(
+    res,
+    bus_name,
+    ::Type{<:Union{ACRNetworkModel, IVRNetworkModel}},
+)
+    vr = read_variable(res, "VoltageReal__ACBus"; table_format = TableFormat.WIDE)
+    vi = read_variable(res, "VoltageImaginary__ACBus"; table_format = TableFormat.WIDE)
+    return sqrt.(vr[!, bus_name] .^ 2 .+ vi[!, bus_name] .^ 2)
+end
+
+function _voltage_magnitudes(res, bus_name, ::Type{LPACCNetworkModel})
+    phi = read_variable(res, "VoltageDeviation__ACBus"; table_format = TableFormat.WIDE)
+    return 1.0 .+ phi[!, bus_name]
+end
+
+_reduction_source() =
+    NetworkReductionSpec([PNM.RadialReduction(), PNM.DegreeTwoReduction()])
+
 ################################### attribute plumbing #################################
 
 @testset "a controlled circuit builds no tap variable while enable_controls is off" begin
-    sys, _, _, _ = _controlled_sys14(VOLTAGE_CONTROL)
-    model, status =
-        _build_controlled(sys, ACPNetworkModel; enable = false, optimizer = ipopt_optimizer)
-    @test status == IOM.ModelBuildStatus.BUILT
-    @test !_has_tap_variable(IOM.get_optimization_container(model))
+    for case in TRANSFORMER_CASES
+        fixture = case.make(VOLTAGE_CONTROL)
+        model, status = _build_controlled(
+            fixture.sys, ACPNetworkModel, case.device_type;
+            enable = false, optimizer = ipopt_optimizer,
+        )
+        @test status == IOM.ModelBuildStatus.BUILT
+        @test !_has_tap_variable(IOM.get_optimization_container(model))
+    end
 end
 
 @testset "TapRatioVariable is created only for controlled circuits, bounded by control_limits" begin
     limits = (min = 0.95, max = 1.05)
-    for mode in TAP_CONTROLS
-        sys, _, _, _ = _controlled_sys14(mode; control_limits = limits)
-        model, status = _build_controlled(sys, ACPNetworkModel; optimizer = ipopt_optimizer)
+    for case in TRANSFORMER_CASES, mode in TAP_CONTROLS
+        # Deliberately not circuit 1: the untouched circuits are left UNDEFINED, so only
+        # the controlled one may appear on the axis.
+        controlled = last(case.circuit_indices)
+        fixture = case.make(mode; circuit_index = controlled, control_limits = limits)
+        model, status = _build_controlled(
+            fixture.sys, ACPNetworkModel, case.device_type; optimizer = ipopt_optimizer,
+        )
         @test status == IOM.ModelBuildStatus.BUILT
 
         container = IOM.get_optimization_container(model)
-        tap = IOM.get_variable(container, TapRatioVariable, PSY.TwoWindingTransformer)
-        # Trans2 / Trans3 are left UNDEFINED, so only the controlled circuit gets a variable.
-        @test axes(tap)[1] == ["Trans1"]
-        @test check_variable_bounded(model, TapRatioVariable, PSY.TwoWindingTransformer)
+        tap = IOM.get_variable(container, TapRatioVariable, case.device_type)
+        @test axes(tap)[1] == [fixture.axis_name]
+
+        # `control_limits` is the tap band itself, so it must land on the variable as hard
+        # bounds rather than merely being present as data.
+        band = PSY.get_control_limits(fixture.circuit)
+        for t in get_time_steps(container)
+            var = tap[fixture.axis_name, t]
+            @test JuMP.has_lower_bound(var)
+            @test JuMP.has_upper_bound(var)
+            @test JuMP.lower_bound(var) ≈ band.min
+            @test JuMP.upper_bound(var) ≈ band.max
+        end
     end
+end
+
+@testset "one three-winding device carries independent per-winding objectives" begin
+    sys = _sys5_with_3w()
+    transformer = PSY.get_component(PSY.ThreeWindingTransformer, sys, T3W_NAME)
+    circuits = PSY.get_circuits(transformer)
+
+    PSY.set_control_objective!(circuits[1], VOLTAGE_CONTROL)
+    PSY.set_regulated_bus_number!(circuits[1], T3W_STAR_NUMBER)
+    PSY.set_controlled_quantity_limits!(circuits[1], (min = 0.95, max = 1.05))
+
+    PSY.set_control_objective!(circuits[3], Q_FLOW_CONTROL)
+    PSY.set_controlled_quantity_limits!(circuits[3], (min = -0.05, max = 0.05))
+
+    model, status = _build_controlled(
+        sys, ACPNetworkModel, PSY.ThreeWindingTransformer; optimizer = ipopt_optimizer,
+    )
+    @test status == IOM.ModelBuildStatus.BUILT
+
+    container = IOM.get_optimization_container(model)
+    tap = IOM.get_variable(container, TapRatioVariable, PSY.ThreeWindingTransformer)
+    # Winding 2 is left UNDEFINED, so it gets no tap of its own.
+    @test sort(axes(tap)[1]) == [T3W_WINDINGS[1], T3W_WINDINGS[3]]
+
+    _constrained_names(cons) = Set(k[1] for k in keys(cons.data))
+    @test _constrained_names(
+        IOM.get_constraint(
+            container, VoltageMagnitudeConstraint, PSY.ThreeWindingTransformer,
+        ),
+    ) == Set([T3W_WINDINGS[1]])
+    @test _constrained_names(
+        IOM.get_constraint(
+            container, ReactivePowerFlowControlConstraint, PSY.ThreeWindingTransformer,
+        ),
+    ) == Set([T3W_WINDINGS[3]])
+
+    @test solve!(model) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
 end
 
 ################################### VOLTAGE objective ##################################
 
 # Solve system with no controls to get bus voltage reference to make sure our
 # control constraint tests are doing something.
-function _uncontrolled_voltage(bus_name; network_formulation = ACPNetworkModel)
-    sys = PSB.build_system(PSITestSystems, "c_sys14")
-    model, status =
-        _build_controlled(
-            sys,
-            network_formulation;
-            enable = false,
-            optimizer = ipopt_optimizer,
-        )
+function _uncontrolled_voltage(case, bus_name, network_formulation)
+    model, status = _build_controlled(
+        case.plain(), network_formulation, case.device_type;
+        enable = false, optimizer = ipopt_optimizer,
+    )
     @test status == IOM.ModelBuildStatus.BUILT
     @test solve!(model) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
     res = IOM.OptimizationProblemOutputs(model)
-    vm = read_variable(res, "VoltageMagnitude__ACBus"; table_format = TableFormat.WIDE)
-    return vm[1, bus_name]
+    return first(_voltage_magnitudes(res, bus_name, network_formulation))
 end
 
 @testset "VOLTAGE control holds the regulated bus inside its limits" begin
-    rawsys = PSB.build_system(PSITestSystems, "c_sys14")
-    buses = collect(PSY.get_components(PSY.ACBus, rawsys))[1:3]
-    for network_formulation in VOLTAGE_NETWORKS, bus in buses
-        bus_name = PSY.get_name(bus)
-        free_vm = _uncontrolled_voltage(bus_name)
-        limits = (min = free_vm - 0.02, max = free_vm - 0.01)
+    for case in TRANSFORMER_CASES
+        rawsys = case.plain()
+        numbers = case.voltage_bus_numbers(rawsys)
+        for network_formulation in VOLTAGE_NETWORKS, number in numbers
+            bus_name = PSY.get_name(PSY.get_bus(rawsys, number))
+            free_vm = _uncontrolled_voltage(case, bus_name, network_formulation)
+            limits = (min = free_vm - 0.02, max = free_vm - 0.01)
 
-        sys, _, _, _ = _controlled_sys14(VOLTAGE_CONTROL; regulated = PSY.get_number(bus), quantity_limits = limits)
-        model, status = _build_controlled(sys, ACPNetworkModel; optimizer = ipopt_optimizer)
-        @test status == IOM.ModelBuildStatus.BUILT
-        @test solve!(model) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
+            fixture =
+                case.make(VOLTAGE_CONTROL; regulated = number, quantity_limits = limits)
+            model, status = _build_controlled(
+                fixture.sys, network_formulation, case.device_type;
+                optimizer = ipopt_optimizer,
+            )
+            @test status == IOM.ModelBuildStatus.BUILT
+            @test solve!(model) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
 
-        res = IOM.OptimizationProblemOutputs(model)
-        vm = read_variable(res, "VoltageMagnitude__ACBus"; table_format = TableFormat.WIDE)
-        @test bus_name in names(vm)
-        for r in 1:nrow(vm)
-            @test vm[r, bus_name] >= limits.min - 1e-6
-            @test vm[r, bus_name] <= limits.max + 1e-6
+            res = IOM.OptimizationProblemOutputs(model)
+            for v in _voltage_magnitudes(res, bus_name, network_formulation)
+                @test v >= limits.min - 1e-6
+                @test v <= limits.max + 1e-6
+            end
         end
     end
 end
@@ -139,23 +393,30 @@ end
 @testset "REACTIVE_POWER_FLOW control holds the terminal flow inside its limits" begin
     limits = (min = -0.05, max = 0.05)
 
-    # TODO: Is this excessive to be looping all networks and transformers? (I also do this later)
-    for network_formulation in AC_NETWORKS, name in TRANFORMER_NAMES
-        sys, _, _, _ = _controlled_sys14(Q_FLOW_CONTROL; quantity_limits = limits, name = name)
-        model, status = _build_controlled(sys, network_formulation; optimizer = ipopt_optimizer)
+    for case in TRANSFORMER_CASES,
+        network_formulation in AC_NETWORKS,
+        index in case.circuit_indices
+
+        fixture =
+            case.make(Q_FLOW_CONTROL; circuit_index = index, quantity_limits = limits)
+        model, status = _build_controlled(
+            fixture.sys, network_formulation, case.device_type;
+            optimizer = ipopt_optimizer,
+        )
         @test status == IOM.ModelBuildStatus.BUILT
         @test solve!(model) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
 
         res = IOM.OptimizationProblemOutputs(model)
         base = IOM.get_model_base_power(res)
-        for key in (
-            "FlowReactivePowerFromToVariable__TwoWindingTransformer",
-            "FlowReactivePowerToFromVariable__TwoWindingTransformer",
-        )
-            flow = read_variable(res, key; table_format = TableFormat.WIDE)
+        for variable in
+            (FlowReactivePowerFromToVariable, FlowReactivePowerToFromVariable)
+            flow = read_variable(
+                res, _variable_key(variable, case.device_type);
+                table_format = TableFormat.WIDE,
+            )
             for r in 1:nrow(flow)
-                @test flow[r, name] / base >= limits.min - 1e-6
-                @test flow[r, name] / base <= limits.max + 1e-6
+                @test flow[r, fixture.axis_name] / base >= limits.min - 1e-6
+                @test flow[r, fixture.axis_name] / base <= limits.max + 1e-6
             end
         end
     end
@@ -167,43 +428,55 @@ end
     limits = (min = 0.94, max = 1.06)
     tap_range = (min = 0.5, max = 1.5)
 
-    branch_formulation(::Type{<:Union{DCPNetworkModel, DCPLLNetworkModel}}) = StaticBranchBounds
+    branch_formulation(::Type{<:Union{DCPNetworkModel, DCPLLNetworkModel}}) =
+        StaticBranchBounds
     branch_formulation(_) = StaticBranch
 
-    flow_keys(::Type{DCPNetworkModel}) = (
-        "FlowActivePowerVariable__TwoWindingTransformer",
+    flow_variables(::Type{DCPNetworkModel}) = (FlowActivePowerVariable,)
+    flow_variables(::Type{DCPLLNetworkModel}) = (
+        FlowActivePowerFromToVariable,
+        FlowActivePowerToFromVariable,
     )
-    flow_keys(::Type{DCPLLNetworkModel}) = (
-        "FlowActivePowerFromToVariable__TwoWindingTransformer",
-        "FlowActivePowerToFromVariable__TwoWindingTransformer",
-    )
-    flow_keys(_) = (
-        "FlowActivePowerFromToVariable__TwoWindingTransformer",
-        "FlowActivePowerToFromVariable__TwoWindingTransformer",
-        "FlowReactivePowerFromToVariable__TwoWindingTransformer",
-        "FlowReactivePowerToFromVariable__TwoWindingTransformer",
+    flow_variables(_) = (
+        FlowActivePowerFromToVariable,
+        FlowActivePowerToFromVariable,
+        FlowReactivePowerFromToVariable,
+        FlowReactivePowerToFromVariable,
     )
 
-    for network_formulation in ALL_NETWORKS, name in TRANFORMER_NAMES
-        sys_fixed, _, _, _ = _controlled_sys14(VOLTAGE_CONTROL; quantity_limits = limits, name = name)
+    for case in TRANSFORMER_CASES,
+        network_formulation in ALL_NETWORKS,
+        index in case.circuit_indices
+
+        formulation = branch_formulation(network_formulation)
+
+        fixed = case.make(
+            VOLTAGE_CONTROL; circuit_index = index, quantity_limits = limits,
+        )
         model_fixed, status_fixed = _build_controlled(
-            sys_fixed, network_formulation; enable = false,
-            optimizer = ipopt_optimizer, formulation = branch_formulation(network_formulation)
+            fixed.sys, network_formulation, case.device_type;
+            enable = false, optimizer = ipopt_optimizer, formulation = formulation,
         )
         @test status_fixed == IOM.ModelBuildStatus.BUILT
         @test solve!(model_fixed) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
 
-        sys_var, transformer, circuit, _ = _controlled_sys14(
-            VOLTAGE_CONTROL; quantity_limits = limits, control_limits = tap_range, name = name
+        varying = case.make(
+            VOLTAGE_CONTROL;
+            circuit_index = index,
+            quantity_limits = limits,
+            control_limits = tap_range,
         )
-        model_var, status_var = _build_controlled(sys_var, network_formulation; optimizer = ipopt_optimizer, formulation = branch_formulation(network_formulation))
+        model_var, status_var = _build_controlled(
+            varying.sys, network_formulation, case.device_type;
+            optimizer = ipopt_optimizer, formulation = formulation,
+        )
         @test status_var == IOM.ModelBuildStatus.BUILT
 
         container = IOM.get_optimization_container(model_var)
-        tap = IOM.get_variable(container, TapRatioVariable, PSY.TwoWindingTransformer)
+        tap = IOM.get_variable(container, TapRatioVariable, case.device_type)
         for t in get_time_steps(container)
             JuMP.fix(
-                tap[name, t], PSY.get_tap(circuit); force = true,
+                tap[varying.axis_name, t], PSY.get_tap(varying.circuit); force = true,
             )
         end
         @test solve!(model_var) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
@@ -216,10 +489,15 @@ end
             rtol = 1e-3,
         )
 
-        for key in flow_keys(network_formulation)
+        for variable in flow_variables(network_formulation)
+            key = _variable_key(variable, case.device_type)
             flow_fixed = read_variable(res_fixed, key; table_format = TableFormat.WIDE)
             flow_var = read_variable(res_var, key; table_format = TableFormat.WIDE)
-            @test isapprox(flow_var[1, name], flow_fixed[1, name]; atol = 1e-3)
+            @test isapprox(
+                flow_var[1, varying.axis_name],
+                flow_fixed[1, varying.axis_name];
+                atol = 1e-3,
+            )
         end
     end
 end
@@ -259,6 +537,57 @@ end
                 PNM.ybus_branch_entries(tr),
             )
         end
+    end
+
+    # A three-winding transformer reaches the builders as one `ThreeWindingTransformerCircuit`
+    # per star leg, each with its own tap and phase shift.
+    sys3w = _sys5_with_3w()
+    tr3w = PSY.get_component(PSY.ThreeWindingTransformer, sys3w, T3W_NAME)
+    for (index, star_leg) in enumerate(PSY.get_circuits(tr3w))
+        winding = PNM.ThreeWindingTransformerCircuit(tr3w, index)
+        adm = PNM.branch_admittance(winding)
+        check_terms(
+            POM._tapped_admittance(model, adm, adm.tap),
+            PNM.ybus_branch_entries(winding),
+        )
+
+        for shift in (-pi / 5, 0.0, pi / 6)
+            PSY.set_α!(star_leg, shift)
+            PSY.set_tap!(star_leg, 1.0)
+            adm = PNM.branch_admittance(winding)
+            for tap in (0.9, 1.0, 1.1, 1.25)
+                PSY.set_tap!(star_leg, tap)
+                check_terms(
+                    POM._tapped_admittance(model, adm, tap),
+                    PNM.ybus_branch_entries(winding),
+                )
+            end
+        end
+        PSY.set_α!(star_leg, 0.0)
+        PSY.set_tap!(star_leg, 1.0)
+    end
+end
+
+@testset "a voltage-controlled circuit and its regulated bus survive a network reduction" begin
+    # Without the bus-pinning rule the controlled circuit is merged into a reduced arc and
+    # `_validate_controlled_branch_not_reduced` rejects the build.
+    for case in TRANSFORMER_CASES
+        index = last(case.circuit_indices)
+        fixture = case.make(VOLTAGE_CONTROL; circuit_index = index)
+        model, status = _build_controlled(
+            fixture.sys, ACPNetworkModel, case.device_type;
+            optimizer = ipopt_optimizer, network_source = _reduction_source(),
+        )
+        @test status == IOM.ModelBuildStatus.BUILT
+
+        container = IOM.get_optimization_container(model)
+        tap = IOM.get_variable(container, TapRatioVariable, case.device_type)
+        @test fixture.axis_name in axes(tap)[1]
+
+        # The regulated bus must be retained too, else the voltage constraint has nothing
+        # to bind against.
+        vm = IOM.get_variable(container, VoltageMagnitude, PSY.ACBus)
+        @test fixture.regulated_name in axes(vm)[1]
     end
 end
 
@@ -313,6 +642,51 @@ end
     end
     # Guard: the test system must actually carry a non-unit tap, else this proves nothing.
     @test tested_a_real_tap
+end
+
+@testset "StaticBranch models three-winding off-nominal taps under DCP" begin
+    sys = _sys5_with_3w()
+    transformer = PSY.get_component(PSY.ThreeWindingTransformer, sys, T3W_NAME)
+    # The fixture is built at nominal, so an off-nominal tap has to be set here for the
+    # tap-divided susceptance to be doing any work.
+    PSY.set_tap!(PSY.get_secondary_circuit(transformer), 1.05)
+    PSY.set_tap!(PSY.get_tertiary_circuit(transformer), 0.95)
+
+    template = get_thermal_dispatch_template_network(NetworkModel(DCPNetworkModel))
+    set_device_model!(template, PSY.ThreeWindingTransformer, StaticBranch)
+    model = DecisionModel(template, sys; optimizer = HiGHS_optimizer)
+    @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
+          IOM.ModelBuildStatus.BUILT
+    @test solve!(model) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
+
+    res = IOM.OptimizationProblemOutputs(model)
+    base = IOM.get_model_base_power(res)
+    pflow = read_expression(
+        res,
+        "BThetaBranchFlow__ThreeWindingTransformer";
+        table_format = TableFormat.WIDE,
+    )
+    va = read_variable(res, "VoltageAngle__ACBus"; table_format = TableFormat.WIDE)
+
+    for (index, star_leg) in enumerate(PSY.get_circuits(transformer))
+        name = T3W_WINDINGS[index]
+        @test name in names(pflow)
+
+        winding = PNM.ThreeWindingTransformerCircuit(transformer, index)
+        adm = PNM.branch_admittance(winding)
+        x = -adm.b / (adm.g^2 + adm.b^2)
+        @test 1 / (x * adm.tap) ≈ PNM.get_series_susceptance(winding, PSY.SU)
+
+        arc = PSY.get_arc(star_leg)
+        fr = PSY.get_name(PSY.get_from(arc))
+        to = PSY.get_name(PSY.get_to(arc))
+        shift = PNM.get_series_phase_shift(winding)
+        for r in 1:nrow(pflow)
+            p_pu = pflow[r, name] / base
+            expected = (va[r, fr] - va[r, to] - shift) / (x * adm.tap)
+            @test isapprox(p_pu, expected; atol = 1e-5)
+        end
+    end
 end
 
 #########################################################################################

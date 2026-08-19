@@ -159,6 +159,10 @@ _voltage_controlled(rep::RepresentativeBranch) = _voltage_controlled(_control_ob
 _reactive_controlled(rep::RepresentativeBranch) =
     _reactive_controlled(_control_objective(rep))
 
+_control_limits(::Nothing) = (min = -Inf, max = Inf)
+_control_limits(c::PSY.TransformerCircuit) = PSY.get_control_limits(c)
+_control_limits(rep::RepresentativeBranch) = _control_limits(_get_circuit(rep.branch))
+
 _quantity_limits(::Nothing) = (min = -Inf, max = Inf)
 _quantity_limits(c::PSY.TransformerCircuit) = PSY.get_controlled_quantity_limits(c)
 _quantity_limits(rep::RepresentativeBranch) = _quantity_limits(_get_circuit(rep.branch))
