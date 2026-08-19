@@ -278,7 +278,7 @@ function _add_post_contingency_sparse_expression!(
     ::Type{T},
     ::Type{V},
     resolved::Vector{
-        Pair{Base.UUID, Vector{Tuple{DataType, String, Tuple{Int, Int}, String}}},
+        Pair{Int, Vector{Tuple{DataType, String, Tuple{Int, Int}, String}}},
     },
     time_steps::UnitRange{Int},
 ) where {T <: PostContingencyExpressions, V <: PSY.ACTransmission}
@@ -330,7 +330,7 @@ function _resolve_monitored_arcs(
     component_to_reduction_maps =
         PNM.get_component_to_reduction_name_map(net_reduction_data)
     resolved =
-        Pair{Base.UUID, Vector{Tuple{DataType, String, Tuple{Int, Int}, String}}}[]
+        Pair{Int, Vector{Tuple{DataType, String, Tuple{Int, Int}, String}}}[]
     for (uuid, per_type) in get_outages(device_model)
         kept = Tuple{DataType, String, Tuple{Int, Int}, String}[]
         for (T, names) in per_type
@@ -812,14 +812,14 @@ function _copy_existing_post_contingency_expressions!(
     ::Type{V},
     expression_container::SparseAxisArray,
     resolved::Vector{
-        Pair{Base.UUID, Vector{Tuple{DataType, String, Tuple{Int, Int}, String}}},
+        Pair{Int, Vector{Tuple{DataType, String, Tuple{Int, Int}, String}}},
     },
     time_steps::UnitRange{Int},
 ) where {T <: PostContingencyExpressions, V <: PSY.ACTransmission}
     _has_other_v_container(IOM.get_expressions(container), T, V) || return resolved
 
     fresh =
-        Pair{Base.UUID, Vector{Tuple{DataType, String, Tuple{Int, Int}, String}}}[]
+        Pair{Int, Vector{Tuple{DataType, String, Tuple{Int, Int}, String}}}[]
     for (uuid, entries) in resolved
         outage_id = string(uuid)
         unresolved = Tuple{DataType, String, Tuple{Int, Int}, String}[]

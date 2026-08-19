@@ -28,14 +28,12 @@ TimerOutputs = "a759f4b9-e2f1-59dc-863e-4aeb61b1ea8f"
 PowerFlows = "94fada2c-fd9a-4e89-8d82-81405f5cb4f6"
 
 [sources]
-# LOCAL PATHS: IOM is on an unpushed `feat/rust-time-series-store` branch and IS/PSY are on
-# `feat/infrastore-integration`. Restore the git revs before pushing.
-InfrastructureSystems = {path = "../InfrastructureSystems.jl"}
-InfrastructureOptimizationModels = {path = "../InfrastructureOptimizationModels.jl"}
-PowerSystems = {path = "../PowerSystems.jl"}
-PowerCoreOpenAPIModels = {url = "https://github.com/Sienna-Platform/PowerOpenAPIModels.git", rev = "main", subdir = "PowerCoreOpenAPIModels.jl"}
+InfrastructureSystems = {rev = "feat/infrastore-integration", url = "https://github.com/Sienna-Platform/InfrastructureSystems.jl"}
+InfrastructureOptimizationModels = {rev = "feat/rust-time-series-store", url = "https://github.com/Sienna-Platform/InfrastructureOptimizationModels.jl"}
+PowerSystems = {rev = "feat/infrastore-integration", url = "https://github.com/Sienna-Platform/PowerSystems.jl"}
+PowerCoreOpenAPIModels = {url = "https://github.com/Sienna-Platform/PowerOpenAPIModels.git", rev = "feat/infrastore-integration", subdir = "PowerCoreOpenAPIModels.jl"}
 PowerNetworkMatrices = {rev = "psy6", url = "https://github.com/Sienna-Platform/PowerNetworkMatrices.jl"}
-PowerOperationsOpenAPIModels = {url = "https://github.com/Sienna-Platform/PowerOpenAPIModels.git", rev = "main", subdir = "PowerOperationsOpenAPIModels.jl"}
+PowerOperationsOpenAPIModels = {url = "https://github.com/Sienna-Platform/PowerOpenAPIModels.git", rev = "feat/infrastore-integration", subdir = "PowerOperationsOpenAPIModels.jl"}
 
 [extensions]
 PowerFlowsExt = "PowerFlows"
@@ -46,7 +44,6 @@ DocStringExtensions = "~0.8, ~0.9"
 InfrastructureSystems = "3"
 InteractiveUtils = "1.11.0"
 JuMP = "^1.28"
-PowerSystems = "^5.10"
 PowerFlows = "^0.24"
 PowerNetworkMatrices = "^0.24"
 PowerSystems = "^5.10"

@@ -390,7 +390,7 @@ end
             monitored_components = all_branches,
         )
         PSY.add_supplemental_attribute!(c_sys5, component, transition_data)
-        push!(outage_uuids, IS.get_uuid(transition_data))
+        push!(outage_uuids, IS.get_id(transition_data))
     end
 
     auto_template = get_thermal_dispatch_template_network(
@@ -430,7 +430,7 @@ end
     # construction. The warn-and-drop branch in `_add_device_model_outages`
     # triggers on *any* non-empty `InfrastructureSystemsComponent` vector when
     # the formulation is not security-constrained, so we exercise it with a real
-    # `PSY.Line` component (only `IS.get_uuid` is called on each entry). The
+    # `PSY.Line` component (only `IS.get_id` is called on each entry). The
     # warning is emitted by the `DeviceModel` constructor itself (before any
     # `build!`/`with_logger` wrapping), so `@test_logs` captures it directly.
     c_sys5 = PSB.build_system(PSITestSystems, "c_sys5")
@@ -458,7 +458,7 @@ end
     )
     PSY.add_supplemental_attribute!(sys, line, outage)
     PSY.add_supplemental_attribute!(sys, transformer, outage)
-    outage_uuid = IS.get_uuid(outage)
+    outage_uuid = IS.get_id(outage)
     outage_uuid_str = string(outage_uuid)
 
     template = get_thermal_dispatch_template_network(
@@ -547,7 +547,7 @@ end
         monitored_components = [parallel_line],
     )
     PSY.add_supplemental_attribute!(sys, parallel_line, outage)
-    outage_uuid = string(IS.get_uuid(outage))
+    outage_uuid = string(IS.get_id(outage))
 
     template = get_thermal_dispatch_template_network(
         NetworkModel(PTDFNetworkModel),

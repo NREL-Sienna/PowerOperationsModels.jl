@@ -764,8 +764,7 @@ end
         [line_a, line_b],
         PSY.Deterministic(
             "branch_rating",
-            rating_data;
-            scaling_factor_multiplier = get_rating,
+            rating_data,
         ),
     )
     branch_rating_hashes =

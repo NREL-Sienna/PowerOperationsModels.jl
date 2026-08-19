@@ -43,16 +43,15 @@ UUIDs = "cf7118a7-6976-5b1a-9a39-7adc72f591a4"
 # to apply). Drop the dep + entry once InfraStore is registered.
 [sources]
 PowerOperationsModels = {path = ".."}
-# LOCAL PATHS: see the root Project.toml note. Restore the git revs before pushing.
-InfrastructureSystems = {path = "../../InfrastructureSystems.jl"}
-InfrastructureOptimizationModels = {path = "../../InfrastructureOptimizationModels.jl"}
-PowerSystems = {path = "../../PowerSystems.jl"}
-PowerSystemCaseBuilder = {path = "../../PowerSystemCaseBuilder.jl"}
-PowerCoreOpenAPIModels = {url = "https://github.com/Sienna-Platform/PowerOpenAPIModels.git", rev = "main", subdir = "PowerCoreOpenAPIModels.jl"}
+InfrastructureSystems = {rev = "feat/infrastore-integration", url = "https://github.com/Sienna-Platform/InfrastructureSystems.jl"}
+InfrastructureOptimizationModels = {rev = "feat/rust-time-series-store", url = "https://github.com/Sienna-Platform/InfrastructureOptimizationModels.jl"}
+PowerSystems = {rev = "feat/infrastore-integration", url = "https://github.com/Sienna-Platform/PowerSystems.jl"}
+PowerSystemCaseBuilder = {rev = "psy6", url = "https://github.com/Sienna-Platform/PowerSystemCaseBuilder.jl"}
+PowerCoreOpenAPIModels = {url = "https://github.com/Sienna-Platform/PowerOpenAPIModels.git", rev = "feat/infrastore-integration", subdir = "PowerCoreOpenAPIModels.jl"}
 PowerFlowFileParser = {rev = "psy6", url = "https://github.com/Sienna-Platform/PowerFlowFileParser.jl"}
 PowerFlows = {rev = "psy6", url = "https://github.com/Sienna-Platform/PowerFlows.jl"}
 PowerNetworkMatrices = {rev = "psy6", url = "https://github.com/Sienna-Platform/PowerNetworkMatrices.jl"}
-PowerOperationsOpenAPIModels = {url = "https://github.com/Sienna-Platform/PowerOpenAPIModels.git", rev = "main", subdir = "PowerOperationsOpenAPIModels.jl"}
+PowerOperationsOpenAPIModels = {url = "https://github.com/Sienna-Platform/PowerOpenAPIModels.git", rev = "feat/infrastore-integration", subdir = "PowerOperationsOpenAPIModels.jl"}
 PowerTableDataParser = {rev = "psy6", url = "https://github.com/NREL-Sienna/PowerTableDataParser.jl"}
 
 [compat]

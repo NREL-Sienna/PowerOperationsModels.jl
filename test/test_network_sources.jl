@@ -46,7 +46,7 @@ end
     core = POM.PNM.VirtualFactorCore(
         ybus;
         tol = POM.PTDF_ZERO_TOL,
-        system_uuid = IS.get_uuid(sys),
+        system_uuid = PSY.get_system_uuid(sys),
     )
     ptdf = POM.PNM.VirtualPTDF(core)
     modf = POM.PNM.VirtualMODF(core, sys; automatically_register_outages = false)
@@ -85,7 +85,7 @@ end
     core = POM.PNM.VirtualFactorCore(
         ybus;
         tol = POM.PTDF_ZERO_TOL,
-        system_uuid = IS.get_uuid(sys),
+        system_uuid = PSY.get_system_uuid(sys),
     )
     ptdf_without = POM.PTDFNetworkData(
         POM.PNM.VirtualPTDF(core),
@@ -105,7 +105,7 @@ end
     core = POM.PNM.VirtualFactorCore(
         ybus;
         tol = POM.PTDF_ZERO_TOL,
-        system_uuid = IS.get_uuid(sys),
+        system_uuid = PSY.get_system_uuid(sys),
     )
     ptdf = POM.PNM.VirtualPTDF(core)
     source = POM.PrebuiltMatrixSource(ptdf)
@@ -128,7 +128,7 @@ end
     core = POM.PNM.VirtualFactorCore(
         ybus;
         tol = POM.PTDF_ZERO_TOL,
-        system_uuid = IS.get_uuid(sys),
+        system_uuid = PSY.get_system_uuid(sys),
     )
     source = POM.PrebuiltCoreSource(core)
 
@@ -285,7 +285,7 @@ end
 
     # The discriminating assertion: an outage attached to a component no SC
     # model covers must never reach the registry.
-    @test !haskey(registered, IS.get_uuid(uncovered_outage))
+    @test !haskey(registered, IS.get_id(uncovered_outage))
 end
 
 _zibr(rt) = POM.PNM.ZeroImpedanceBranchReduction(;
@@ -341,7 +341,7 @@ end
     core = POM.PNM.VirtualFactorCore(
         ybus;
         tol = POM.PTDF_ZERO_TOL,
-        system_uuid = IS.get_uuid(sys),
+        system_uuid = PSY.get_system_uuid(sys),
     )
     source = POM.PrebuiltCoreSource(core)
 

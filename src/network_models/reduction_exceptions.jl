@@ -151,14 +151,14 @@ end
 # monitored components' real bus numbers.
 function _pin_outage_buses!(buses::Set{Int}, m::DeviceModel, sys::PSY.System)
     IOM.supports_outages(get_formulation(m)) || return
-    for outage_uuid in keys(get_outages(m))
-        outage = PSY.get_supplemental_attribute(sys, outage_uuid)
+    for outage_id in keys(get_outages(m))
+        outage = PSY.get_supplemental_attribute(sys, outage_id)
         for uuid in PSY.get_monitored_components(outage)
             component = IS.get_component(sys, uuid)
             if isnothing(component)
                 throw(
                     IS.ConflictingInputsError(
-                        "Monitored component with UUID $(uuid) on outage $(IS.get_uuid(outage)) not found in system. Data requires correction",
+                        "Monitored component with UUID $(uuid) on outage $(IS.get_id(outage)) not found in system. Data requires correction",
                     ),
                 )
             end
