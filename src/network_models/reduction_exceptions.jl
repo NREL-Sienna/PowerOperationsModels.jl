@@ -8,7 +8,10 @@ protects every system Outage; this protects only what the template actually mode
 contingency the model never enforces cannot block a reduction.
 =#
 
-function _push_component_buses!(buses::Set{Int}, branch::Union{PSY.Branch, PSY.TransformerCircuit})
+function _push_component_buses!(
+    buses::Set{Int},
+    branch::Union{PSY.Branch, PSY.TransformerCircuit},
+)
     arc = PSY.get_arc(branch)
     push!(buses, PSY.get_number(PSY.get_from(arc)))
     push!(buses, PSY.get_number(PSY.get_to(arc)))
@@ -164,7 +167,8 @@ function _pin_transformer_controls!(
     for transformer in get_device_cache(m)
         for circuit in PSY.get_circuits(transformer)
             PSY.get_available(circuit) || continue
-            PSY.get_control_objective(circuit) in (PSY.TransformerControlObjective.VOLTAGE,) || continue
+            PSY.get_control_objective(circuit) in
+            (PSY.TransformerControlObjective.VOLTAGE,) || continue
             _push_component_buses!(buses, circuit)
             push!(buses, PSY.get_regulated_bus_number(circuit))
         end

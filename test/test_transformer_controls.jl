@@ -165,8 +165,11 @@ function _controlled_sys3w(
     transformer = PSY.get_component(PSY.ThreeWindingTransformer, sys, T3W_NAME)
     circuit = PSY.get_circuits(transformer)[circuit_index]
     # Each winding arcs terminal -> star, so the from-bus is this winding's own terminal.
-    number = isnothing(regulated) ?
-             PSY.get_number(PSY.get_from(PSY.get_arc(circuit))) : regulated
+    number = if isnothing(regulated)
+        PSY.get_number(PSY.get_from(PSY.get_arc(circuit)))
+    else
+        regulated
+    end
     PSY.set_control_objective!(circuit, objective)
     PSY.set_regulated_bus_number!(circuit, number)
     PSY.set_controlled_quantity_limits!(circuit, quantity_limits)
@@ -224,8 +227,8 @@ function _controlled_template(
             device_type,
             formulation;
             attributes = Dict(
-                POM.ENABLE_CONTROLS_KEY => enable
-            )
+                POM.ENABLE_CONTROLS_KEY => enable,
+            ),
         ),
     )
     return template
@@ -410,6 +413,7 @@ end
     for case in TRANSFORMER_CASES,
         network_formulation in AC_NETWORKS,
         index in case.circuit_indices
+
         println("%%%%%%%%")
         @show case, network_formulation, index
 

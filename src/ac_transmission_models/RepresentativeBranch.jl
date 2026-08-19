@@ -158,7 +158,8 @@ _control_objective(c::PSY.TransformerCircuit) =
 _control_objective(rep::RepresentativeBranch) = _control_objective(_get_circuit(rep.branch))
 
 _tap_controlled(rep::RepresentativeBranch) = _tap_controlled(_control_objective(rep))
-_voltage_controlled(rep::RepresentativeBranch) = _voltage_controlled(_control_objective(rep))
+_voltage_controlled(rep::RepresentativeBranch) =
+    _voltage_controlled(_control_objective(rep))
 _reactive_controlled(rep::RepresentativeBranch) =
     _reactive_controlled(_control_objective(rep))
 
@@ -202,8 +203,10 @@ _parallel_branches_rating(::DeviceModel, mbp::PNM.MixedBranchesParallel) =
     PNM.get_sum_of_max_rating(mbp)
 
 _branch_rating(d::PSY.ACTransmission, ::DeviceModel) = PSY.get_rating(d, PSY.SU)
-_branch_rating(t::PSY.TwoWindingTransformer, ::DeviceModel) = PSY.get_rating(PSY.get_circuit(t), PSY.SU)
-_branch_rating(t::PNM.ThreeWindingTransformerCircuit, ::DeviceModel) = PSY.get_rating(t.circuit, PSY.SU)
+_branch_rating(t::PSY.TwoWindingTransformer, ::DeviceModel) =
+    PSY.get_rating(PSY.get_circuit(t), PSY.SU)
+_branch_rating(t::PNM.ThreeWindingTransformerCircuit, ::DeviceModel) =
+    PSY.get_rating(t.circuit, PSY.SU)
 _branch_rating(entry::PNM.BranchesSeries, ::DeviceModel) = PNM.get_equivalent_rating(entry)
 _branch_rating(entry::PNM.AbstractBranchesParallel, model::DeviceModel) =
     _parallel_branches_rating(model, entry)

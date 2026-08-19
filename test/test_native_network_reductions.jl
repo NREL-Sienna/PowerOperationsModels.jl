@@ -421,11 +421,16 @@ end
             ACPNetworkModel,
             PSY.TwoWindingTransformer;
             optimizer = ipopt_optimizer,
-            network_source = NetworkReductionSpec([PNM.RadialReduction(), PNM.DegreeTwoReduction()])
+            network_source = NetworkReductionSpec([
+                PNM.RadialReduction(),
+                PNM.DegreeTwoReduction(),
+            ]),
         )
         @test status == IOM.ModelBuildStatus.BUILT
         container = IOM.get_optimization_container(model)
-        @test axes(IOM.get_variable(container, TapRatioVariable, PSY.TwoWindingTransformer))[1] ==
+        @test axes(
+            IOM.get_variable(container, TapRatioVariable, PSY.TwoWindingTransformer),
+        )[1] ==
               ["Trans$i"]
     end
 end

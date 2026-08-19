@@ -1000,8 +1000,20 @@ function construct_device!(
     @debug "construct_device DCPLL (ArgumentConstructStage)" _group =
         LOG_GROUP_BRANCH_CONSTRUCTIONS
     devices = get_available_components(device_model, sys)
-    add_variables!(container, FlowActivePowerFromToVariable, devices, device_model, network_model)
-    add_variables!(container, FlowActivePowerToFromVariable, devices, device_model, network_model)
+    add_variables!(
+        container,
+        FlowActivePowerFromToVariable,
+        devices,
+        device_model,
+        network_model,
+    )
+    add_variables!(
+        container,
+        FlowActivePowerToFromVariable,
+        devices,
+        device_model,
+        network_model,
+    )
     # Slacks turn the rating into a soft limit, so the two enforcement styles are
     # mutually exclusive: hard variable bounds without slacks (tighter QCP), slacked
     # FlowRateConstraint pairs (ModelConstructStage) with them.
@@ -1070,8 +1082,20 @@ function construct_device!(
     @debug "construct_device DCPLL StaticBranchBounds (ArgumentConstructStage)" _group =
         LOG_GROUP_BRANCH_CONSTRUCTIONS
     devices = get_available_components(device_model, sys)
-    add_variables!(container, FlowActivePowerFromToVariable, devices, device_model, network_model)
-    add_variables!(container, FlowActivePowerToFromVariable, devices, device_model, network_model)
+    add_variables!(
+        container,
+        FlowActivePowerFromToVariable,
+        devices,
+        device_model,
+        network_model,
+    )
+    add_variables!(
+        container,
+        FlowActivePowerToFromVariable,
+        devices,
+        device_model,
+        network_model,
+    )
     if get_use_slacks(device_model)
         _add_flow_slacks!(container, devices, device_model, network_model)
     else

@@ -1357,10 +1357,18 @@ function _voltage_products(
     vaf, vat = va[from_bus, :], va[to_bus, :]
     T = length(get_time_steps(container))
     return (
-        v2_fr = JuMP.@expression(jump_model, [t=1:T], vmf[t]^2),
-        v2_to = JuMP.@expression(jump_model, [t=1:T], vmt[t]^2),
-        vv_cos = JuMP.@expression(jump_model, [t=1:T], vmf[t] * vmt[t] * cos(vaf[t] - vat[t])),
-        vv_sin = JuMP.@expression(jump_model, [t=1:T], vmf[t] * vmt[t] * sin(vaf[t] - vat[t])),
+        v2_fr = JuMP.@expression(jump_model, [t = 1:T], vmf[t]^2),
+        v2_to = JuMP.@expression(jump_model, [t = 1:T], vmt[t]^2),
+        vv_cos = JuMP.@expression(
+            jump_model,
+            [t = 1:T],
+            vmf[t] * vmt[t] * cos(vaf[t] - vat[t])
+        ),
+        vv_sin = JuMP.@expression(
+            jump_model,
+            [t = 1:T],
+            vmf[t] * vmt[t] * sin(vaf[t] - vat[t])
+        ),
     )
 end
 
@@ -1379,10 +1387,18 @@ function _voltage_products(
     vi_fr, vi_to = vi[from_bus, :], vi[to_bus, :]
     T = length(get_time_steps(container))
     return (
-        v2_fr = JuMP.@expression(jump_model, [t=1:T], vr_fr[t]^2 + vi_fr[t]^2),
-        v2_to = JuMP.@expression(jump_model, [t=1:T], vr_to[t]^2 + vi_to[t]^2),
-        vv_cos = JuMP.@expression(jump_model, [t=1:T], vr_fr[t] * vr_to[t] + vi_fr[t] * vi_to[t]),
-        vv_sin = JuMP.@expression(jump_model, [t=1:T], vi_fr[t] * vr_to[t] - vr_fr[t] * vi_to[t]),
+        v2_fr = JuMP.@expression(jump_model, [t = 1:T], vr_fr[t]^2 + vi_fr[t]^2),
+        v2_to = JuMP.@expression(jump_model, [t = 1:T], vr_to[t]^2 + vi_to[t]^2),
+        vv_cos = JuMP.@expression(
+            jump_model,
+            [t = 1:T],
+            vr_fr[t] * vr_to[t] + vi_fr[t] * vi_to[t]
+        ),
+        vv_sin = JuMP.@expression(
+            jump_model,
+            [t = 1:T],
+            vi_fr[t] * vr_to[t] - vr_fr[t] * vi_to[t]
+        ),
     )
 end
 
@@ -1401,10 +1417,14 @@ function _voltage_products(
     phi_fr, phi_to = phi[from_bus, :], phi[to_bus, :]
     T = length(get_time_steps(container))
     return (
-        v2_fr = JuMP.@expression(jump_model, [t=1:T], 1.0 + 2.0 * phi_fr[t]),
-        v2_to = JuMP.@expression(jump_model, [t=1:T], 1.0 + 2.0 * phi_to[t]),
-        vv_cos = JuMP.@expression(jump_model, [t=1:T], cs[name, t] + phi_fr[t] + phi_to[t]),
-        vv_sin = JuMP.@expression(jump_model, [t=1:T], va[from_bus, t] - va[to_bus, t]),
+        v2_fr = JuMP.@expression(jump_model, [t = 1:T], 1.0 + 2.0 * phi_fr[t]),
+        v2_to = JuMP.@expression(jump_model, [t = 1:T], 1.0 + 2.0 * phi_to[t]),
+        vv_cos = JuMP.@expression(
+            jump_model,
+            [t = 1:T],
+            cs[name, t] + phi_fr[t] + phi_to[t]
+        ),
+        vv_sin = JuMP.@expression(jump_model, [t = 1:T], va[from_bus, t] - va[to_bus, t]),
     )
 end
 
@@ -1460,7 +1480,11 @@ function add_constraints!(
         to_bus = _to_name(rep)
 
         vp = _voltage_products(container, network_model, T, name, from_bus, to_bus)
-        tap_var = _tap_controlled(device_model, rep) ? get_variable(container, TapRatioVariable, T) : nothing
+        tap_var = if _tap_controlled(device_model, rep)
+            get_variable(container, TapRatioVariable, T)
+        else
+            nothing
+        end
         for t in time_steps
             tap = isnothing(tap_var) ? adm.tap : tap_var[name, t]
             y = _tapped_admittance(jump_model, adm, tap)
@@ -1503,7 +1527,7 @@ _voltage_magnitude(
 ) =
     JuMP.@expression(
         get_jump_model(container),
-        [t=1:length(get_time_steps(container))],
+        [t = 1:length(get_time_steps(container))],
         get_variable(container, VoltageReal, PSY.ACBus)[name, t]^2 +
         get_variable(container, VoltageImaginary, PSY.ACBus)[name, t]^2
     )
@@ -1537,7 +1561,9 @@ function _add_voltage_control_constraints!(
 
     time_steps = get_time_steps(container)
     jump_model = get_jump_model(container)
-    _for_each_branch(_representative_branches(network_model, T, VoltageMagnitudeConstraint)) do rep
+    _for_each_branch(
+        _representative_branches(network_model, T, VoltageMagnitudeConstraint),
+    ) do rep
         _voltage_controlled(device_model, rep) || return
 
         bus = PSY.get_bus(sys, _regulated_number(rep))
@@ -1546,7 +1572,7 @@ function _add_voltage_control_constraints!(
         ctl_limits = _quantity_limits(rep)
         # TODO: temporary pending PSY#1755
         (bus_limits.min <= ctl_limits.min <= ctl_limits.max <= bus_limits.max) || error(
-                                                                                        "Bus voltage limits for $bus_name disagree with control limits for circuit $(rep.name).",
+            "Bus voltage limits for $bus_name disagree with control limits for circuit $(rep.name).",
         )
 
         lims = _voltage_limits(ctl_limits, network_model)
@@ -1589,7 +1615,9 @@ function _add_reactive_control_constraints!(
 
     time_steps = get_time_steps(container)
     jump_model = get_jump_model(container)
-    _for_each_branch(_representative_branches(network_model, T, ReactivePowerFlowControlConstraint)) do rep
+    _for_each_branch(
+        _representative_branches(network_model, T, ReactivePowerFlowControlConstraint),
+    ) do rep
         name = rep.name
         _reactive_controlled(device_model, rep) || return
         lims = _quantity_limits(rep)
