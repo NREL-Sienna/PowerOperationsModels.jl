@@ -165,13 +165,21 @@ end
 
 #################################### Flow Variable Bounds ##################################################
 
-_branch_variable_bounds(::Type{V}, rep, ::DeviceModel{F}) where {V <: VariableType, F <: AbstractBranchFormulation} =
+_branch_variable_bounds(
+    ::Type{V},
+    rep,
+    ::DeviceModel{D, F},
+) where {V, D <: PSY.ACTransmission, F <: AbstractBranchFormulation} =
     (
         get_variable_lower_bound(V, rep.branch, F),
         get_variable_upper_bound(V, rep.branch, F),
     )
 
-function _branch_variable_bounds(::Type{CosineApproximation}, rep, _)
+function _branch_variable_bounds(
+    ::Type{CosineApproximation},
+    rep,
+    ::DeviceModel{<:PSY.ACTransmission, <:AbstractBranchFormulation},
+)
     lims = _angle_limits(rep)
     if lims.min >= 0
         return (cos(lims.max), cos(lims.min))
@@ -182,12 +190,20 @@ function _branch_variable_bounds(::Type{CosineApproximation}, rep, _)
     end
 end
 
-function _branch_variable_bounds(_, rep, device_model)
+_branch_variable_bounds(
+    ::Type{TapRatioVariable},
+    rep,
+    ::DeviceModel{<:PSY.ACTransmission, <:AbstractBranchFormulation},
+) = _control_limits(rep)
+
+function _branch_variable_bounds(
+    ::Type{<:AbstractBranchCurrentVariable},
+    rep,
+    device_model::DeviceModel{<:PSY.ACTransmission, <:AbstractBranchFormulation},
+)
     rating = _current_rating(rep, device_model)
     return (-rating, rating)
 end
-
-_branch_variable_bounds(::Type{TapRatioVariable}, rep, _) = _control_limits(rep)
 
 _branch_variable_start(::Type{CosineApproximation}) = 1.0
 _branch_variable_start(::Type{TapRatioVariable}) = 1.0
@@ -231,7 +247,7 @@ function add_variables!(
         container,
         V,
         T,
-        [b.name for b in branches],
+        _branch_names(branches),
         time_steps,
     )
 
@@ -271,14 +287,14 @@ function _validate_controlled_branch_not_reduced(
     network_model::NetworkModel,
     ::Type{T},
 ) where {T <: _TRANSFORMERS}
-    isempty(get_network_reduction(network_model)) && return
     _for_each_branch(_all_branches(network_model, T)) do rep
-        _control_enabled(_get_circuit(rep.branch)) || return
         rep.reduction == DIRECT_BRANCH_MAP && return
+        names = _controlled_circuit_names(rep)
+        isempty(names) && return
         error(
-            "Controlled transformer circuit $(rep.name) was merged into a reduced arc \
-             ($(rep.reduction)). Either remove the parallel branch or disable control \
-             for this circuit.",
+            "Controlled transformer circuit $(join(names, ", ")) was merged into the \
+             reduced arc $(rep.name) ($(rep.reduction)). Either remove the parallel \
+             branch or disable control for this circuit.",
         )
     end
     return
@@ -507,7 +523,7 @@ function add_constraints!(
 }
     time_steps = get_time_steps(container)
     reps = _representative_branches(network_model, T, cons_type)
-    branch_names = [rep.name for rep in reps]
+    branch_names = _branch_names(reps)
 
     con_lb =
         add_constraints_container!(
@@ -558,7 +574,7 @@ function add_constraints!(
 }
     time_steps = get_time_steps(container)
     reps = _representative_branches(network_model, T, cons_type)
-    branch_names = [rep.name for rep in reps]
+    branch_names = _branch_names(reps)
 
     con_lb =
         add_constraints_container!(
@@ -636,7 +652,7 @@ function add_flow_rate_constraint_with_parameters!(
 }
     time_steps = get_time_steps(container)
     reps = _representative_branches(network_model, T, cons_type)
-    branch_names = [rep.name for rep in reps]
+    branch_names = _branch_names(reps)
 
     con_lb =
         add_constraints_container!(
@@ -1068,7 +1084,7 @@ function _add_directional_flow_rate_limits!(
     quad_slacks = _quadratic_rate_slacks(container, device_model, T)
     reps = _representative_branches(network_model, T, ConsKey)
     cons = add_constraints_container!(
-        container, ConsKey, T, [rep.name for rep in reps], time_steps,
+        container, ConsKey, T, _branch_names(reps), time_steps,
     )
     jump_model = get_jump_model(container)
 
@@ -1433,7 +1449,7 @@ function add_constraints!(
         number_to_name = _retained_number_to_name(sys, network_model),
     )
     cons_pft, cons_qft, cons_ptf, cons_qtf =
-        _add_flow_constraint_containers!(container, T, [r.name for r in reps])
+        _add_flow_constraint_containers!(container, T, _branch_names(reps))
     jump_model = get_jump_model(container)
     slacks = _flow_equality_slacks(container, device_model, T)
 
@@ -1650,7 +1666,7 @@ function add_constraints!(
     constrained =
         filter(rep -> !iszero(_max_angle_difference(rep)), reps)
     cons = add_constraints_container!(
-        container, CosineRelaxationConstraint, T, [rep.name for rep in constrained],
+        container, CosineRelaxationConstraint, T, _branch_names(constrained),
         time_steps,
     )
 
@@ -1720,7 +1736,7 @@ function add_constraints!(
         network_model, T, NetworkFlowConstraint;
         number_to_name = _retained_number_to_name(sys, network_model),
     )
-    branch_names = [rep.name for rep in reps]
+    branch_names = _branch_names(reps)
 
     cons_pft = add_constraints_container!(
         container, NetworkFlowConstraint, T, branch_names, time_steps; meta = "p_ft",
@@ -1968,7 +1984,7 @@ function add_constraints!(
     # rating from the arc's equivalent parameters. The TS parameter axes are already
     # reduction-entry names.
     reps = _representative_branches(network_model, T, FlowRateConstraint)
-    branch_names = [rep.name for rep in reps]
+    branch_names = _branch_names(reps)
     con_lb = add_constraints_container!(
         container, FlowRateConstraint, T, branch_names, time_steps; meta = "lb",
     )
@@ -2023,7 +2039,7 @@ function add_constraints!(
         network_model, T, NetworkFlowConstraint;
         number_to_name = _retained_number_to_name(sys, network_model),
     )
-    branch_names = [rep.name for rep in reps]
+    branch_names = _branch_names(reps)
     cons = add_constraints_container!(
         container, NetworkFlowConstraint, T, branch_names, time_steps,
     )
@@ -2108,7 +2124,7 @@ function add_expressions!(
         network_model, T, NetworkFlowConstraint;
         number_to_name = _retained_number_to_name(sys, network_model),
     )
-    branch_names = [rep.name for rep in reps]
+    branch_names = _branch_names(reps)
 
     bfe =
         add_expression_container!(container, BThetaBranchFlow, T, branch_names, time_steps)
@@ -2167,7 +2183,7 @@ function add_constraints!(
     end
 
     reps = _representative_branches(network_model, T, FlowRateConstraint)
-    branch_names = [rep.name for rep in reps]
+    branch_names = _branch_names(reps)
     con_lb = add_constraints_container!(
         container, FlowRateConstraint, T, branch_names, time_steps; meta = "lb",
     )
@@ -2239,7 +2255,7 @@ function add_constraints!(
     )
     isempty(constrained) && return
 
-    branch_names = [rep.name for rep in constrained]
+    branch_names = _branch_names(constrained)
     cons = add_constraints_container!(
         container, AngleDifferenceConstraint, T, branch_names, time_steps,
     )
@@ -2296,7 +2312,7 @@ function add_constraints!(
     )
     isempty(constrained) && return
 
-    branch_names = [rep.name for rep in constrained]
+    branch_names = _branch_names(constrained)
     cons_ub = add_constraints_container!(
         container, AngleDifferenceConstraint, T, branch_names, time_steps; meta = "ub",
     )
@@ -2389,7 +2405,7 @@ function add_constraints!(
     jump_model = get_jump_model(container)
 
     reps = _representative_branches(network_model, T, FlowRateConstraint)
-    branch_names = [rep.name for rep in reps]
+    branch_names = _branch_names(reps)
     con_ft_ub = add_constraints_container!(
         container, FlowRateConstraint, T, branch_names, time_steps; meta = "ft_ub",
     )
@@ -2444,7 +2460,7 @@ function add_constraints!(
         network_model, T, NetworkFlowConstraint;
         number_to_name = _retained_number_to_name(sys, network_model),
     )
-    branch_names = [rep.name for rep in reps]
+    branch_names = _branch_names(reps)
     cons = add_constraints_container!(
         container, NetworkFlowConstraint, T, branch_names, time_steps,
     )
@@ -2507,7 +2523,7 @@ function add_constraints!(
         network_model, T, NetworkLossConstraint;
         number_to_name = _retained_number_to_name(sys, network_model),
     )
-    branch_names = [rep.name for rep in reps]
+    branch_names = _branch_names(reps)
     cons = add_constraints_container!(
         container, NetworkLossConstraint, T, branch_names, time_steps,
     )

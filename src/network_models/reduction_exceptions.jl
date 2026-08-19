@@ -107,6 +107,12 @@ function _pin_time_series_branch_buses!(
     return
 end
 
+_pin_time_series_branch_buses!(
+    ::Set{Int},
+    ::DeviceModel,
+    ::PSY.System,
+) = nothing
+
 # An outage registered on an outage-aware branch model pins both its
 # monitored and its outaged endpoints. The MODF column for a contingency is keyed by
 # the outaged arc's endpoints, and post-contingency flow constraints reference the

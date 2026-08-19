@@ -414,18 +414,20 @@ end
 @testset "a controlled circuit survives the network reduction" begin
     # Controlled transformers pin their endpoint buses irreducible, so the circuit keeps
     # its own arc (and therefore its own tap variable) even with reductions requested.
-    sys, _, _, _ = _controlled_sys14(VOLTAGE_CONTROL)
-    model, status = _build_controlled(
-        sys,
-        ACPNetworkModel;
-        optimizer = ipopt_optimizer,
-        reduce_radial_branches = true,
-        reduce_degree_two_branches = true,
-    )
-    @test status == IOM.ModelBuildStatus.BUILT
-    container = IOM.get_optimization_container(model)
-    @test axes(IOM.get_variable(container, TapRatioVariable, PSY.TwoWindingTransformer))[1] ==
-          ["Trans1"]
+    for i in 1:4
+        sys, _, _, _ = _controlled_sys14(VOLTAGE_CONTROL; circuit_index = i)
+        model, status = _build_controlled(
+            sys,
+            ACPNetworkModel,
+            PSY.TwoWindingTransformer;
+            optimizer = ipopt_optimizer,
+            network_source = NetworkReductionSpec([PNM.RadialReduction(), PNM.DegreeTwoReduction()])
+        )
+        @test status == IOM.ModelBuildStatus.BUILT
+        container = IOM.get_optimization_container(model)
+        @test axes(IOM.get_variable(container, TapRatioVariable, PSY.TwoWindingTransformer))[1] ==
+              ["Trans$i"]
+    end
 end
 
 @testset "a controlled circuit merged with a parallel branch fails with a clear error" begin
@@ -449,7 +451,7 @@ end
             shunt_location = PSY.TwoWindingTransformerShuntLocation.PRIMARY,
         ),
     )
-    template = _controlled_template(ACPNetworkModel)
+    template = _controlled_template(ACPNetworkModel, PSY.TwoWindingTransformer)
     model = DecisionModel(template, sys; optimizer = ipopt_optimizer)
     out = mktempdir(; cleanup = true)
     @test build!(model; output_dir = out, console_level = Logging.Error) ==
@@ -606,7 +608,8 @@ end
     device_model = get_model(get_template(model), PSY.Line)
     for (name, (arc, reduction)) in line_entries
         entry = all_maps[reduction][PSY.Line][arc]
-        rating = POM.branch_rating(entry, device_model)
+        rating = POM._branch_rating(entry, device_model)
+        rating = _
         for t in time_steps
             for var in (pft, ptf, qft, qtf)
                 @test JuMP.has_upper_bound(var[name, t])

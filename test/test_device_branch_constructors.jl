@@ -116,10 +116,10 @@ end
     limits_max = min(limits_from.max, limits_to.max)
 
     tap_transformer = PSY.get_component(TwoWindingTransformer, system, "Trans3")
-    rate_limit = POM._branch_rating(tap_transformer)
+    rate_limit = PSY.get_rating(PSY.get_circuit(tap_transformer), PSY.SU)
 
     transformer = PSY.get_component(TwoWindingTransformer, system, "Trans4")
-    rate_limit2w = POM._branch_rating(transformer)
+    rate_limit2w = PSY.get_rating(PSY.get_circuit(transformer), PSY.SU)
 
     for model in DC_NETWORK_MODELS_FOR_TESTING
         template = get_template_dispatch_with_network(
@@ -171,10 +171,10 @@ end
     limits_max = min(limits_from.max, limits_to.max)
 
     tap_transformer = PSY.get_component(TwoWindingTransformer, system, "Trans3")
-    rate_limit = POM._branch_rating(tap_transformer)
+    rate_limit = PSY.get_rating(PSY.get_circuit(tap_transformer), PSY.SU)
 
     transformer = PSY.get_component(TwoWindingTransformer, system, "Trans4")
-    rate_limit2w = POM._branch_rating(transformer)
+    rate_limit2w = PSY.get_rating(PSY.get_circuit(transformer), PSY.SU)
 
     for model in DC_NETWORK_MODELS_FOR_TESTING
         template = get_template_dispatch_with_network(
@@ -482,10 +482,10 @@ end
     limits_max = min(limits_from.max, limits_to.max)
 
     tap_transformer = PSY.get_component(TwoWindingTransformer, system, "Trans3")
-    rate_limit = POM._branch_rating(tap_transformer)
+    rate_limit = PSY.get_rating(PSY.get_circuit(tap_transformer), PSY.SU)
 
     transformer = PSY.get_component(TwoWindingTransformer, system, "Trans4")
-    rate_limit2w = POM._branch_rating(transformer)
+    rate_limit2w = PSY.get_rating(PSY.get_circuit(transformer), PSY.SU)
 
     template = get_template_dispatch_with_network(
         NetworkModel(PTDFNetworkModel),
@@ -600,10 +600,10 @@ end
     limits_max = min(limits_from.max, limits_to.max)
 
     tap_transformer = PSY.get_component(TwoWindingTransformer, system, "Trans3")
-    rate_limit = POM._branch_rating(tap_transformer)
+    rate_limit = PSY.get_rating(PSY.get_circuit(tap_transformer), PSY.SU)
 
     transformer = PSY.get_component(TwoWindingTransformer, system, "Trans4")
-    rate_limit2w = POM._branch_rating(transformer)
+    rate_limit2w = PSY.get_rating(PSY.get_circuit(transformer), PSY.SU)
 
     template = get_template_dispatch_with_network(ACPNetworkModel)
     set_device_model!(template, TwoWindingTransformer, StaticBranchBounds)
@@ -1017,10 +1017,12 @@ end
 # PSY change introducing a per-branch base surfaces here instead of silently mis-bounding
 # branch flows against the system-base `FlowActivePowerVariable` bounds.
 @testset "PNM rating aggregators are system base (branch_rating invariant)" begin
+    _rating(t::PSY.TwoWindingTransformer) = PSY.get_rating(PSY.get_circuit(t), PSY.SU)
+    _rating(d) = PSY.get_rating(d, PSY.SU)
     for sysname in ("c_sys5", "c_sys14")
         system = PSB.build_system(PSITestSystems, sysname)
         for branch in PSY.get_components(PSY.ACTransmission, system)
-            @test PNM.get_equivalent_rating(branch) == POM._branch_rating(branch)
+            @test PNM.get_equivalent_rating(branch) == _rating(branch)
         end
     end
 end

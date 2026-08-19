@@ -51,13 +51,20 @@ generator so every winding sees flow, a star bus, and `T3W_NAME` arcing each ter
 the star. PSB ships no system with a `ThreeWindingTransformer`, so the device is built here;
 the topology mirrors the fixture in `test_device_branch_constructors.jl`.
 
-The added buses get a wider voltage band than that fixture's `(0.95, 1.05)`: the VOLTAGE
-objective errors unless the bus limits bracket the control band, and the control band the
-tests use is derived from a free solve.
+Every bus the transformer touches — the added ones and `nodeD` — gets a `(0.9, 1.1)` voltage
+band: the VOLTAGE objective errors unless the bus limits bracket the control band, and the
+control bands these tests use are derived from a free solve or from `c_sys14`'s wider
+`(0.94, 1.06)`, both of which escape `c_sys5_ml`'s stock `(0.9, 1.05)`.
+
+Both terminal buses carry a generator with a reactive range. Without one at `Bus3WT_1` the
+load's reactive draw could only be served across winding 2, pinning that winding's terminal
+reactive flow to the load value whatever the tap does — no reactive control objective on it
+would be satisfiable.
 """
 function _sys5_with_3w()
     sys = PSB.build_system(PSITestSystems, "c_sys5_ml")
     busD = PSY.get_component(PSY.ACBus, sys, "nodeD")
+    PSY.set_voltage_limits!(busD, (min = 0.9, max = 1.1))
 
     function _add_bus!(number, name)
         bus = PSY.ACBus(;
@@ -93,31 +100,38 @@ function _sys5_with_3w()
             max_reactive_power = 0.1,
         ),
     )
-    PSY.add_component!(
-        sys,
-        PSY.ThermalStandard(;
-            name = "Gen_Bus3WT",
-            available = true,
-            status = true,
-            bus = terminal_2,
-            active_power = 0.4,
-            reactive_power = 0.0,
-            rating = 0.5,
-            prime_mover_type = PSY.PrimeMovers.ST,
-            fuel = PSY.ThermalFuels.COAL,
-            active_power_limits = (min = 0.0, max = 0.5),
-            reactive_power_limits = (min = -0.3, max = 0.3),
-            ramp_limits = (up = 0.5, down = 0.5),
-            operation_cost = PSY.ThermalGenerationCost(;
-                variable = PSY.CostCurve(PSY.LinearCurve(0.0)),
-                start_up = 0.0,
-                shut_down = 0.0,
-                fixed = 0.0,
+    # `Bus3WT_1`'s generator stays small on active power so the load keeps drawing across
+    # winding 2.
+    function _add_gen!(bus, name, active_max)
+        PSY.add_component!(
+            sys,
+            PSY.ThermalStandard(;
+                name = name,
+                available = true,
+                status = true,
+                bus = bus,
+                active_power = 0.8 * active_max,
+                reactive_power = 0.0,
+                rating = 0.5,
+                prime_mover_type = PSY.PrimeMovers.ST,
+                fuel = PSY.ThermalFuels.COAL,
+                active_power_limits = (min = 0.0, max = active_max),
+                reactive_power_limits = (min = -0.3, max = 0.3),
+                ramp_limits = (up = 0.5, down = 0.5),
+                operation_cost = PSY.ThermalGenerationCost(;
+                    variable = PSY.CostCurve(PSY.LinearCurve(0.0)),
+                    start_up = 0.0,
+                    shut_down = 0.0,
+                    fixed = 0.0,
+                ),
+                base_power = 100.0,
+                time_limits = nothing,
             ),
-            base_power = 100.0,
-            time_limits = nothing,
-        ),
-    )
+        )
+    end
+
+    _add_gen!(terminal_1, "Gen_Bus3WT_1", 0.1)
+    _add_gen!(terminal_2, "Gen_Bus3WT", 0.5)
 
     _star_leg(from) = PSY.TransformerCircuit(;
         available = true,
@@ -396,6 +410,8 @@ end
     for case in TRANSFORMER_CASES,
         network_formulation in AC_NETWORKS,
         index in case.circuit_indices
+        println("%%%%%%%%")
+        @show case, network_formulation, index
 
         fixture =
             case.make(Q_FLOW_CONTROL; circuit_index = index, quantity_limits = limits)

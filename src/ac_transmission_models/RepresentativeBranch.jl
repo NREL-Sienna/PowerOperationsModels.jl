@@ -35,6 +35,9 @@ function _for_each_branch(f::F, reps) where {F}
     return
 end
 
+# Concrete-typed for container axes
+_branch_names(reps) = String[rep.name for rep in reps]
+
 function _make_representative_branch(
     nr::PNM.NetworkReductionData,
     all_branch_maps_by_type::PNM.BranchMapsByType,
@@ -71,7 +74,7 @@ function _representative_branches(
     tracker = get_reduced_branch_tracker(network_model)
     arc_map = get_name_to_arc_map_entries(nr, T)
     all_branch_maps_by_type = PNM.get_all_branch_maps_by_type(nr)
-    return [
+    return RepresentativeBranch[
         _make_representative_branch(
             nr, all_branch_maps_by_type, arc_map, number_to_name, T, name,
         )
@@ -90,7 +93,7 @@ function _all_branches(
     nr = get_network_reduction(network_model)
     arc_map = get_name_to_arc_map_entries(nr, T)
     all_branch_maps_by_type = PNM.get_all_branch_maps_by_type(nr)
-    return [
+    return RepresentativeBranch[
         _make_representative_branch(
             nr, all_branch_maps_by_type, arc_map, number_to_name, T, name,
         )
@@ -158,6 +161,12 @@ _tap_controlled(rep::RepresentativeBranch) = _tap_controlled(_control_objective(
 _voltage_controlled(rep::RepresentativeBranch) = _voltage_controlled(_control_objective(rep))
 _reactive_controlled(rep::RepresentativeBranch) =
     _reactive_controlled(_control_objective(rep))
+
+_controlled_circuit_names(branch) =
+    _control_enabled(_get_circuit(branch)) ? [PNM.get_name(branch)] : String[]
+_controlled_circuit_names(entry::PNM.AbstractReductionAggregate) =
+    reduce(vcat, (_controlled_circuit_names(member) for member in entry); init = String[])
+_controlled_circuit_names(rep::RepresentativeBranch) = _controlled_circuit_names(rep.branch)
 
 _control_limits(::Nothing) = (min = -Inf, max = Inf)
 _control_limits(c::PSY.TransformerCircuit) = PSY.get_control_limits(c)

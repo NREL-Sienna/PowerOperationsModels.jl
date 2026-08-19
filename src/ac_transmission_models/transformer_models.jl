@@ -286,7 +286,7 @@ function add_constraints!(
     number_to_name = _retained_number_to_name(sys, network_model)
     geoms =
         _branch_geometries(number_to_name, network_model, devices, T, NetworkFlowConstraint)
-    branch_names = [g.name for g in geoms]
+    branch_names = _branch_names(geoms)
     cons = add_constraints_container!(
         container, NetworkFlowConstraint, T, branch_names, time_steps,
     )
