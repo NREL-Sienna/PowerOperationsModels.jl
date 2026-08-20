@@ -254,8 +254,6 @@ network_support(::Type{<:AbstractDeviceFormulation}) = AllNetworks()
 # the coarse reactive-power gate admits these devices even though their control layer has no
 # LPACC construct path.
 network_support(::Type{ShuntSusceptanceDispatch}) = AllNetworksExceptLPACC()
-# psy6: disabled pending transformer refactor
-# network_support(::Type{VoltageControlTap}) = AllNetworksExceptLPACC()
 
 # An LCC's reactive consumption is the reason to model it as HVDCTwoTerminalLCC; on a
 # network without a reactive balance use HVDCTwoTerminalDispatch/Lossless instead.
@@ -368,26 +366,35 @@ _voltage_regulation_can_collide(::NetworkModel{LPACCNetworkModel}) = true
 # DeviceModel alias, so this one default covers both device and branch models). One
 # specialization per regulating formulation, reusing each family's regulated-bus
 # resolver.
-_voltage_regulated_buses(::IOM.DeviceModel, ::PSY.System) = Tuple{String, PSY.ACBus}[]
+_voltage_regulated_buses(::IOM.DeviceModel, ::PSY.System, ::NetworkModel) = Tuple{String, PSY.ACBus}[]
 
-# psy6: disabled pending transformer refactor
-# function _voltage_regulated_buses(
-#     device_model::IOM.DeviceModelForBranches{T, VoltageControlTap},
-#     sys::PSY.System,
-# ) where {T <: PSY.TwoWindingTransformer}
-#     bus_by_number = _bus_by_number(sys)
-#     pairs = Tuple{String, PSY.ACBus}[]
-#     for d in get_available_components(device_model, sys)
-#         if PSY.get_control_objective(d) == PSY.TransformerControlObjective.VOLTAGE
-#             push!(pairs, (PSY.get_name(d), _tap_regulated_bus(d, bus_by_number)))
-#         end
-#     end
-#     return pairs
-# end
+# Regulated buses from VOLTAGE-controlled transformers on AC networks
+function _voltage_regulated_buses(
+    device_model::DeviceModel{<:_TRANSFORMERS, F},
+    sys::PSY.System,
+    network_model::NetworkModel
+) where {F <: AbstractBranchFormulation}
+    pairs = Tuple{String, PSY.ACBus}[]
+    _control_enabled(device_model) || return pairs
+    for d in get_available_components(device_model, sys)
+        for circuit in PSY.get_circuits(d)
+            PSY.get_control_objective(circuit) === _VOLTAGE_CONTROL || continue
+            _supports_tap(network_model) || continue
+            bus = PSY.get_bus(sys, PSY.get_regulated_bus_number(circuit))
+            if isnothing(bus)
+                error("The regulated bus number for circuit $(PSY.get_name(circuit)) is not a valid bus number: it must correspond to a valid bus number in the network.")
+            end
+            push!(pairs, (PSY.get_name(circuit), bus))
+        end
+    end
+    return pairs
+end
+
 
 function _voltage_regulated_buses(
     device_model::IOM.DeviceModel{T, ShuntSusceptanceDispatch},
     sys::PSY.System,
+    ::NetworkModel
 ) where {T <: PSY.FACTSControlDevice}
     pairs = Tuple{String, PSY.ACBus}[]
     for d in get_available_components(device_model, sys)
@@ -401,6 +408,7 @@ end
 function _voltage_regulated_buses(
     device_model::IOM.DeviceModel{T, VoltageControlConverter},
     sys::PSY.System,
+    ::NetworkModel
 ) where {T <: PSY.InterconnectingConverter}
     pairs = Tuple{String, PSY.ACBus}[]
     for d in get_available_components(device_model, sys)
@@ -414,6 +422,7 @@ end
 function _voltage_regulated_buses(
     device_model::IOM.DeviceModelForBranches{T, VoltageControlVSC},
     sys::PSY.System,
+    ::NetworkModel
 ) where {T <: PSY.TwoTerminalVSCLine}
     pairs = Tuple{String, PSY.ACBus}[]
     for d in get_available_components(device_model, sys)
@@ -438,7 +447,7 @@ function _check_voltage_regulation_conflicts!(
     bus_regulators = Dict{Int, Vector{String}}()
     for device_model in
         Iterators.flatten((values(template.devices), values(template.branches)))
-        for (dev_name, bus) in _voltage_regulated_buses(device_model, sys)
+        for (dev_name, bus) in _voltage_regulated_buses(device_model, sys, network_model)
             push!(get!(Vector{String}, bus_regulators, PSY.get_number(bus)), dev_name)
         end
     end

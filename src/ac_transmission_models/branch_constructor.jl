@@ -350,6 +350,7 @@ function construct_device!(
         get_pair_metas(slack_spec(StaticBranchBounds, U)),
     )
     _wire_static_branch_flow_to_balance!(container, devices, device_model, network_model)
+    add_variables!(container, TapRatioVariable, devices, device_model, network_model)
     add_feedforward_arguments!(container, device_model, devices)
     return
 end
@@ -370,7 +371,6 @@ function construct_device!(
     @debug "construct_device $U StaticBranchBounds (ModelConstructStage)" _group =
         LOG_GROUP_BRANCH_CONSTRUCTIONS
     devices = get_available_components(device_model, sys)
-    branch_rate_bounds!(container, device_model, network_model)
     add_constraints!(
         container, FlowRateConstraintFromTo, devices, device_model, network_model,
     )
@@ -589,6 +589,7 @@ function construct_device!(
         get_pair_metas(slack_spec(StaticBranchBounds, LPACCNetworkModel)),
     )
     add_variables!(container, CosineApproximation, devices, device_model, network_model)
+    add_variables!(container, TapRatioVariable, devices, device_model, network_model)
     _wire_static_branch_flow_to_balance!(container, devices, device_model, network_model)
     add_feedforward_arguments!(container, device_model, devices)
     return
@@ -610,7 +611,6 @@ function construct_device!(
     @debug "construct_device LPACC StaticBranchBounds (ModelConstructStage)" _group =
         LOG_GROUP_BRANCH_CONSTRUCTIONS
     devices = get_available_components(device_model, sys)
-    branch_rate_bounds!(container, device_model, network_model)
     add_constraints!(
         container, FlowRateConstraintFromTo, devices, device_model, network_model,
     )
@@ -785,6 +785,7 @@ function construct_device!(
         device_model,
         network_model,
     )
+    add_variables!(container, TapRatioVariable, devices, device_model, network_model)
     _wire_static_branch_flow_to_balance!(container, devices, device_model, network_model)
     add_feedforward_arguments!(container, device_model, devices)
     return
@@ -803,7 +804,6 @@ function construct_device!(
     @debug "construct_device IVR StaticBranchBounds (ModelConstructStage)" _group =
         LOG_GROUP_BRANCH_CONSTRUCTIONS
     devices = get_available_components(device_model, sys)
-    branch_rate_bounds!(container, device_model, network_model)
     add_constraints!(
         container, FlowRateConstraintFromTo, devices, device_model, network_model,
     )
@@ -954,8 +954,8 @@ end
 ArgumentConstructStage for StaticBranchBounds under NFANetworkModel.
 
 Creates the FlowActivePowerVariable and registers its contribution to the per-bus
-ActivePowerBalance expression. The rating is enforced as variable bounds by the
-`AbstractActivePowerModel` ModelConstructStage, so slacks cannot be priced and are rejected.
+ActivePowerBalance expression. The rating is enforced as variable bounds at creation
+(`_branch_variable_bounds`), so slacks cannot be priced and are rejected.
 """
 function construct_device!(
     container::OptimizationContainer,
@@ -1117,9 +1117,9 @@ end
 ModelConstructStage for StaticBranchBounds under DCPLLNetworkModel.
 
 Applies the DC Ohm's law on p_fr (NetworkFlowConstraint), the quadratic line-loss
-coupling (NetworkLossConstraint), and angle-difference limits. A DCPLL-specific method is
-required: the AbstractActivePowerModel fallback bounds a FlowActivePowerVariable that DCPLL
-never creates.
+coupling (NetworkLossConstraint), and angle-difference limits. The rating is a
+FlowRateConstraint row here rather than a variable bound, so `_branch_variable_bounds`
+opts DCPLL out of the StaticBranchBounds rating.
 """
 function construct_device!(
     container::OptimizationContainer,
@@ -1192,19 +1192,6 @@ function construct_device!(
     @debug "construct_device DCP StaticBranchBounds (ModelConstructStage)" _group =
         LOG_GROUP_BRANCH_CONSTRUCTIONS
     devices = get_available_components(device_model, sys)
-    # SBB rates the flow with variable bounds, not inequality rows. A time-varying (DLR)
-    # rating cannot be a static bound, so only that case adds FlowRateConstraint rows.
-    if has_container_key(container, BranchRatingTimeSeriesParameter, T)
-        add_constraints!(
-            container,
-            FlowRateConstraint,
-            devices,
-            device_model,
-            network_model,
-        )
-    else
-        branch_rate_bounds!(container, device_model, network_model)
-    end
     # The Ohm's-law equality defines the flow, and any slack enters here: the flow
     # variable is bounded to the rating, so the slack lets the angle-implied flow exceed it.
     add_constraints!(
@@ -1336,7 +1323,6 @@ function construct_device!(
         network_model,
     )
 
-    branch_rate_bounds!(container, device_model, network_model)
     add_constraints!(container, NetworkFlowConstraint, devices, device_model, network_model)
     add_feedforward_constraints!(container, device_model, devices)
     add_to_objective_function!(container, devices, device_model, PTDFNetworkModel)
@@ -1436,7 +1422,6 @@ function construct_device!(
     network_model::NetworkModel{<:AbstractActivePowerModel},
 ) where {T <: PSY.ACTransmission}
     devices = get_available_components(device_model, sys)
-    branch_rate_bounds!(container, device_model, network_model)
     add_constraint_dual!(container, sys, device_model)
     add_feedforward_constraints!(container, device_model, devices)
     return

@@ -35,8 +35,8 @@ get_variable_lower_bound(::Type{FlowActivePowerVariable}, ::PNM.ThreeWindingTran
 
 # Active-flow variable creation bounds: matches the bridge convention so
 # `check_variable_bounded(...)` in test_device_branch_constructors.jl finds box bounds on
-# directional flow variables. Reactive-flow variables have no creation default; under
-# StaticBranchBounds they are bounded later by `branch_rate_bounds!`.
+# directional flow variables. Reactive-flow variables have no default here; under
+# StaticBranchBounds they fall back to the thermal rating in `_branch_variable_bounds`.
 get_variable_upper_bound(::Type{FlowActivePowerFromToVariable}, d::PSY.MonitoredLine, ::Type{<:AbstractBranchFormulation}) = PSY.get_flow_limits(d, PSY.SU).from_to
 get_variable_lower_bound(::Type{FlowActivePowerFromToVariable}, d::PSY.MonitoredLine, ::Type{<:AbstractBranchFormulation}) = -1 * PSY.get_flow_limits(d, PSY.SU).from_to
 get_variable_upper_bound(::Type{FlowActivePowerToFromVariable}, d::PSY.MonitoredLine, ::Type{<:AbstractBranchFormulation}) = PSY.get_flow_limits(d, PSY.SU).to_from
@@ -164,6 +164,7 @@ _branch_variable_bounds(
     ::Type{V},
     rep,
     ::DeviceModel{D, F},
+    ::NetworkModel,
 ) where {V, D <: PSY.ACTransmission, F <: AbstractBranchFormulation} =
     (
         get_variable_lower_bound(V, rep.branch, F),
@@ -174,6 +175,7 @@ function _branch_variable_bounds(
     ::Type{CosineApproximation},
     rep,
     ::DeviceModel{<:PSY.ACTransmission, <:AbstractBranchFormulation},
+    ::NetworkModel,
 )
     lims = _angle_limits(rep)
     if lims.min >= 0
@@ -189,16 +191,63 @@ _branch_variable_bounds(
     ::Type{TapRatioVariable},
     rep,
     ::DeviceModel{<:PSY.ACTransmission, <:AbstractBranchFormulation},
+    ::NetworkModel,
 ) = _control_limits(rep)
 
 function _branch_variable_bounds(
     ::Type{<:AbstractBranchCurrentVariable},
     rep,
     device_model::DeviceModel{<:PSY.ACTransmission, <:AbstractBranchFormulation},
+    ::NetworkModel,
 )
     rating = _current_rating(rep, device_model)
     return (-rating, rating)
 end
+
+# FlowRateConstraint. Active power uses `_flow_limits`; reactive uses
+# thermal rating.
+_static_branch_rate_limits(::Type{<:AbstractACActivePowerFlow}, rep, device_model) =
+    _flow_limits(rep, device_model)
+
+function _static_branch_rate_limits(
+    ::Type{<:AbstractACReactivePowerFlow},
+    rep,
+    device_model,
+)
+    rating = _branch_rating(rep, device_model)
+    return (min = -rating, max = rating)
+end
+
+function _branch_variable_bounds(
+    ::Type{V},
+    rep,
+    device_model::DeviceModel{D, StaticBranchBounds},
+    ::NetworkModel,
+) where {
+    V <: Union{AbstractACActivePowerFlow, AbstractACReactivePowerFlow},
+    D <: PSY.ACTransmission,
+}
+    limits = _static_branch_rate_limits(V, rep, device_model)
+    @assert limits.min <= limits.max "Infeasible rate limits for branch $(rep.name)"
+    # A device-specific default (`MonitoredLine`'s asymmetric flow limits) is tighter and
+    # authoritative; the rating only fills the sides it leaves open.
+    return (
+        something(get_variable_lower_bound(V, rep.branch, StaticBranchBounds), limits.min),
+        something(get_variable_upper_bound(V, rep.branch, StaticBranchBounds), limits.max),
+    )
+end
+
+# DCPLL rates its directional pair with `FlowRateConstraint` rows against the loss-coupled
+# flows, so the rating must not also land on the variables.
+_branch_variable_bounds(
+    ::Type{V},
+    rep,
+    ::DeviceModel{D, StaticBranchBounds},
+    ::NetworkModel{DCPLLNetworkModel},
+) where {V <: AbstractACActivePowerFlow, D <: PSY.ACTransmission} = (
+    get_variable_lower_bound(V, rep.branch, StaticBranchBounds),
+    get_variable_upper_bound(V, rep.branch, StaticBranchBounds),
+)
 
 _branch_variable_start(::Type{CosineApproximation}) = 1.0
 _branch_variable_start(::Type{TapRatioVariable}) = 1.0
@@ -239,7 +288,7 @@ function add_variables!(
             V,
         )
         if !has_entry
-            (lb, ub) = _branch_variable_bounds(V, branch, device_model)
+            (lb, ub) = _branch_variable_bounds(V, branch, device_model, network_model)
             for t in time_steps
                 var = JuMP.@variable(
                     jump_model,
@@ -274,73 +323,6 @@ function _add_meta_flow_slack!(
             base_name = "$(T)_$(U)_$(meta)_{$(name), $(t)}",
             lower_bound = 0.0,
         )
-    end
-    return
-end
-
-# Directional flow variable types bounded by `branch_rate_bounds!`. DC/PTDF networks carry a
-# single scalar active variable; the AC networks (ACP/ACR/LPACC/IVR) carry the four
-# directional from/to variables.
-_flow_variable_types(::NetworkModel{<:AbstractDCPNetworkModel}) = (FlowActivePowerVariable,)
-_flow_variable_types(::NetworkModel{<:AbstractNetworkModel}) = (
-    FlowActivePowerFromToVariable,
-    FlowActivePowerToFromVariable,
-    FlowReactivePowerFromToVariable,
-    FlowReactivePowerToFromVariable,
-)
-
-# Bound family for each directional flow variable, selected from the two per-branch limit
-# families precomputed in `branch_rate_bounds!`. Active variables use the (possibly
-# asymmetric, monitoring-based) `min_max_flow_limits`; reactive variables use the symmetric
-# thermal rating. For a `MonitoredLine`, `min_max_flow_limits` collapses to an active-flow
-# monitoring limit tighter than the rating, which must not clamp reactive flow — PM parity
-# bounds q by the thermal rating, and it keeps StaticBranchBounds ≡ StaticBranch (whose
-# quadratic apparent-power limit bounds |q| by the rating alone). For a plain `Line` the two
-# families coincide, so only `MonitoredLine` reactive widens. An unclassified variable type
-# fails with a loud MethodError instead of inheriting the active collapse.
-function _directional_flow_limits(
-    ::Type{<:AbstractACActivePowerFlow},
-    flow_limits::MinMax,
-    ::MinMax,
-)
-    return flow_limits
-end
-
-function _directional_flow_limits(
-    ::Type{<:AbstractACReactivePowerFlow},
-    ::MinMax,
-    rating_limits::MinMax,
-)
-    return rating_limits
-end
-
-function branch_rate_bounds!(
-    container::OptimizationContainer,
-    device_model::DeviceModel{B, T},
-    network_model::NetworkModel{<:AbstractNetworkModel},
-) where {B <: PSY.ACTransmission, T <: AbstractBranchFormulation}
-    time_steps = get_time_steps(container)
-    variable_types = _flow_variable_types(network_model)
-    variables = map(V -> get_variable(container, V, B), variable_types)
-    _foreach_branch(_all_branches(network_model, B)) do rep
-        flow_limits = min_max_flow_limits(rep, device_model)
-        rating = _branch_rating(rep, device_model)
-        rating_limits = (min = -rating, max = rating)
-        for (V, var) in zip(variable_types, variables)
-            limits = _directional_flow_limits(V, flow_limits, rating_limits)
-            @assert limits.min <= limits.max "Infeasible rate limits for branch $(rep.name)"
-            for t in time_steps
-                # Variable-creation defaults (MonitoredLine asymmetric limits,
-                # TwoWindingTransformer ratings) are authoritative — never clobber
-                # an existing bound.
-                if !JuMP.has_upper_bound(var[rep.name, t])
-                    JuMP.set_upper_bound(var[rep.name, t], limits.max)
-                end
-                if !JuMP.has_lower_bound(var[rep.name, t])
-                    JuMP.set_lower_bound(var[rep.name, t], limits.min)
-                end
-            end
-        end
     end
     return
 end
@@ -398,18 +380,6 @@ function _resolve_branch_multiplier(
     return PNM.get_equivalent_emergency_rating(entry)
 end
 
-# Formulation-typed adapter used by the range-constraint framework (e.g.
-# `PhaseShiftingTransformer` under `FlowLimitConstraint`) and the
-# DCP rate-limit path. `MonitoredLine` overrides this below.
-function get_min_max_limits(
-    device::PSY.ACTransmission,
-    ::Type{<:ConstraintType},
-    ::Type{<:AbstractBranchFormulation},
-) #  -> Union{Nothing, NamedTuple{(:min, :max), Tuple{Float64, Float64}}}
-    rating = PNM.get_equivalent_rating(device)
-    return (min = -rating, max = rating)
-end
-
 function _add_flow_rate_constraint!(
     container::OptimizationContainer,
     rep::RepresentativeBranch,
@@ -425,7 +395,7 @@ function _add_flow_rate_constraint!(
         slack_ub = get_variable(container, FlowActivePowerSlackUpperBound, T)[name, :]
         slack_lb = get_variable(container, FlowActivePowerSlackLowerBound, T)[name, :]
     end
-    limits = min_max_flow_limits(rep, device_model)
+    limits = _flow_limits(rep, device_model)
     for t in time_steps
         if use_slacks
             ub_lhs = var[name, t] - slack_ub[t]
@@ -823,37 +793,6 @@ function add_constraints!(
 ) where {B <: PSY.ACTransmission, T <: Union{StaticBranchUnbounded, StaticBranch}}
     @debug "PTDF Branch Flows with $T do not require network flow constraints $cons_type. Flow values are given by PTDFBranchFlow."
     return
-end
-
-# `MonitoredLine.flow_limits` may be asymmetric; the symmetric/min-based
-# `get_min_max_limits` methods below collapse it to one value and warn once.
-# The device, not a formulation type, is passed in (the old `$T` interpolation
-# referenced an out-of-scope name — a latent bug).
-function _warn_unequal_monitored_flow_limits(device::PSY.MonitoredLine)
-    flow_limits = PSY.get_flow_limits(device, PSY.SU)
-    if flow_limits.to_from != flow_limits.from_to
-        @warn "Flow limits in Line $(PSY.get_name(device)) aren't equal; the \
-               minimum will be used."
-    end
-    return
-end
-
-"""
-Min and max limits for monitored line
-"""
-function get_min_max_limits(
-    device::PSY.MonitoredLine,
-    ::Type{<:ConstraintType},
-    ::Type{<:AbstractBranchFormulation},
-)
-    _warn_unequal_monitored_flow_limits(device)
-    limit = min(
-        PNM.get_equivalent_rating(device),
-        PSY.get_flow_limits(device, PSY.SU).to_from,
-        PSY.get_flow_limits(device, PSY.SU).from_to,
-    )
-    minmax = (min = -1 * limit, max = limit)
-    return minmax
 end
 
 ############################## Flow Limits Constraints #####################################
@@ -1553,19 +1492,14 @@ function _add_reactive_control_constraints!(
     _foreach_branch(
         _representative_branches(network_model, T, ReactivePowerFlowControlConstraint),
     ) do rep
-        name = rep.name
         _reactive_controlled(rep, device_model) || return
         lims = _quantity_limits(rep)
 
         for t in time_steps
-            cons[name, 1, t] =
+            cons[rep.name, 1, t] =
                 JuMP.@constraint(jump_model, qft[name, t] >= lims.min)
-            cons[name, 2, t] =
+            cons[rep.name, 2, t] =
                 JuMP.@constraint(jump_model, qft[name, t] <= lims.max)
-            cons[name, 3, t] =
-                JuMP.@constraint(jump_model, qtf[name, t] >= lims.min)
-            cons[name, 4, t] =
-                JuMP.@constraint(jump_model, qtf[name, t] <= lims.max)
         end
     end
     return
@@ -1969,7 +1903,7 @@ function add_constraints!(
                 )
             end
         else
-            limits = min_max_flow_limits(rep, device_model)
+            limits = _flow_limits(rep, device_model)
             for t in time_steps
                 if use_slacks
                     ub_lhs = flow_vars[name, t] - slack_ub[name, t]
@@ -2142,7 +2076,7 @@ function add_constraints!(
                 )
             end
         else
-            limits = min_max_flow_limits(rep, device_model)
+            limits = _flow_limits(rep, device_model)
             for t in time_steps
                 if use_slacks
                     ub_lhs = bfe[name, t] - slack_ub[name, t]
@@ -2358,7 +2292,7 @@ function add_constraints!(
 
     _foreach_branch(reps) do rep
         name = rep.name
-        limits = min_max_flow_limits(rep, device_model)
+        limits = _flow_limits(rep, device_model)
         for t in time_steps
             con_ft_ub[name, t] = JuMP.@constraint(
                 jump_model,

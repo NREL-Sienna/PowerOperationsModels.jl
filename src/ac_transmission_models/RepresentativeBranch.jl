@@ -153,12 +153,12 @@ _control_objective(c::PSY.TransformerCircuit, d::DeviceModel) =
     end
 _control_objective(rep::RepresentativeBranch, d::DeviceModel) = _control_objective(_get_circuit(rep.branch), d)
 
-const _VOLTAGE = PSY.TransformerControlObjective.VOLTAGE
-const _REACTIVE = PSY.TransformerControlObjective.REACTIVE_POWER_FLOW
-const _TAP_CONTROLS = (_VOLTAGE, _REACTIVE)
+const _VOLTAGE_CONTROL = PSY.TransformerControlObjective.VOLTAGE
+const _REACTIVE_CONTROL = PSY.TransformerControlObjective.REACTIVE_POWER_FLOW
+const _TAP_CONTROLS = (_VOLTAGE_CONTROL, _REACTIVE_CONTROL)
 
-_voltage_controlled(rep::RepresentativeBranch, d::DeviceModel) = _control_objective(rep, d) === _VOLTAGE
-_reactive_controlled(rep::RepresentativeBranch, d::DeviceModel) = _control_objective(rep, d) === _REACTIVE
+_voltage_controlled(rep::RepresentativeBranch, d::DeviceModel) = _control_objective(rep, d) === _VOLTAGE_CONTROL
+_reactive_controlled(rep::RepresentativeBranch, d::DeviceModel) = _control_objective(rep, d) === _REACTIVE_CONTROL
 _tap_controlled(rep::RepresentativeBranch, d::DeviceModel, ::NetworkModel{<:NativeACNetworkModel}) =
     _control_objective(rep, d) in _TAP_CONTROLS
 _tap_controlled(::RepresentativeBranch, ::DeviceModel, ::NetworkModel) = false
@@ -234,14 +234,17 @@ function _directional_flow_rating(rep::RepresentativeBranch, model::DeviceModel)
     return rating
 end
 
-function _min_max_flow_limits(entry, model::DeviceModel)
-    rating = _branch_rating(entry, model)
+function _flow_limits(rep::RepresentativeBranch, model::DeviceModel)
+    rating = _branch_rating(rep, model)
     return (min = -rating, max = rating)
 end
-_min_max_flow_limits(device::PSY.MonitoredLine, ::DeviceModel) =
-    get_min_max_limits(device, FlowRateConstraint, AbstractBranchFormulation)
-min_max_flow_limits(rep::RepresentativeBranch, model::DeviceModel) =
-    _min_max_flow_limits(rep.branch, model)
+function _flow_limits(rep::RepresentativeBranch{PSY.MonitoredLine}, ::DeviceModel)
+    lims = PSY.get_flow_limits(rep.branch, PSY.SU)
+    if limits.from_to != lims.to_from
+        @warn "Flow limits in MonitoredLine $(PSY.get_name(device)) aren't equal; the minimum will be used."
+    limit = min(_branch_rating(rep), lims.from_to, lims.to_from)
+    return (min = -limit, max = limit)
+end
 
 function _min_endpoint_voltage_limit(branch::PSY.ACTransmission)
     arc = PSY.get_arc(branch)
