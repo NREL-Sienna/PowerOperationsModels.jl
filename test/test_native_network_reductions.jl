@@ -460,7 +460,7 @@ end
 
     container = IOM.get_optimization_container(model)
     network_model = get_network_model(get_template(model))
-    nr = get_network_reduction(network_model)
+    nr = POM.get_reduction_index(network_model)
 
     # Guard: a genuine (non-identity) reduction. An identity reduction would silently make
     # this a duplicate of the c_sys5 coefficient tests.
@@ -566,10 +566,9 @@ end
     # Directional flow variables carry hard ±(equivalent rating) box bounds, and every
     # slack column is priced. The equivalent rating is read from the reduction entry (the
     # PNM series/parallel aggregate reached exactly as `branch_rate_bounds!` does).
-    all_maps = PNM.get_all_branch_maps_by_type(nr)
     device_model = get_model(get_template(model), PSY.Line)
     for (name, (arc, reduction)) in line_entries
-        entry = all_maps[reduction][PSY.Line][arc]
+        entry = POM.get_reduction_entry(nr, PSY.Line, arc, reduction)
         rating = POM.branch_rating(entry, device_model)
         for t in time_steps
             for var in (pft, ptf, qft, qtf)
@@ -599,7 +598,7 @@ end
     # equivalent rating (the min = the tightened value), strictly below the representative
     # segment's own raw rating — so the bound is driven by the PNM reduction entry.
     (arc_12, red_12) = line_entries["1-6-i_1"]
-    entry_12 = all_maps[red_12][PSY.Line][arc_12]
+    entry_12 = POM.get_reduction_entry(nr, PSY.Line, arc_12, red_12)
     @test PNM.get_equivalent_rating(entry_12) == tightened_rating
     representative_raw =
         PSY.get_rating(PSY.get_component(PSY.Line, sys, "1-6-i_1"), PSY.SU)
@@ -693,8 +692,11 @@ end
             PNM.get_network_reduction_data(IOM.get_network_matrix(network_model_modf))
         @test PNM.get_bus_reduction_map(nr_modf) ==
               PNM.get_bus_reduction_map(nr_ptdf_matrix)
-        @test PNM.get_bus_reduction_map(nr_modf) ==
-              PNM.get_bus_reduction_map(nr_ptdf_modf)
+        # Identity, not equality: the model holds the very object the matrices hold. POM
+        # derives its type-organized views alongside the reduction instead of copying and
+        # extending it, so there is no second reduction that can drift from this one.
+        @test nr_ptdf_modf === nr_ptdf_matrix
+        @test nr_ptdf_modf === nr_modf
     end
 end
 

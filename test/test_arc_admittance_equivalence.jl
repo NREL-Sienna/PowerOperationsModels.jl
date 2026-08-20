@@ -6,10 +6,10 @@ import PowerNetworkMatrices as PNM
 # same device data and the same reduction, so this test is the gate: it checks whether
 # they actually agree before any builder is allowed to switch over.
 #
-# `PNM.get_name_to_arc_maps`/`get_all_branch_maps_by_type` are empty until
-# `PNM.populate_branch_maps_by_type!(nrd)` is called (POM's own
-# `_finalize_network_reduction!` does this during real builds); without it this test's
-# outer loop iterates zero times and passes vacuously, so the call is required here.
+# The type-organized maps are derived, not stored on the reduction, so they come from
+# `PNM.build_branch_maps_by_type(nrd)` here (POM's own `_finalize_network_reduction!` builds
+# them into a `ReductionIndex` during real builds). Without them this test's outer loop
+# iterates zero times and passes vacuously, so the call is required here.
 # `PNM.YBUS_ELTYPE = ComplexF32` (definitions.jl:1): `Ybus.data`, and therefore
 # `ArcAdmittanceMatrix`/`BA_Matrix`/`VirtualFactorCore.arc_susceptances` derived from it, carry
 # only single-precision values even though their containers are declared `Float64`. The
@@ -39,13 +39,12 @@ import PowerNetworkMatrices as PNM
             )
             core = PNM.VirtualFactorCore(ybus)
             nrd = PNM.get_network_reduction_data(ybus)
-            PNM.populate_branch_maps_by_type!(nrd)
+            maps, name_to_arc, _ = PNM.build_branch_maps_by_type(nrd)
             arc_lookup = PNM.get_arc_lookup(core)
             per_arc = PNM._get_arc_susceptances(core)
-            maps = PNM.get_all_branch_maps_by_type(nrd)
 
             n_checked = 0
-            for (branch_type, name_map) in PNM.get_name_to_arc_maps(nrd)
+            for (branch_type, name_map) in name_to_arc
                 for (name, (arc, map_name)) in name_map
                     # Arcs absorbed by the reduction (radial/degree-two) never make it
                     # into the retained arc_lookup; nothing to compare for them.

@@ -287,9 +287,8 @@ function _add_time_series_parameters!(
     end
     time_steps = get_time_steps(container)
 
-    net_reduction_data = get_network_reduction(network_model)
+    net_reduction_data = get_reduction_index(network_model)
     reduced_branch_tracker = get_reduced_branch_tracker(network_model)
-    all_branch_maps_by_type = PNM.get_all_branch_maps_by_type(net_reduction_data)
 
     # TODO: Temporary workaround to get the name where we assume all the names are the same across devices.
     ts_name = _get_time_series_name(T, first(devices), model)
@@ -337,8 +336,8 @@ function _add_time_series_parameters!(
     # correct (per-branch-name) row.
     param_lookup = get_parameter_array(param_container).lookup[1]
     mult_lookup = get_multiplier_array(param_container).lookup[1]
-    for (name, (arc, reduction)) in PNM.get_name_to_arc_map(net_reduction_data, D)
-        reduction_entry = all_branch_maps_by_type[reduction][D][arc]
+    for (name, (arc, reduction)) in get_name_to_arc_map_entries(net_reduction_data, D)
+        reduction_entry = get_reduction_entry(net_reduction_data, D, arc, reduction)
         device_with_time_series =
             get_branch_with_time_series(reduction_entry, ts_type, ts_name)
         if device_with_time_series === nothing

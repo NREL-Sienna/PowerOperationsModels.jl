@@ -1284,9 +1284,9 @@ _reduced_entry_kind(::PNM.BranchesParallel) = :parallel
             network_reductions = PNM.NetworkReduction[PNM.DegreeTwoReduction()],
         ),
     )
-    PNM.populate_branch_maps_by_type!(partial_reduction)
-    partial_name_to_arc = PNM.get_name_to_arc_maps(partial_reduction)[Line]
-    partial_maps = PNM.get_all_branch_maps_by_type(partial_reduction)
+    partial_maps, partial_name_to_arc_all, _ =
+        PNM.build_branch_maps_by_type(partial_reduction)
+    partial_name_to_arc = partial_name_to_arc_all[Line]
     for name in ("CA-1", "C35")
         arc, bucket = partial_name_to_arc[name]
         @test bucket == "direct_branch_map"

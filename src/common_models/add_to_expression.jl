@@ -394,7 +394,7 @@ function _add_terminal_flow_to_nodal!(
     network_model::NetworkModel,
     multiplier::Float64,
 ) where {T <: ExpressionType, U <: VariableType, V <: PSY.ACTransmission}
-    network_reduction = get_network_reduction(network_model)
+    network_reduction = get_reduction_index(network_model)
     if isempty(network_reduction)
         _add_terminal_flow_to_nodal_by_device!(
             container, T, U, devices, network_model, multiplier,
@@ -473,7 +473,7 @@ function _add_both_terminals_to_nodal!(
     devices::Union{Vector{V}, IS.FlattenIteratorWrapper{V}},
     network_model::NetworkModel,
 ) where {T <: ExpressionType, U <: VariableType, V <: PSY.ACTransmission}
-    network_reduction = get_network_reduction(network_model)
+    network_reduction = get_reduction_index(network_model)
     if isempty(network_reduction)
         _add_both_terminals_to_nodal_by_device!(container, T, U, devices, network_model)
         return
@@ -2037,7 +2037,7 @@ end
 
 function _handle_nodal_or_zonal_interfaces(
     br_type::Type{V},
-    net_reduction_data::PNM.NetworkReductionData,
+    net_reduction_data::ReductionIndex,
     direction_map::Dict{String, Int},
     contributing_devices::Vector{V},
     # A `JuMPVariableArray` (StaticBranchBounds) or an `AffExpr` container (DCP StaticBranch's
@@ -2045,10 +2045,9 @@ function _handle_nodal_or_zonal_interfaces(
     variable::DenseAxisArray,
     expression::DenseAxisArray, # There is no good type for a DenseAxisArray slice
 ) where {V <: PSY.ACTransmission}
-    all_branch_maps_by_type = PNM.get_all_branch_maps_by_type(net_reduction_data)
     for (name, (arc, reduction)) in
-        PNM.get_name_to_arc_map(net_reduction_data, br_type)
-        reduction_entry = all_branch_maps_by_type[reduction][br_type][arc]
+        get_name_to_arc_map_entries(net_reduction_data, br_type)
+        reduction_entry = get_reduction_entry(net_reduction_data, br_type, arc, reduction)
         if _reduced_entry_in_interface(reduction_entry, contributing_devices)
             if isempty(direction_map)
                 direction = 1.0
@@ -2057,7 +2056,7 @@ function _handle_nodal_or_zonal_interfaces(
                     arc,
                     reduction_entry,
                     direction_map,
-                    net_reduction_data,
+                    get_reduction_data(net_reduction_data),
                 )
             end
             for t in axes(variable, 2)
@@ -2074,7 +2073,7 @@ end
 
 function _handle_nodal_or_zonal_interfaces(
     ::Type{PSY.AreaInterchange},
-    net_reduction_data::PNM.NetworkReductionData,
+    net_reduction_data::ReductionIndex,
     direction_map::Dict{String, Int},
     contributing_devices::Vector{PSY.AreaInterchange},
     variable::JuMPVariableArray,
@@ -2106,7 +2105,7 @@ function add_to_expression!(
     model::ServiceModel{PSY.TransmissionInterface, V},
     network_model::NetworkModel{<:AbstractActivePowerModel},
 ) where {V <: Union{ConstantMaxInterfaceFlow, VariableMaxInterfaceFlow}}
-    net_reduction_data = get_network_reduction(network_model)
+    net_reduction_data = get_reduction_index(network_model)
     expression = get_expression(container, InterfaceTotalFlow, PSY.TransmissionInterface)
     service_name = PSY.get_name(service)
     direction_map = PSY.get_direction_mapping(service)
@@ -2136,7 +2135,7 @@ function add_to_expression!(
     model::ServiceModel{PSY.TransmissionInterface, V},
     network_model::NetworkModel{DCPNetworkModel},
 ) where {V <: Union{ConstantMaxInterfaceFlow, VariableMaxInterfaceFlow}}
-    net_reduction_data = get_network_reduction(network_model)
+    net_reduction_data = get_reduction_index(network_model)
     expression = get_expression(container, InterfaceTotalFlow, PSY.TransmissionInterface)
     service_name = PSY.get_name(service)
     direction_map = PSY.get_direction_mapping(service)
@@ -2177,7 +2176,7 @@ function add_to_expression!(
     model::ServiceModel{PSY.TransmissionInterface, V},
     network_model::NetworkModel{AreaPTDFNetworkModel},
 ) where {V <: Union{ConstantMaxInterfaceFlow, VariableMaxInterfaceFlow}}
-    net_reduction_data = get_network_reduction(network_model)
+    net_reduction_data = get_reduction_index(network_model)
     expression = get_expression(container, InterfaceTotalFlow, PSY.TransmissionInterface)
     service_name = PSY.get_name(service)
     direction_map = PSY.get_direction_mapping(service)
@@ -2206,7 +2205,7 @@ function add_to_expression!(
     model::ServiceModel{PSY.TransmissionInterface, V},
     network_model::NetworkModel{<:AbstractPTDFNetworkModel},
 ) where {V <: Union{ConstantMaxInterfaceFlow, VariableMaxInterfaceFlow}}
-    net_reduction_data = get_network_reduction(network_model)
+    net_reduction_data = get_reduction_index(network_model)
     expression = get_expression(container, InterfaceTotalFlow, PSY.TransmissionInterface)
     service_name = PSY.get_name(service)
     direction_map = PSY.get_direction_mapping(service)
@@ -2220,9 +2219,10 @@ function add_to_expression!(
         flow_expression = get_expression(container, PTDFBranchFlow, br_type)
         # nearly identical to _handle_nodal_or_zonal_interfaces: differences are
         # expression[service_name, t] vs expression[t], flow_expression[name, t] vs variable[name, t]
-        all_branch_maps_by_type = PNM.get_all_branch_maps_by_type(net_reduction_data)
-        for (name, (arc, reduction)) in PNM.get_name_to_arc_map(net_reduction_data, br_type)
-            reduction_entry = all_branch_maps_by_type[reduction][br_type][arc]
+        for (name, (arc, reduction)) in
+            get_name_to_arc_map_entries(net_reduction_data, br_type)
+            reduction_entry =
+                get_reduction_entry(net_reduction_data, br_type, arc, reduction)
             if _reduced_entry_in_interface(reduction_entry, contributing_devices)
                 if isempty(direction_map)
                     direction = 1.0
@@ -2231,7 +2231,7 @@ function add_to_expression!(
                         arc,
                         reduction_entry,
                         direction_map,
-                        net_reduction_data,
+                        get_reduction_data(net_reduction_data),
                     )
                 end
                 for t in axes(flow_expression, 2)
@@ -2254,17 +2254,17 @@ orientation is `:ToFrom` relative to the merged path; `+1.0` otherwise. Errors
 on an unknown reduction kind rather than returning a silently wrong sign.
 """
 function get_ptdf_orientation_sign(
-    net_reduction_data::PNM.NetworkReductionData,
+    net_reduction_data::ReductionIndex,
     ::Type{T},
     name::AbstractString,
 ) where {T <: PSY.ACTransmission}
-    arc, reduction = PNM.get_name_to_arc_maps(net_reduction_data)[T][name]
+    arc, reduction = get_name_to_arc_maps(net_reduction_data)[T][name]
     if reduction == "direct_branch_map" ||
        reduction == "parallel_branch_map" ||
        reduction == "transformer3W_map"
         return 1.0
     elseif reduction == "series_branch_map"
-        series = PNM.get_all_branch_maps_by_type(net_reduction_data)[reduction][T][arc]
+        series = get_reduction_entry(net_reduction_data, T, arc, reduction)
         for (i, segment) in enumerate(series)
             if PNM.get_name(segment) == name
                 return series.segment_orientations[i] == :FromTo ? 1.0 : -1.0

@@ -78,9 +78,8 @@ end
         IOM.get_expression(container, POM.ActivePowerBalance, PSY.ACBus).data
     time_steps = IOM.get_time_steps(container)
 
-    net_reduction_data = IOM.get_network_reduction(network_model)
-    name_to_arc_maps = PNM.get_name_to_arc_maps(net_reduction_data)
-    all_branch_maps_by_type = PNM.get_all_branch_maps_by_type(net_reduction_data)
+    net_reduction_data = POM.get_reduction_index(network_model)
+    name_to_arc_maps = POM.get_name_to_arc_maps(net_reduction_data)
 
     n_checked = 0
     n_constraints_checked = 0
@@ -135,7 +134,8 @@ end
             # the constant back recovers the raw emergency-rating limit and
             # makes this a pure per-unit (system-base) units check.
             reduction_entry =
-                all_branch_maps_by_type[reduction_kind][entry_type][arc]
+                POM.get_reduction_entry(
+                    net_reduction_data, entry_type, arc, reduction_kind)
             limits = POM.get_emergency_min_max_limits(
                 reduction_entry,
                 POM.PostContingencyFlowRateConstraint,
@@ -233,14 +233,14 @@ end
         IOM.get_expression(container, POM.ActivePowerBalance, PSY.ACBus).data
     time_steps = IOM.get_time_steps(container)
 
-    net_reduction_data = IOM.get_network_reduction(network_model)
+    net_reduction_data = POM.get_reduction_index(network_model)
     modeled_branch_types = network_model.modeled_branch_types
 
     n_checked = 0
     for V in modeled_branch_types
         IOM.has_container_key(container, POM.PTDFBranchFlow, V) || continue
         pbf = IOM.get_expression(container, POM.PTDFBranchFlow, V)
-        name_to_arc_map = collect(PNM.get_name_to_arc_map(net_reduction_data, V))
+        name_to_arc_map = collect(POM.get_name_to_arc_map_entries(net_reduction_data, V))
         isempty(name_to_arc_map) && continue
         n_checked += 1
         for (name, (arc, _)) in name_to_arc_map
@@ -253,7 +253,10 @@ end
                 for i in nz_idx
                     JuMP.add_to_expression!(expected, ptdf_col[i], nodal_balance[i, t])
                 end
-                actual = pbf[name, t] + PNM.arc_dc_shift_injection(net_reduction_data, arc)
+                actual =
+                    pbf[name, t] +
+                    PNM.arc_dc_shift_injection(
+                        POM.get_reduction_data(net_reduction_data), arc)
                 @test _affexpr_approx_equal(actual, expected)
             end
         end
@@ -332,9 +335,9 @@ end
     nodal_balance =
         IOM.get_expression(container, POM.ActivePowerBalance, PSY.ACBus).data
 
-    net_reduction_data = IOM.get_network_reduction(network_model)
+    net_reduction_data = POM.get_reduction_index(network_model)
     modeled_branch_types = network_model.modeled_branch_types
-    name_to_arc_maps = PNM.get_name_to_arc_maps(net_reduction_data)
+    name_to_arc_maps = POM.get_name_to_arc_maps(net_reduction_data)
     n_checked = 0
     for V in modeled_branch_types
         IOM.has_container_key(container, POM.PostContingencyBranchFlow, V) || continue
@@ -560,11 +563,11 @@ end
     container = IOM.get_optimization_container(ps_model)
     network_model = IOM.get_network_model(IOM.get_template(ps_model))
     tracker = IOM.get_reduced_branch_tracker(network_model)
-    net_reduction_data = IOM.get_network_reduction(network_model)
+    net_reduction_data = POM.get_reduction_index(network_model)
 
     # Derive the representative name from the reduction map (PNM names it, e.g.
     # "<name>double_circuit"; not hard-coded so the test tracks PNM naming).
-    c2r = PNM.get_component_to_reduction_name_map(net_reduction_data)
+    c2r = POM.get_component_to_reduction_names(net_reduction_data)
     @test haskey(c2r, PSY.Line)
     representative_name = c2r[PSY.Line][parallel_line_name]
     @test representative_name != parallel_line_name
@@ -772,9 +775,8 @@ end
     @test !isempty(con_ub.data)
     @test !isempty(con_lb.data)
 
-    net_reduction_data = IOM.get_network_reduction(network_model)
-    name_to_arc_map = PNM.get_name_to_arc_maps(net_reduction_data)[PSY.Line]
-    all_branch_maps_by_type = PNM.get_all_branch_maps_by_type(net_reduction_data)
+    net_reduction_data = POM.get_reduction_index(network_model)
+    name_to_arc_map = POM.get_name_to_arc_map_entries(net_reduction_data, PSY.Line)
 
     n_checked = 0
     for (outage_id_str, name, t) in keys(pcbf.data)
@@ -796,7 +798,8 @@ end
         @test _affexpr_approx_equal(actual, expected)
 
         # RHS = +/- emergency rating in system per-unit.
-        reduction_entry = all_branch_maps_by_type[reduction_kind][PSY.Line][arc]
+        reduction_entry =
+            POM.get_reduction_entry(net_reduction_data, PSY.Line, arc, reduction_kind)
         limits = POM.get_emergency_min_max_limits(
             reduction_entry,
             POM.PostContingencyFlowRateConstraint,

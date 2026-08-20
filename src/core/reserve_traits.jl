@@ -31,7 +31,7 @@ struct ChargeSide <: ReserveSide end
 
 """
 Direction of a reserve. `OfflineReserve` (non-spinning) has no direction type parameter and is
-upward-only in every US market, so it maps to [`PSY.ReserveUp`](@ref).
+upward-only in every US market, so it maps to `PSY.ReserveUp`.
 """
 _reserve_direction(::PSY.Reserve{T}) where {T <: PSY.ReserveDirection} = T
 _reserve_direction(::PSY.OfflineReserve) = PSY.ReserveUp

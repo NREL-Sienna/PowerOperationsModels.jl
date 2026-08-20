@@ -324,11 +324,11 @@ where each inner tuple is `(monitored_type, container_name, arc, reduction_kind)
 """
 function _resolve_monitored_arcs(
     device_model::DeviceModel,
-    net_reduction_data::PNM.NetworkReductionData,
+    net_reduction_data::ReductionIndex,
 )
-    name_to_arc_maps = PNM.get_name_to_arc_maps(net_reduction_data)
+    name_to_arc_maps = get_name_to_arc_maps(net_reduction_data)
     component_to_reduction_maps =
-        PNM.get_component_to_reduction_name_map(net_reduction_data)
+        get_component_to_reduction_names(net_reduction_data)
     resolved =
         Pair{Base.UUID, Vector{Tuple{DataType, String, Tuple{Int, Int}, String}}}[]
     for (uuid, per_type) in get_outages(device_model)
@@ -408,8 +408,7 @@ function add_constraints!(
 }
     time_steps = get_time_steps(container)
 
-    net_reduction_data = get_network_reduction(network_model)
-    all_branch_maps_by_type = PNM.get_all_branch_maps_by_type(net_reduction_data)
+    net_reduction_data = get_reduction_index(network_model)
 
     resolved = _resolve_monitored_arcs(device_model, net_reduction_data)
 
@@ -475,7 +474,8 @@ function add_constraints!(
                     continue
                 end
             end
-            reduction_entry = all_branch_maps_by_type[reduction_kind][entry_type][arc]
+            reduction_entry =
+                get_reduction_entry(net_reduction_data, entry_type, arc, reduction_kind)
             if has_pc_rating && _has_post_contingency_rate(container, entry_type, name)
                 param, multiplier =
                     _post_contingency_rate_columns(container, entry_type, name)
@@ -611,8 +611,11 @@ function _add_modf_post_contingency_flow_expressions!(
     modf_matrix = get_contingency_matrix(network_model)
     registered_contingencies = PNM.get_registered_contingencies(modf_matrix)
 
+    # Both are needed here: arc resolution reads the type-organized views, while the
+    # shift-injection term below reads the reduction's own arc data.
+    reduction_index = get_reduction_index(network_model)
     net_reduction_data = get_network_reduction(network_model)
-    resolved = _resolve_monitored_arcs(model, net_reduction_data)
+    resolved = _resolve_monitored_arcs(model, reduction_index)
 
     expression_container = _add_post_contingency_sparse_expression!(
         container, T, V, resolved, time_steps,

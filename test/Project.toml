@@ -42,7 +42,10 @@ InfrastructureSystems = {rev = "IS4", url = "https://github.com/Sienna-Platform/
 PowerCoreOpenAPIModels = {url = "https://github.com/Sienna-Platform/PowerOpenAPIModels.git", rev = "main", subdir = "PowerCoreOpenAPIModels.jl"}
 PowerFlowFileParser = {rev = "psy6", url = "https://github.com/Sienna-Platform/PowerFlowFileParser.jl"}
 PowerFlows = {rev = "psy6", url = "https://github.com/Sienna-Platform/PowerFlows.jl"}
-PowerNetworkMatrices = {rev = "psy6", url = "https://github.com/Sienna-Platform/PowerNetworkMatrices.jl"}
+# TEMP DEV PIN: local clone on branch mb/move-branch-maps. Revert to
+# {rev = "mb/move-branch-maps", url = "https://github.com/Sienna-Platform/PowerNetworkMatrices.jl"}
+# once that branch is pushed, and to rev = "psy6" once PNM merges.
+PowerNetworkMatrices = {path = "/Users/mbossart/sienna/psy6/PowerNetworkMatrices.jl"}
 PowerOperationsOpenAPIModels = {url = "https://github.com/Sienna-Platform/PowerOpenAPIModels.git", rev = "main", subdir = "PowerOperationsOpenAPIModels.jl"}
 PowerSystemCaseBuilder = {rev = "psy6", url = "https://github.com/Sienna-Platform/PowerSystemCaseBuilder.jl"}
 PowerSystems = {rev = "psy6", url = "https://github.com/Sienna-Platform/PowerSystems.jl"}
