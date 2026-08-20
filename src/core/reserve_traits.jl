@@ -82,3 +82,11 @@ written with the fully concrete instance type, and the two spellings do not matc
 """
 _service_container_meta(service::PSY.Service) =
     "$(typeof(service))_$(PSY.get_name(service))"
+
+"""
+Whether a `DeviceModel` carries an `OfflineReserve` service. Gates the offline-capability
+machinery (`ActivePowerRangeExpressionOnlineUB` + `OfflineReserveBandConstraint`) so that
+models without offline reserves build exactly the classic single semi-continuous band row.
+"""
+_has_offline_reserve_service(model::DeviceModel) =
+    any(sm -> get_component_type(sm) <: PSY.OfflineReserve, values(get_services(model)))

@@ -90,6 +90,7 @@ get_multiplier_value(::Type{FuelCostParameter}, d::PSY.ThermalGen, ::Type{<:Abst
 get_parameter_multiplier(::Type{<:VariableValueParameter}, d::PSY.ThermalGen, ::Type{<:AbstractThermalFormulation}) = 1.0
 get_initial_parameter_value(::Type{<:VariableValueParameter}, d::PSY.ThermalGen, ::Type{<:AbstractThermalFormulation}) = 1.0
 get_expression_multiplier(::Type{OnStatusParameter}, ::Type{ActivePowerRangeExpressionUB}, d::PSY.ThermalGen, ::Type{<:AbstractThermalFormulation}) = PSY.get_active_power_limits(d, PSY.SU).max
+get_expression_multiplier(::Type{OnStatusParameter}, ::Type{ActivePowerRangeExpressionOnlineUB}, d::PSY.ThermalGen, ::Type{<:AbstractThermalFormulation}) = PSY.get_active_power_limits(d, PSY.SU).max
 get_expression_multiplier(::Type{OnStatusParameter}, ::Type{ActivePowerRangeExpressionLB}, d::PSY.ThermalGen, ::Type{<:AbstractThermalFormulation}) = PSY.get_active_power_limits(d, PSY.SU).min
 get_expression_multiplier(::Type{OnStatusParameter}, ::Type{ActivePowerRangeExpressionUB}, d::PSY.ThermalGen, ::Type{<:AbstractCompactUnitCommitment}) = PSY.get_active_power_limits(d, PSY.SU).max - PSY.get_active_power_limits(d, PSY.SU).min
 get_expression_multiplier(::Type{OnStatusParameter}, ::Type{ActivePowerRangeExpressionLB}, d::PSY.ThermalGen, ::Type{<:AbstractCompactUnitCommitment}) = 0.0
@@ -1692,6 +1693,41 @@ function IOM._add_semicontinuous_bound_range_constraints_impl!(
             IOM.add_range_bound_constraint!(
                 dir, jump_model, con, ci_name, t,
                 array[ci_name, t], IOM.get_bound(dir, limits), bin)
+        end
+    end
+    return
+end
+
+"""
+Offline-capability band row for standard-UC devices contributing to an `OfflineReserve`:
+the shared UB expression (`p + online + offline`) bounded by the STATIC `pmax`
+(`q_limit = pmax`; the paired semi-continuous row on the online-only expression keeps
+`p` and the online awards commitment-gated). See [`OfflineReserveBandConstraint`](@ref).
+"""
+function add_constraints!(
+    container::OptimizationContainer,
+    T::Type{OfflineReserveBandConstraint},
+    devices::IS.FlattenIteratorWrapper{V},
+    model::DeviceModel{V, W},
+    ::NetworkModel{X},
+) where {
+    V <: PSY.ThermalGen,
+    W <: AbstractStandardUnitCommitment,
+    X <: AbstractNetworkModel,
+}
+    time_steps = get_time_steps(container)
+    names = [PSY.get_name(d) for d in devices]
+    expression = get_expression(container, ActivePowerRangeExpressionUB, V)
+    jump_model = get_jump_model(container)
+    constraint = add_constraints_container!(container, T, V, names, time_steps)
+    for d in devices
+        name = PSY.get_name(d)
+        q_limit = PSY.get_active_power_limits(d, PSY.SU).max
+        for t in time_steps
+            constraint[name, t] = JuMP.@constraint(
+                jump_model,
+                expression[name, t] <= q_limit
+            )
         end
     end
     return

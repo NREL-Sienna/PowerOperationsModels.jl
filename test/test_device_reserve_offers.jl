@@ -541,6 +541,132 @@ end
     end
 end
 
+@testset "OfflineReserve as ORDC: OFF unit provides offline capability (UC)" begin
+    # Single-award-variable offline design: row A keeps p + online commitment-gated on the
+    # online-only expression; row B bounds the shared band p + online + offline by the
+    # static q_limit = pmax, so an OFF unit's offline capability survives.
+    sys = deepcopy(PSB.build_system(PSITestSystems, "c_sys5_uc"))
+    thermals = collect(get_components(ThermalStandard, sys))
+    # Make one unit uneconomical for energy so the UC leaves it OFF; its cheap offline
+    # offer must clear regardless.
+    offunit = first(sort(thermals; by = PSY.get_name))
+    # Service bids require an OfferCurveCost: convert every thermal to a MarketBidCost that
+    # keeps its energy slope; the off-unit gets a prohibitive slope + startup so the UC
+    # never commits it for energy.
+    for g in thermals
+        pmax_g = PSY.get_max_active_power(g, PSY.NU)
+        slope = if g === offunit
+            1.0e4
+        else
+            PSY.get_proportional_term(
+                PSY.get_value_curve(PSY.get_variable(get_operation_cost(g))),
+            )
+        end
+        PSY.set_operation_cost!(
+            g,
+            MarketBidCost(;
+                no_load_cost = LinearCurve(0.0),
+                start_up = (
+                    hot = g === offunit ? 1.0e5 : 0.0,
+                    warm = g === offunit ? 1.0e5 : 0.0,
+                    cold = g === offunit ? 1.0e5 : 0.0,
+                ),
+                shut_down = LinearCurve(0.0),
+                incremental_offer_curves = make_market_bid_curve(
+                    [0.0, pmax_g], [slope], 0.0; power_units = IS.NaturalUnit(),
+                ),
+            ),
+        )
+    end
+    nspin = OfflineReserve(;
+        name = "NSPIN",
+        available = true,
+        time_frame = 30.0,
+        variable = _mkt_curve([0.0, 100.0, 200.0], [65.0, 11.0]),
+    )
+    spin = OnlineReserve{ReserveUp}(;
+        name = "SPIN", available = true, time_frame = 10.0, requirement = 0.0,
+        variable = _mkt_curve([0.0, 50.0], [40.0]),
+    )
+    add_service!(sys, nspin, PSY.Device[thermals...])
+    add_service!(sys, spin, PSY.Device[thermals...])
+    for (i, g) in enumerate(thermals)
+        price = g === offunit ? 0.01 : 6.0 + i
+        PSY.set_service_bid!(
+            sys,
+            g,
+            nspin,
+            _mkt_offer_ts(nspin, 80.0, price),
+            IS.NaturalUnit(),
+        )
+        PSY.set_service_bid!(
+            sys,
+            g,
+            spin,
+            _mkt_offer_ts(spin, 30.0, price),
+            IS.NaturalUnit(),
+        )
+    end
+
+    template = get_thermal_standard_uc_template()
+    set_service_model!(template, ServiceModel(OfflineReserve, StepwiseCostReserve))
+    set_service_model!(
+        template,
+        ServiceModel(OnlineReserve{ReserveUp}, StepwiseCostReserve),
+    )
+    model = DecisionModel(
+        template, sys;
+        optimizer = HiGHS_optimizer, store_variable_names = true,
+    )
+    @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
+          IOM.ModelBuildStatus.BUILT
+    @test solve!(model) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
+
+    res = IOM.OptimizationProblemOutputs(model)
+    on = read_variable(res, OnVariable, ThermalStandard; table_format = TableFormat.WIDE)
+    nspin_awards = read_variable(
+        res, "ActivePowerReserveVariable__OfflineReserve";
+        table_format = TableFormat.WIDE,
+    )
+    spin_awards = read_variable(
+        res, "ActivePowerReserveVariable__OnlineReserve__ReserveUp";
+        table_format = TableFormat.WIDE,
+    )
+    off_name = PSY.get_name(offunit)
+    pmax = PSY.get_active_power_limits(offunit, PSY.NU).max
+    total_off_award = 0.0
+    for t in 1:24
+        @test on[t, off_name] < 0.5                       # stays uncommitted
+        @test spin_awards[t, "SPIN__$(off_name)"] <= 1e-3  # row A: online dead when OFF
+        @test nspin_awards[t, "NSPIN__$(off_name)"] <= pmax + 1e-3  # row B capability
+        total_off_award += nspin_awards[t, "NSPIN__$(off_name)"]
+    end
+    # The cheapest offline offer in the stack clears from the OFF unit.
+    @test total_off_award > 1.0
+
+    # Zero-footprint: without an OfflineReserve service model, none of the offline
+    # machinery exists - no online-only expression, no band constraint.
+    template2 = get_thermal_standard_uc_template()
+    set_service_model!(
+        template2,
+        ServiceModel(OnlineReserve{ReserveUp}, StepwiseCostReserve),
+    )
+    model2 = DecisionModel(
+        template2, sys;
+        optimizer = HiGHS_optimizer, store_variable_names = true,
+    )
+    @test build!(model2; output_dir = mktempdir(; cleanup = true)) ==
+          IOM.ModelBuildStatus.BUILT
+    container2 = IOM.get_optimization_container(model2)
+    @test !IOM.has_container_key(
+        container2, POM.ActivePowerRangeExpressionOnlineUB, ThermalStandard,
+    )
+    @test all(
+        k -> IOM.get_entry_type(k) != POM.OfflineReserveBandConstraint,
+        keys(IOM.get_constraints(container2)),
+    )
+end
+
 #################################################################################
 # Load reserve provision (PowerLoadDispatch)
 #################################################################################

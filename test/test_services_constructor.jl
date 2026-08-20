@@ -1780,7 +1780,8 @@ end
     sys, group = build_group_reserve_system(; group_curve = false)
     init_times = [DateTime("2024-01-01T00:00:00"), DateTime("2024-01-02T00:00:00")]
     horizon = 24
-    curves = [IS.PiecewiseStepData([0.0, isodd(h) ? 40.0 : 80.0], [9.0e4]) for h in 1:horizon]
+    curves =
+        [IS.PiecewiseStepData([0.0, isodd(h) ? 40.0 : 80.0], [9.0e4]) for h in 1:horizon]
     data = Dict(it => copy(curves) for it in init_times)
     PSY.add_time_series!(
         sys,

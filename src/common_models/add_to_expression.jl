@@ -1957,7 +1957,11 @@ function add_to_expression!(
     model::DeviceModel{V, W},
     network_model::NetworkModel{X},
 ) where {
-    T <: Union{ActivePowerRangeExpressionUB, ActivePowerRangeExpressionLB},
+    T <: Union{
+        ActivePowerRangeExpressionUB,
+        ActivePowerRangeExpressionLB,
+        ActivePowerRangeExpressionOnlineUB,
+    },
     U <: VariableType,
     V <: PSY.Device,
     W <: AbstractDeviceFormulation,
@@ -1997,10 +2001,27 @@ function add_to_expression!(
     end
     expression = get_expression(container, T, V)
     time_steps = get_time_steps(container)
+    # Online up-reserves also occupy the online-only band row when a device carries an
+    # OfflineReserve (the OnlineUB expression exists only in that case); offline awards
+    # live solely in the shared UB band, freed from the commitment gate by
+    # OfflineReserveBandConstraint.
+    online_ub =
+        if !(service isa PSY.OfflineReserve) &&
+           has_container_key(container, ActivePowerRangeExpressionOnlineUB, V)
+            get_expression(container, ActivePowerRangeExpressionOnlineUB, V)
+        else
+            nothing
+        end
     for d in devices, t in time_steps
         name = PSY.get_name(d)
         add_proportional_to_jump_expression!(
             expression[name, t],
+            variable[(service_name, name, t)],
+            1.0,
+        )
+        online_ub === nothing && continue
+        add_proportional_to_jump_expression!(
+            online_ub[name, t],
             variable[(service_name, name, t)],
             1.0,
         )
@@ -2486,7 +2507,11 @@ function add_to_expression!(
     devices::IS.FlattenIteratorWrapper{V},
     model::DeviceModel{V, W},
 ) where {
-    T <: Union{ActivePowerRangeExpressionUB, ActivePowerRangeExpressionLB},
+    T <: Union{
+        ActivePowerRangeExpressionUB,
+        ActivePowerRangeExpressionLB,
+        ActivePowerRangeExpressionOnlineUB,
+    },
     U <: OnStatusParameter,
     V <: PSY.Device,
     W <: AbstractDeviceFormulation,
@@ -2519,7 +2544,11 @@ function add_to_expression!(
     devices::IS.FlattenIteratorWrapper{V},
     model::DeviceModel{V, W},
 ) where {
-    T <: Union{ActivePowerRangeExpressionUB, ActivePowerRangeExpressionLB},
+    T <: Union{
+        ActivePowerRangeExpressionUB,
+        ActivePowerRangeExpressionLB,
+        ActivePowerRangeExpressionOnlineUB,
+    },
     U <: OnStatusParameter,
     V <: PSY.ThermalGen,
     W <: AbstractThermalDispatchFormulation,
