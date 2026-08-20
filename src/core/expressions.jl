@@ -104,16 +104,6 @@ right-hand side of the system-level reserve balance.
 """
 struct TotalReserveOffering <: ExpressionType end
 
-"""
-Online-only upper range expression for unit-commitment devices that contribute to an
-`OfflineReserve`: `p + online_reserves`, bounded semi-continuously (`<= pmax * u`) so
-online products die with the commitment. Built ONLY when the device model carries an
-`OfflineReserve` service; the shared `ActivePowerRangeExpressionUB` then holds the full
-band (`p + online + offline`) bounded by the offline capability row instead. See
-[`OfflineReserveBandConstraint`](@ref).
-"""
-struct ActivePowerRangeExpressionOnlineUB <: RangeConstraintUBExpressions end
-
 abstract type ReserveAggregationExpression{
     D <: PSY.ReserveDirection,
     S <: ReserveScale,

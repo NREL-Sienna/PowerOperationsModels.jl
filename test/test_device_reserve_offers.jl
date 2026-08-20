@@ -542,9 +542,10 @@ end
 end
 
 @testset "OfflineReserve as ORDC: OFF unit provides offline capability (UC)" begin
-    # Single-award-variable offline design: row A keeps p + online commitment-gated on the
-    # online-only expression; row B bounds the shared band p + online + offline by the
-    # static q_limit = pmax, so an OFF unit's offline capability survives.
+    # Single-award-variable offline design: the UB expression keeps p + online
+    # commitment-gated (offline_reserve_in_range_ub = false for standard UC); the band row
+    # adds the offline awards against the static q_limit = pmax, so an OFF unit's offline
+    # capability survives.
     sys = deepcopy(PSB.build_system(PSITestSystems, "c_sys5_uc"))
     thermals = collect(get_components(ThermalStandard, sys))
     # Make one unit uneconomical for energy so the UC leaves it OFF; its cheap offline
@@ -658,9 +659,6 @@ end
     @test build!(model2; output_dir = mktempdir(; cleanup = true)) ==
           IOM.ModelBuildStatus.BUILT
     container2 = IOM.get_optimization_container(model2)
-    @test !IOM.has_container_key(
-        container2, POM.ActivePowerRangeExpressionOnlineUB, ThermalStandard,
-    )
     @test all(
         k -> IOM.get_entry_type(k) != POM.OfflineReserveBandConstraint,
         keys(IOM.get_constraints(container2)),

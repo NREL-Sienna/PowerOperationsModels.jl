@@ -1199,17 +1199,16 @@ e^{st}_{T} - e^{st+} + e^{st-} = E^{st}_{T}.
 struct HybridEnergyTargetConstraint <: ConstraintType end
 
 """
-Band-plus-offline-capability row for unit-commitment devices contributing to an
-`OfflineReserve`, on the shared `ActivePowerRangeExpressionUB` (`p + online + offline`):
+Offline-capability band row for commitment formulations whose
+[`offline_reserve_in_range_ub`](@ref) trait is `false`: their commitment-gated range
+expression stays `p + online`, and this row adds the offline awards back against the
+static capability (`q_limit = pmax`):
 
-`p + online + offline <= pmax * u + q_limit * (1 - u)`
+`p + online + offline <= pmax * u + q_limit * (1 - u) = pmax`
 
-with `q_limit = pmax` (an hourly DAM lets most units reach `pmax` from OFF), so the row is
-the static range `<= pmax`. Committed: offline competes with the online products for the
-HSL band. Off: the paired semi-continuous row on
-`ActivePowerRangeExpressionOnlineUB` zeroes `p` and the online awards, leaving
-`offline <= q_limit`. Single award variable per (device, service): the device's merged
-offer curve prices both provision states (documented approximation - the online/offline
-non-spin offer prices are not differentiated).
+Committed: offline competes with the online products for the HSL band. Off: the
+semi-continuous range row zeroes `p` and the online awards, leaving `offline <= q_limit`.
+Single award variable per (device, service): the device's merged offer curve prices both
+provision states (documented approximation).
 """
 struct OfflineReserveBandConstraint <: ConstraintType end

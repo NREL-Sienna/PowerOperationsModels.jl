@@ -37,6 +37,9 @@ get_expression_type_for_reserve(::Type{ActivePowerReserveVariable}, ::Type{<:PSY
 get_expression_type_for_reserve(::Type{ActivePowerReserveVariable}, ::Type{<:PSY.ThermalGen}, ::Type{<:PSY.Reserve{PSY.ReserveDown}}) = ActivePowerRangeExpressionLB
 # OfflineReserve (non-spin) is upward-only, so it reduces upward headroom like a ReserveUp product.
 get_expression_type_for_reserve(::Type{ActivePowerReserveVariable}, ::Type{<:PSY.ThermalGen}, ::Type{<:PSY.OfflineReserve}) = ActivePowerRangeExpressionUB
+# Standard-UC keeps its UB expression p + online: offline awards enter through the static
+# OfflineReserveBandConstraint instead of consuming commitment-gated headroom.
+offline_reserve_in_range_ub(::Type{<:AbstractStandardUnitCommitment}) = false
 
 ############## ActivePowerVariable, ThermalGen ####################
 get_variable_binary(::Type{ActivePowerVariable}, ::Type{<:PSY.ThermalGen}, ::Type{<:AbstractThermalFormulation}) = false
@@ -90,7 +93,6 @@ get_multiplier_value(::Type{FuelCostParameter}, d::PSY.ThermalGen, ::Type{<:Abst
 get_parameter_multiplier(::Type{<:VariableValueParameter}, d::PSY.ThermalGen, ::Type{<:AbstractThermalFormulation}) = 1.0
 get_initial_parameter_value(::Type{<:VariableValueParameter}, d::PSY.ThermalGen, ::Type{<:AbstractThermalFormulation}) = 1.0
 get_expression_multiplier(::Type{OnStatusParameter}, ::Type{ActivePowerRangeExpressionUB}, d::PSY.ThermalGen, ::Type{<:AbstractThermalFormulation}) = PSY.get_active_power_limits(d, PSY.SU).max
-get_expression_multiplier(::Type{OnStatusParameter}, ::Type{ActivePowerRangeExpressionOnlineUB}, d::PSY.ThermalGen, ::Type{<:AbstractThermalFormulation}) = PSY.get_active_power_limits(d, PSY.SU).max
 get_expression_multiplier(::Type{OnStatusParameter}, ::Type{ActivePowerRangeExpressionLB}, d::PSY.ThermalGen, ::Type{<:AbstractThermalFormulation}) = PSY.get_active_power_limits(d, PSY.SU).min
 get_expression_multiplier(::Type{OnStatusParameter}, ::Type{ActivePowerRangeExpressionUB}, d::PSY.ThermalGen, ::Type{<:AbstractCompactUnitCommitment}) = PSY.get_active_power_limits(d, PSY.SU).max - PSY.get_active_power_limits(d, PSY.SU).min
 get_expression_multiplier(::Type{OnStatusParameter}, ::Type{ActivePowerRangeExpressionLB}, d::PSY.ThermalGen, ::Type{<:AbstractCompactUnitCommitment}) = 0.0
@@ -1699,10 +1701,16 @@ function IOM._add_semicontinuous_bound_range_constraints_impl!(
 end
 
 """
-Offline-capability band row for standard-UC devices contributing to an `OfflineReserve`:
-the shared UB expression (`p + online + offline`) bounded by the STATIC `pmax`
-(`q_limit = pmax`; the paired semi-continuous row on the online-only expression keeps
-`p` and the online awards commitment-gated). See [`OfflineReserveBandConstraint`](@ref).
+Offline-capability band row for standard-UC devices contributing to an `OfflineReserve`.
+The commitment-gated UB expression stays `p + online`
+([`offline_reserve_in_range_ub`](@ref) excludes the offline awards); this row adds them
+back against the STATIC capability (`q_limit = pmax`):
+
+`p + online + offline <= pmax`
+
+Committed: offline competes with the online products for the HSL band. Off: the
+semi-continuous UB row zeroes `p` and the online awards, leaving `offline <= pmax`.
+Devices contributing to no offline service get no row.
 """
 function add_constraints!(
     container::OptimizationContainer,
@@ -1716,17 +1724,38 @@ function add_constraints!(
     X <: AbstractNetworkModel,
 }
     time_steps = get_time_steps(container)
-    names = [PSY.get_name(d) for d in devices]
     expression = get_expression(container, ActivePowerRangeExpressionUB, V)
     jump_model = get_jump_model(container)
-    constraint = add_constraints_container!(container, T, V, names, time_steps)
+    # (service name, sparse award variable, contributing member names) per offline service
+    # attached to the device model; the ServiceModel's contributing map carries both the
+    # service names and the membership.
+    offline = Tuple{String, Any, Set{String}}[]
+    for sm in get_services(model)
+        _is_offline_reserve(get_component_type(sm)) || continue
+        variable =
+            get_variable(container, ActivePowerReserveVariable, get_component_type(sm))
+        for (service_name, dev_map) in get_contributing_devices_map(sm)
+            members = get(dev_map, V, nothing)
+            members === nothing && continue
+            push!(offline, (service_name, variable, Set(PSY.get_name.(members))))
+        end
+    end
+    isempty(offline) && return
+    names = [PSY.get_name(d) for d in devices]
+    constraint =
+        add_constraints_container!(container, T, V, names, time_steps; sparse = true)
     for d in devices
         name = PSY.get_name(d)
         q_limit = PSY.get_active_power_limits(d, PSY.SU).max
+        any(((_, _, members),) -> name in members, offline) || continue
         for t in time_steps
-            constraint[name, t] = JuMP.@constraint(
+            constraint[(name, t)] = JuMP.@constraint(
                 jump_model,
-                expression[name, t] <= q_limit
+                expression[name, t] + sum(
+                    v[(sname, name, t)] for
+                    (sname, v, members) in offline if name in members;
+                    init = 0.0,
+                ) <= q_limit
             )
         end
     end

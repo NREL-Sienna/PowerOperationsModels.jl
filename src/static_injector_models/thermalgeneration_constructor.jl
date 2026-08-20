@@ -150,17 +150,6 @@ function construct_device!(
         device_model,
         network_model,
     )
-    if _has_offline_reserve_service(device_model)
-        # Online-only band expression; the shared UB keeps p + online + offline.
-        add_to_expression!(
-            container,
-            ActivePowerRangeExpressionOnlineUB,
-            ActivePowerVariable,
-            devices,
-            device_model,
-            network_model,
-        )
-    end
     add_to_expression!(
         container,
         FuelConsumptionExpression,
@@ -200,29 +189,19 @@ function construct_device!(
         device_model,
         network_model,
     )
+    add_constraints!(
+        container,
+        ActivePowerVariableLimitsConstraint,
+        ActivePowerRangeExpressionUB,
+        devices,
+        device_model,
+        network_model,
+    )
     if _has_offline_reserve_service(device_model)
-        # Row A: p + online reserves stay commitment-gated on the online-only expression.
-        add_constraints!(
-            container,
-            ActivePowerVariableLimitsConstraint,
-            ActivePowerRangeExpressionOnlineUB,
-            devices,
-            device_model,
-            network_model,
-        )
-        # Row B: p + online + offline <= pmax preserves an OFF unit's offline capability.
+        # p + online + offline <= pmax preserves an OFF unit's offline capability.
         add_constraints!(
             container,
             OfflineReserveBandConstraint,
-            devices,
-            device_model,
-            network_model,
-        )
-    else
-        add_constraints!(
-            container,
-            ActivePowerVariableLimitsConstraint,
-            ActivePowerRangeExpressionUB,
             devices,
             device_model,
             network_model,
@@ -331,17 +310,6 @@ function construct_device!(
         device_model,
         network_model,
     )
-    if _has_offline_reserve_service(device_model)
-        # Online-only band expression; the shared UB keeps p + online + offline.
-        add_to_expression!(
-            container,
-            ActivePowerRangeExpressionOnlineUB,
-            ActivePowerVariable,
-            devices,
-            device_model,
-            network_model,
-        )
-    end
     add_to_expression!(
         container,
         FuelConsumptionExpression,
@@ -378,29 +346,19 @@ function construct_device!(
         device_model,
         network_model,
     )
+    add_constraints!(
+        container,
+        ActivePowerVariableLimitsConstraint,
+        ActivePowerRangeExpressionUB,
+        devices,
+        device_model,
+        network_model,
+    )
     if _has_offline_reserve_service(device_model)
-        # Row A: p + online reserves stay commitment-gated on the online-only expression.
-        add_constraints!(
-            container,
-            ActivePowerVariableLimitsConstraint,
-            ActivePowerRangeExpressionOnlineUB,
-            devices,
-            device_model,
-            network_model,
-        )
-        # Row B: p + online + offline <= pmax preserves an OFF unit's offline capability.
+        # p + online + offline <= pmax preserves an OFF unit's offline capability.
         add_constraints!(
             container,
             OfflineReserveBandConstraint,
-            devices,
-            device_model,
-            network_model,
-        )
-    else
-        add_constraints!(
-            container,
-            ActivePowerVariableLimitsConstraint,
-            ActivePowerRangeExpressionUB,
             devices,
             device_model,
             network_model,
@@ -497,17 +455,6 @@ function construct_device!(
         device_model,
         network_model,
     )
-    if _has_offline_reserve_service(device_model)
-        # Online-only band expression; the shared UB keeps p + online + offline.
-        add_to_expression!(
-            container,
-            ActivePowerRangeExpressionOnlineUB,
-            ActivePowerVariable,
-            devices,
-            device_model,
-            network_model,
-        )
-    end
     add_to_expression!(
         container,
         FuelConsumptionExpression,
@@ -555,29 +502,19 @@ function construct_device!(
         device_model,
         network_model,
     )
+    add_constraints!(
+        container,
+        ActivePowerVariableLimitsConstraint,
+        ActivePowerRangeExpressionUB,
+        devices,
+        device_model,
+        network_model,
+    )
     if _has_offline_reserve_service(device_model)
-        # Row A: p + online reserves stay commitment-gated on the online-only expression.
-        add_constraints!(
-            container,
-            ActivePowerVariableLimitsConstraint,
-            ActivePowerRangeExpressionOnlineUB,
-            devices,
-            device_model,
-            network_model,
-        )
-        # Row B: p + online + offline <= pmax preserves an OFF unit's offline capability.
+        # p + online + offline <= pmax preserves an OFF unit's offline capability.
         add_constraints!(
             container,
             OfflineReserveBandConstraint,
-            devices,
-            device_model,
-            network_model,
-        )
-    else
-        add_constraints!(
-            container,
-            ActivePowerVariableLimitsConstraint,
-            ActivePowerRangeExpressionUB,
             devices,
             device_model,
             network_model,
@@ -672,17 +609,6 @@ function construct_device!(
         device_model,
         network_model,
     )
-    if _has_offline_reserve_service(device_model)
-        # Online-only band expression; the shared UB keeps p + online + offline.
-        add_to_expression!(
-            container,
-            ActivePowerRangeExpressionOnlineUB,
-            ActivePowerVariable,
-            devices,
-            device_model,
-            network_model,
-        )
-    end
     add_to_expression!(
         container,
         FuelConsumptionExpression,
@@ -730,29 +656,19 @@ function construct_device!(
         device_model,
         network_model,
     )
+    add_constraints!(
+        container,
+        ActivePowerVariableLimitsConstraint,
+        ActivePowerRangeExpressionUB,
+        devices,
+        device_model,
+        network_model,
+    )
     if _has_offline_reserve_service(device_model)
-        # Row A: p + online reserves stay commitment-gated on the online-only expression.
-        add_constraints!(
-            container,
-            ActivePowerVariableLimitsConstraint,
-            ActivePowerRangeExpressionOnlineUB,
-            devices,
-            device_model,
-            network_model,
-        )
-        # Row B: p + online + offline <= pmax preserves an OFF unit's offline capability.
+        # p + online + offline <= pmax preserves an OFF unit's offline capability.
         add_constraints!(
             container,
             OfflineReserveBandConstraint,
-            devices,
-            device_model,
-            network_model,
-        )
-    else
-        add_constraints!(
-            container,
-            ActivePowerVariableLimitsConstraint,
-            ActivePowerRangeExpressionUB,
             devices,
             device_model,
             network_model,

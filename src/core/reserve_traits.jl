@@ -84,9 +84,25 @@ _service_container_meta(service::PSY.Service) =
     "$(typeof(service))_$(PSY.get_name(service))"
 
 """
-Whether a `DeviceModel` carries an `OfflineReserve` service. Gates the offline-capability
-machinery (`ActivePowerRangeExpressionOnlineUB` + `OfflineReserveBandConstraint`) so that
-models without offline reserves build exactly the classic single semi-continuous band row.
+Whether a reserve type is an offline (non-spinning) product. Trait form of the
+`OfflineReserve` check used by the offline-capability machinery.
+"""
+_is_offline_reserve(::Type{<:PSY.AbstractReserve}) = false
+_is_offline_reserve(::Type{<:PSY.OfflineReserve}) = true
+
+"""
+Whether a device formulation folds offline-reserve awards into the commitment-gated range
+expression (`ActivePowerRangeExpressionUB`). Defaults to `true` (the award consumes gated
+headroom, so an OFF unit cannot supply). Commitment formulations that provide offline
+capability through [`OfflineReserveBandConstraint`](@ref) return `false`.
+"""
+offline_reserve_in_range_ub(::Type{<:AbstractDeviceFormulation}) = true
+
+"""
+Whether a `DeviceModel` carries an `OfflineReserve` service. Gates the
+[`OfflineReserveBandConstraint`](@ref) so that models without offline reserves build
+exactly the classic single semi-continuous band row.
 """
 _has_offline_reserve_service(model::DeviceModel) =
-    any(sm -> get_component_type(sm) <: PSY.OfflineReserve, values(get_services(model)))
+    has_service_model(model) &&
+    any(sm -> _is_offline_reserve(get_component_type(sm)), get_services(model))
