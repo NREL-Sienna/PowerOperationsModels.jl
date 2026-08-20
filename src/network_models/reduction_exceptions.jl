@@ -131,7 +131,7 @@ function _pin_outage_buses!(buses::Set{Int}, m::DeviceModel, sys::PSY.System)
                     IS.ConflictingInputsError(
                         "Monitored component with UUID $(uuid) on outage $(IS.get_uuid(outage)) not found in system. Data requires correction",
                     ),
-                )
+)
             end
             _push_component_buses!(buses, component)
         end
@@ -168,8 +168,8 @@ function _pin_transformer_controls!(
         for circuit in PSY.get_circuits(transformer)
             PSY.get_available(circuit) || continue
             PSY.get_control_objective(circuit) in
-            (PSY.TransformerControlObjective.VOLTAGE,) || continue
             _push_component_buses!(buses, circuit)
+            (PSY.TransformerControlObjective.VOLTAGE,) || continue
             push!(buses, PSY.get_regulated_bus_number(circuit))
         end
     end

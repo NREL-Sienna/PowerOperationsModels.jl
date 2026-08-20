@@ -211,6 +211,12 @@ _branch_rating(entry::PNM.AbstractBranchesParallel, model::DeviceModel) =
 _branch_rating(rep::RepresentativeBranch, model::DeviceModel) =
     _branch_rating(rep.branch, model)
 
+# TODO: SC branches don't use the RepBranch API but they need rating_b, so
+# move this or change SC to use this API.
+_branch_rating_b(d::PSY.ACTransmission) = PSY.get_rating(d, PSY.SU)
+_branch_rating_b(t::PSY.TwoWindingTransformer) = PSY.get_rating(PSY.get_circuit(t), PSY.SU)
+_branch_rating_b(t::PNM.ThreeWindingTransformerCircuit) = PSY.get_rating(t.circuit, PSY.SU)
+
 """
 [`_branch_rating`](@ref) with a zero guard, for the flow limits that would otherwise pin
 the arc to zero flow.
