@@ -141,7 +141,7 @@ _warn_tap_nonconvex(::Type{TapRatioVariable}, ::NetworkModel{N}, branches) where
 _warn_tap_nonconvex(_, _, _) = nothing
 
 # If this is a control variable, only get branches with that control active.
-function _branches_for_var(V::CONTROL_VARS, d::DeviceModel{T}, n::NetworkModel) where {T}
+function _branches_for_var(V::_CONTROL_VARS, d::DeviceModel{T}, n::NetworkModel) where {T}
     members = RepresentativeBranch[]
     _foreach_branch(_all_branches(n, T)) do branch
         !_branch_uses_control(V, branch, d, n) && return

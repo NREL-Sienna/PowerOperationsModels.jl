@@ -19,6 +19,7 @@ ParallelTestRunner = "d3525ed8-44d0-4b2c-a655-542cee43accc"
 Pkg = "44cfe95a-1eb2-52ea-b672-e2afdf69b78f"
 PowerCoreOpenAPIModels = "b7b40286-e793-417d-a9a0-b1583e4da1cb"
 PowerFlowFileParser = "bed98974-b02e-5e2f-9ee0-a103f5c450dd"
+PowerFlows = "94fada2c-fd9a-4e89-8d82-81405f5cb4f6"
 PowerNetworkMatrices = "bed98974-b02a-5e2f-9fe0-a103f5c450dd"
 PowerOperationsModels = "bed98974-b02a-5e2f-9ee0-a103f5c450dd"
 PowerOperationsOpenAPIModels = "a372b6d7-45a2-44c2-8199-6a724b72e8ff"
@@ -45,6 +46,7 @@ PowerOperationsOpenAPIModels = {rev = "main", subdir = "PowerOperationsOpenAPIMo
 PowerSystemCaseBuilder = {rev = "psy6", url = "https://github.com/Sienna-Platform/PowerSystemCaseBuilder.jl"}
 PowerSystems = {rev = "psy6", url = "https://github.com/Sienna-Platform/PowerSystems.jl"}
 PowerTableDataParser = {rev = "psy6", url = "https://github.com/NREL-Sienna/PowerTableDataParser.jl"}
+PowerFlows = {rev = "psy6", url = "https://github.com/Sienna-Platform/PowerFlows.jl"}
 
 [compat]
 HiGHS = "1"
