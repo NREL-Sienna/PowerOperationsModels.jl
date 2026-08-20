@@ -1109,7 +1109,6 @@ function construct_device!(
         container, ActivePowerBalance, FlowActivePowerToFromVariable,
         devices, device_model, network_model,
     )
-    add_variables!(container, TapRatioVariable, devices, devices, network_model)
     add_feedforward_arguments!(container, device_model, devices)
     return
 end
@@ -1176,7 +1175,6 @@ function construct_device!(
         device_model,
         network_model,
     )
-    add_variables!(container, TapRatioVariable, devices, devices, network_model)
     add_feedforward_arguments!(container, device_model, devices)
     return
 end

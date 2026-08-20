@@ -2014,21 +2014,12 @@ function add_constraints!(
     end
 
     jump_model = get_jump_model(container)
-    tap_var =
-        if has_container_key(container, TapRatioVariable, T)
-            get_variable(container, TapRatioVariable, T)
-        else
-            nothing
-        end
-
     _foreach_branch(reps) do rep
         name = rep.name
         b = _dc_susceptance(rep)
         shift = _dc_shift(rep)
         from_name = _from_name(rep)
         to_name = _to_name(rep)
-        tap_controlled = _tap_controlled(rep, device_model, network_model)
-        tap = tap_controlled ? _admittance(rep).tap : 1.0
         for t in time_steps
             angle =
                 JuMP.@expression(jump_model, va[from_name, t] - va[to_name, t] - shift)
@@ -2041,15 +2032,7 @@ function add_constraints!(
                 else
                     p[name, t]
                 end
-            cons[name, t] =
-                if tap_controlled
-                    JuMP.@constraint(
-                        jump_model,
-                        flow * tap_var[name, t] == b * angle * tap
-                    )
-                else
-                    JuMP.@constraint(jump_model, flow == b * angle)
-                end
+            cons[name, t] = JuMP.@constraint(jump_model, tap_var[name, t] == b * angle)
         end
     end
     return

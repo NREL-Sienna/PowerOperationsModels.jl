@@ -153,12 +153,15 @@ _control_objective(c::PSY.TransformerCircuit, d::DeviceModel) =
     end
 _control_objective(rep::RepresentativeBranch, d::DeviceModel) = _control_objective(_get_circuit(rep.branch), d)
 
-_voltage_controlled(rep::RepresentativeBranch, d::DeviceModel) = _control_objective(rep, d) === PSY.TransformerControlObjective.VOLTAGE
-_reactive_controlled(rep::RepresentativeBranch, d::DeviceModel) = _control_objective(rep, d) === REACTIVE_CONTROL
+const _VOLTAGE = PSY.TransformerControlObjective.VOLTAGE
+const _REACTIVE = PSY.TransformerControlObjective.REACTIVE_POWER_FLOW
+const _TAP_CONTROLS = (_VOLTAGE, _REACTIVE)
+
+_voltage_controlled(rep::RepresentativeBranch, d::DeviceModel) = _control_objective(rep, d) === _VOLTAGE
+_reactive_controlled(rep::RepresentativeBranch, d::DeviceModel) = _control_objective(rep, d) === _REACTIVE
 _tap_controlled(rep::RepresentativeBranch, d::DeviceModel, ::NetworkModel{<:NativeACNetworkModel}) =
-    _control_objective(rep, d) in (PSY.TransformerControlObjective.VOLTAGE, PSY.TransformerControlObjective.REACTIVE_POWER_FLOW)
-_tap_controlled(rep::RepresentativeBranch, d::DeviceModel, ::NetworkModel{<:AbstractDCPNetworkModel}) =
-    _control_objective(rep, d) === PSY.TransformerControlObjective.CONTROL_OF_DC_LINE
+    _control_objective(rep, d) in _TAP_CONTROLS
+_tap_controlled(::RepresentativeBranch, ::DeviceModel, ::NetworkModel) = false
 
 _controlled_circuit_names(branch) =
     _control_enabled(_get_circuit(branch)) ? [PNM.get_name(branch)] : String[]

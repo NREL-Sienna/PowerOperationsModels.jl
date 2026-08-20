@@ -47,7 +47,7 @@ end
 
 function _collect_reduction_exceptions(
     sys::PSY.System,
-    model::NetworkModel,
+    network_model::NetworkModel,
     branch_models::BranchModelContainer,
 )
     @debug "Collecting reduction exceptions" _group =
@@ -157,20 +157,48 @@ end
 
 _pin_model_all_branches!(::Set{Int}, ::DeviceModel) = nothing
 
+_warn_circuit(c, m = "this control is not yet implemented for this device model / network model combo") =
+    @warn "Circuit $(PSY.get_name(c)) has control $(PSY.get_control_objective(c)) enabled but $m. This control will be ignored and the circuit may be reduced."
+
+function _circuit_available(c)
+    PSY.get_available(c) && return true
+    _warn_circuit(c, "the circuit is disabled")
+    return false
+end
+
+function _control_implemented(c, ::NetworkModel{N}) where {N <: NativeACNetworkModel}
+    o = PSY.get_control_objective(c)
+    o in _TAP_CONTROLS && return true
+    _warn_circuit(c)
+    return false
+end
+
+function _control_implemented(c, ::NetworkModel{N}) where {N}
+    o = PSY.get_control_objective(c)
+    if o in _TAP_CONTROLS
+        _warn_circuit(c, "tap controls are not supported for $N networks")
+        return false
+    end
+    _warn_circuit(c)
+    return false
+end
+
 # A transformer circuit with a bus-based control objective on a transformer
 # with controls enabled must not be reduced away, nor can its regulated bus.
 function _pin_transformer_controls!(
     buses::Set{Int},
     m::DeviceModel{<:_TRANSFORMERS},
-)
+    ::NetworkModel{N}
+) where {N}
     _control_enabled(m) || return
     for transformer in get_device_cache(m)
         for circuit in PSY.get_circuits(transformer)
-            PSY.get_available(circuit) || continue
-            PSY.get_control_objective(circuit) in
+            _circuit_available(circuit) || continue
+            _control_implemented(circuit, N) || continue
             _push_component_buses!(buses, circuit)
-            (PSY.TransformerControlObjective.VOLTAGE,) || continue
-            push!(buses, PSY.get_regulated_bus_number(circuit))
+            if PSY.get_control_objective(circuit) === _VOLTAGE
+                push!(buses, PSY.get_regulated_bus_number(circuit))
+            end
         end
     end
     return
