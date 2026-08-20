@@ -614,7 +614,6 @@ end
     for (name, (arc, reduction)) in line_entries
         entry = all_maps[reduction][PSY.Line][arc]
         rating = POM._branch_rating(entry, device_model)
-        rating = _
         for t in time_steps
             for var in (pft, ptf, qft, qtf)
                 @test JuMP.has_upper_bound(var[name, t])

@@ -414,9 +414,6 @@ end
         network_formulation in AC_NETWORKS,
         index in case.circuit_indices
 
-        println("%%%%%%%%")
-        @show case, network_formulation, index
-
         fixture =
             case.make(Q_FLOW_CONTROL; circuit_index = index, quantity_limits = limits)
         model, status = _build_controlled(

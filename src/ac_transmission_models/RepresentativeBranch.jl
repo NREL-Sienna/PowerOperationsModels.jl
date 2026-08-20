@@ -1,17 +1,13 @@
 #################################### RepresentativeBranch ##################################
 
 const DIRECT_BRANCH_MAP = "direct_branch_map"
-
-# Stand-in bus-name map for builders whose `add_constraints!` signature carries no `sys`
-# (the rating/limit families, which never need endpoint names). `_bus_name` errors rather
-# than return a wrong name if such a branch is asked for one.
 const _NO_BUS_NAMES = Dict{Int, String}()
 
 """
 One branch as the reduction-aware builders see it. Build with
 [`_representative_branches`](@ref) (one per arc, for constraint rows) or
 [`_all_branches`](@ref) (one per device name, for variables), and iterate with
-[`_for_each_branch`](@ref).
+[`_foreach_branch`](@ref).
 
 `B` is either a PSY.Device, a PNM.AbstractReductionAggregate, or a
 PNM.ThreeWindingTransformerCircuit.
@@ -28,7 +24,7 @@ end
 """
 Used for specializing the device loop per concrete RepresentativeBranch.
 """
-function _for_each_branch(f::F, reps) where {F}
+function _foreach_branch(f::F, reps) where {F}
     for rep in reps
         f(rep)
     end
@@ -131,15 +127,15 @@ _admittance(branch::PSY.ACTransmission, ::PNM.NetworkReductionData) =
     PNM.branch_admittance(branch)
 _admittance(rep::RepresentativeBranch) = _admittance(rep.branch, rep.nr)
 
-_dc_phase_shift(branch::PNM.AbstractReductionAggregate, nr::PNM.NetworkReductionData) =
+_dc_shift(branch::PNM.AbstractReductionAggregate, nr::PNM.NetworkReductionData) =
     PNM.get_series_phase_shift(branch, nr)
-_dc_phase_shift(branch::PSY.ACTransmission, ::PNM.NetworkReductionData) =
+_dc_shift(branch::PSY.ACTransmission, ::PNM.NetworkReductionData) =
     PNM.get_series_phase_shift(branch)
+_dc_shift(rep::RepresentativeBranch) = _dc_phase_shift(rep.branch, rep.nr)
 
 # DC susceptance `1/(tap*x)` — tap-divided, not the r-inclusive π-model susceptance.
 _dc_susceptance(rep::RepresentativeBranch) =
     PNM.get_series_susceptance(rep.branch, PSY.SU)
-_dc_shift(rep::RepresentativeBranch) = _dc_phase_shift(rep.branch, rep.nr)
 _dc_resistance(rep::RepresentativeBranch) = PNM.arc_dc_resistance(rep.nr, rep.arc)
 
 ################################## Transformer control #####################################
@@ -148,20 +144,21 @@ _get_circuit(t::PSY.TwoWindingTransformer) = PSY.get_circuit(t)
 _get_circuit(t::PNM.ThreeWindingTransformerCircuit) = t.circuit
 _get_circuit(_) = nothing
 
-_control_objective(::Nothing) = PSY.TransformerControlObjective.UNDEFINED
-_control_objective(c::PSY.TransformerCircuit) =
-    if PSY.get_available(c)
+_control_objective(::Nothing, _) = PSY.TransformerControlObjective.UNDEFINED
+_control_objective(c::PSY.TransformerCircuit, d::DeviceModel) =
+    if PSY.get_available(c) && _control_enabled(d)
         PSY.get_control_objective(c)
     else
         PSY.TransformerControlObjective.UNDEFINED
     end
-_control_objective(rep::RepresentativeBranch) = _control_objective(_get_circuit(rep.branch))
+_control_objective(rep::RepresentativeBranch, d::DeviceModel) = _control_objective(_get_circuit(rep.branch), d)
 
-_tap_controlled(rep::RepresentativeBranch) = _tap_controlled(_control_objective(rep))
-_voltage_controlled(rep::RepresentativeBranch) =
-    _voltage_controlled(_control_objective(rep))
-_reactive_controlled(rep::RepresentativeBranch) =
-    _reactive_controlled(_control_objective(rep))
+_voltage_controlled(rep::RepresentativeBranch, d::DeviceModel) = _control_objective(rep, d) === PSY.TransformerControlObjective.VOLTAGE
+_reactive_controlled(rep::RepresentativeBranch, d::DeviceModel) = _control_objective(rep, d) === REACTIVE_CONTROL
+_tap_controlled(rep::RepresentativeBranch, d::DeviceModel, ::NetworkModel{<:NativeACNetworkModel}) =
+    _control_objective(rep, d) in (PSY.TransformerControlObjective.VOLTAGE, PSY.TransformerControlObjective.REACTIVE_POWER_FLOW)
+_tap_controlled(rep::RepresentativeBranch, d::DeviceModel, ::NetworkModel{<:AbstractDCPNetworkModel}) =
+    _control_objective(rep, d) === PSY.TransformerControlObjective.CONTROL_OF_DC_LINE
 
 _controlled_circuit_names(branch) =
     _control_enabled(_get_circuit(branch)) ? [PNM.get_name(branch)] : String[]

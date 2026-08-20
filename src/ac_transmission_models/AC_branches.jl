@@ -1,15 +1,3 @@
-
-# Note: Any future concrete formulation requires the definition of
-
-# construct_device!(
-#     ::OptimizationContainer,
-#     ::PSY.System,
-#     ::DeviceModel{<:PSY.ACTransmission, MyNewFormulation},
-#     ::Union{Type{CopperPlateNetworkModel}, Type{AreaBalanceNetworkModel}},
-# ) = nothing
-
-#
-
 #################################### Branch Variables ##################################################
 # Branch flow variables are created by POM's per-formulation `construct_device!` methods.
 # The AC formulations (ACP/ACR/LPACC/IVR) each add directional from-to and to-from
@@ -74,33 +62,7 @@ _control_attribute(_) = ()
 
 _control_enabled(m::DeviceModel{<:_TRANSFORMERS}) =
     get_attribute(m, ENABLE_CONTROLS_KEY) === true
-_control_enabled(c::PSY.TransformerCircuit) =
-    PSY.get_available(c) && !(
-        PSY.get_control_objective(c) in
-        (PSY.TransformerControlObjective.UNDEFINED, PSY.TransformerControlObjective.FIXED)
-    )
 _control_enabled(_) = false
-
-_tap_controlled(c::PSY.TransformerControlObjective) = c in (
-    PSY.TransformerControlObjective.VOLTAGE,
-    PSY.TransformerControlObjective.REACTIVE_POWER_FLOW,
-)
-_tap_controlled(c::PSY.TransformerCircuit) =
-    PSY.get_available(c) && _tap_controlled(PSY.get_control_objective(c))
-
-_voltage_controlled(c::PSY.TransformerControlObjective) =
-    c === PSY.TransformerControlObjective.VOLTAGE
-_voltage_controlled(c::PSY.TransformerCircuit) =
-    PSY.get_available(c) && _voltage_controlled(PSY.get_control_objective(c))
-
-_reactive_controlled(c::PSY.TransformerControlObjective) =
-    c === PSY.TransformerControlObjective.REACTIVE_POWER_FLOW
-_reactive_controlled(c::PSY.TransformerCircuit) =
-    PSY.get_available(c) && _reactive_controlled(PSY.get_control_objective(c))
-
-_tap_controlled(m::DeviceModel, d) = _control_enabled(m) && _tap_controlled(d)
-_voltage_controlled(m::DeviceModel, d) = _control_enabled(m) && _voltage_controlled(d)
-_reactive_controlled(m::DeviceModel, d) = _control_enabled(m) && _reactive_controlled(d)
 
 """
 DeviceModel attribute key selecting which `PowerNetworkMatrices` function aggregates
@@ -165,6 +127,39 @@ end
 
 #################################### Flow Variable Bounds ##################################################
 
+const _CONTROL_VARS = Union{Type{TapRatioVariable}, Type{PhaseShifterAngle}}
+
+# If this a control variable, controls must be enabled (early stop).
+_control_var_enabled(::_CONTROL_VARS, d::DeviceModel) = _control_enabled(d)
+_control_var_enabled(_, _) = true
+
+# Does this branch use this control variable?
+_branch_uses_control(::Type{TapRatioVariable}, branch, device_model, network_model) = _tap_controlled(branch, device_model, network_model)
+_branch_uses_control(::Type{PhaseShifterAngle}, branch, device_model, network_model) = _phase_controlled(branch, device_model, network_model)
+
+_warn_tap_nonconvex(::Type{TapRatioVariable}, ::NetworkModel{N}, branches) where {N <: Union{LPACCNetworkModel, DCPNetworkModel, DCPLLNetworkModel}} = isempty(branches) || @warn "Tap control makes $N network models non-convex. Use Ipopt or change circuit controls."
+_warn_tap_nonconvex(_, _, _) = nothing
+
+# If this is a control variable, only get branches with that control active.
+function _branches_for_var(V::CONTROL_VARS, d::DeviceModel{T}, n::NetworkModel) where {T}
+    members = RepresentativeBranch[]
+    _foreach_branch(_all_branches(n, T)) do branch
+        !_branch_uses_control(V, branch, d, n) && return
+        if branch.reduction !== DIRECT_BRANCH_MAP
+            names = _controlled_circuit_names(branch)
+            error(
+                "Controlled transformer circuit $(join(names, ", ")) was merged into the \
+                 reduced arc $(branch.name) ($(branch.reduction)). Either remove the parallel \
+                 branch or disable control for this circuit.",
+            )
+        end
+        push!(members, branch)
+    end
+    _warn_tap_nonconvex(V, n, members)
+    return members
+end
+_branches_for_var(_, ::DeviceModel{T}, n::NetworkModel) where {T} = _all_branches(n, T)
+
 _branch_variable_bounds(
     ::Type{V},
     rep,
@@ -209,13 +204,6 @@ _branch_variable_start(::Type{CosineApproximation}) = 1.0
 _branch_variable_start(::Type{TapRatioVariable}) = 1.0
 _branch_variable_start(_) = nothing
 
-_is_control(::Type{TapRatioVariable}) = true
-_is_control(_) = false
-
-_branch_uses_control(::Type{TapRatioVariable}, branch) = _tap_controlled(branch)
-#_branch_uses_control(::Type{PhaseShiftVariable}, branch) = _phase_controlled(branch)
-_branch_uses_control(_, _) = true
-
 """
 Branch variables for reduction-aware networks. Every entry of a reduced arc
 aliases the same underlying JuMP variable.
@@ -229,20 +217,13 @@ function add_variables!(
         <:Union{AbstractPTDFNetworkModel, NativeNodalNetworkModel},
     },
 ) where {V <: VariableType, T <: PSY.ACTransmission, F <: AbstractBranchFormulation}
+    _control_var_enabled(V, device_model) || return
     time_steps = get_time_steps(container)
     jump_model = get_jump_model(container)
     reduced_branch_tracker = get_reduced_branch_tracker(network_model)
     start = _branch_variable_start(V)
 
-    branches = if _is_control(V)
-        members = RepresentativeBranch[]
-        _for_each_branch(_all_branches(network_model, T)) do branch
-            _branch_uses_control(V, branch) && push!(members, branch)
-        end
-        members
-    else
-        _all_branches(network_model, T)
-    end
+    branches = _branches_for_var(V, device_model, network_model)
     variable_container = add_variable_container!(
         container,
         V,
@@ -251,7 +232,7 @@ function add_variables!(
         time_steps,
     )
 
-    _for_each_branch(branches) do branch
+    _foreach_branch(branches) do branch
         has_entry, tracker_container = search_for_reduced_branch_variable!(
             reduced_branch_tracker,
             branch.arc,
@@ -276,52 +257,6 @@ function add_variables!(
     end
     return
 end
-
-_warn_tap_control_nonconvexity(
-    ::NetworkModel{N},
-) where {N <: Union{LPACCNetworkModel, DCPNetworkModel, DCPLLNetworkModel}} =
-    @warn "Tap control makes $N network models non-convex. Use Ipopt or change circuit controls."
-_warn_tap_control_nonconvexity(_) = nothing
-
-function _validate_controlled_branch_not_reduced(
-    network_model::NetworkModel,
-    ::Type{T},
-) where {T <: _TRANSFORMERS}
-    _for_each_branch(_all_branches(network_model, T)) do rep
-        rep.reduction == DIRECT_BRANCH_MAP && return
-        names = _controlled_circuit_names(rep)
-        isempty(names) && return
-        error(
-            "Controlled transformer circuit $(join(names, ", ")) was merged into the \
-             reduced arc $(rep.name) ($(rep.reduction)). Either remove the parallel \
-             branch or disable control for this circuit.",
-        )
-    end
-    return
-end
-
-function _add_tap_control_variables!(
-    container::OptimizationContainer,
-    model::DeviceModel{U, F},
-    devices::IS.FlattenIteratorWrapper{U},
-    network_model::NetworkModel,
-) where {
-    U <: _TRANSFORMERS,
-    F <: AbstractBranchFormulation,
-}
-    _control_enabled(model) || return
-    _validate_controlled_branch_not_reduced(network_model, U)
-    _warn_tap_control_nonconvexity(network_model)
-    add_variables!(container, TapRatioVariable, devices, model, network_model)
-    return
-end
-
-_add_tap_control_variables!(
-    ::OptimizationContainer,
-    ::DeviceModel{U},
-    ::IS.FlattenIteratorWrapper{U},
-    ::NetworkModel,
-) where {U <: PSY.ACTransmission} = nothing
 
 function _add_meta_flow_slack!(
     container::OptimizationContainer,
@@ -387,7 +322,7 @@ function branch_rate_bounds!(
     time_steps = get_time_steps(container)
     variable_types = _flow_variable_types(network_model)
     variables = map(V -> get_variable(container, V, B), variable_types)
-    _for_each_branch(_all_branches(network_model, B)) do rep
+    _foreach_branch(_all_branches(network_model, B)) do rep
         flow_limits = min_max_flow_limits(rep, device_model)
         rating = _branch_rating(rep, device_model)
         rating_limits = (min = -rating, max = rating)
@@ -547,7 +482,7 @@ function add_constraints!(
     array = get_variable(container, FlowActivePowerVariable, T)
 
     use_slacks = get_use_slacks(device_model)
-    _for_each_branch(reps) do rep
+    _foreach_branch(reps) do rep
         _add_flow_rate_constraint!(
             container,
             rep,
@@ -598,7 +533,7 @@ function add_constraints!(
     array = get_expression(container, PTDFBranchFlow, T)
 
     use_slacks = get_use_slacks(device_model)
-    _for_each_branch(reps) do rep
+    _foreach_branch(reps) do rep
         _add_flow_rate_constraint!(
             container,
             rep,
@@ -678,7 +613,7 @@ function add_flow_rate_constraint_with_parameters!(
     ts_name = get_time_series_names(device_model)[BranchRatingTimeSeriesParameter]
     ts_type = get_default_time_series_type(container)
     use_slacks = get_use_slacks(device_model)
-    _for_each_branch(reps) do rep
+    _foreach_branch(reps) do rep
         if PNM.has_time_series(rep.branch, ts_type, ts_name)
             _add_flow_rate_constraint_with_parameters!(
                 container,
@@ -1097,7 +1032,7 @@ function _add_directional_flow_rate_limits!(
         ts_branch_names = Set(axes(mult, 1))
     end
 
-    _for_each_branch(reps) do rep
+    _foreach_branch(reps) do rep
         name = rep.name
         if name in ts_branch_names
             param = get_parameter_column_refs(param_container, name)
@@ -1473,14 +1408,14 @@ function add_constraints!(
     jump_model = get_jump_model(container)
     slacks = _flow_equality_slacks(container, device_model, T)
 
-    _for_each_branch(reps) do rep
+    _foreach_branch(reps) do rep
         name = rep.name
         adm = _admittance(rep)
         from_bus = _from_name(rep)
         to_bus = _to_name(rep)
 
         vp = _voltage_products(container, network_model, T, name, from_bus, to_bus)
-        tap_var = if _tap_controlled(device_model, rep)
+        tap_var = if _tap_controlled(rep, device_model, network_model)
             get_variable(container, TapRatioVariable, T)
         else
             nothing
@@ -1561,10 +1496,10 @@ function _add_voltage_control_constraints!(
 
     time_steps = get_time_steps(container)
     jump_model = get_jump_model(container)
-    _for_each_branch(
+    _foreach_branch(
         _representative_branches(network_model, T, VoltageMagnitudeConstraint),
     ) do rep
-        _voltage_controlled(device_model, rep) || return
+        _voltage_controlled(rep, device_model) || return
 
         bus = PSY.get_bus(sys, _regulated_number(rep))
         bus_name = PSY.get_name(bus)
@@ -1615,11 +1550,11 @@ function _add_reactive_control_constraints!(
 
     time_steps = get_time_steps(container)
     jump_model = get_jump_model(container)
-    _for_each_branch(
+    _foreach_branch(
         _representative_branches(network_model, T, ReactivePowerFlowControlConstraint),
     ) do rep
         name = rep.name
-        _reactive_controlled(device_model, rep) || return
+        _reactive_controlled(rep, device_model) || return
         lims = _quantity_limits(rep)
 
         for t in time_steps
@@ -1698,7 +1633,7 @@ function add_constraints!(
         time_steps,
     )
 
-    _for_each_branch(constrained) do rep
+    _foreach_branch(constrained) do rep
         vad_max = _max_angle_difference(rep)
         k = (1.0 - cos(vad_max)) / vad_max^2
         from_name = _from_name(rep)
@@ -1806,7 +1741,7 @@ function add_constraints!(
         else
             nothing
         end
-    _for_each_branch(reps) do rep
+    _foreach_branch(reps) do rep
         name = rep.name
         adm = _admittance(rep)
         g = adm.g
@@ -1824,7 +1759,7 @@ function add_constraints!(
         x = -b / ymag2
 
         for t in time_steps
-            tm = _tap_controlled(device_model, rep) ? tap_var[name, t] : adm.tap
+            tm = _tap_controlled(rep, device_model, network_model) ? tap_var[name, t] : adm.tap
             tr = tm * cos(adm.shift)
             ti = tm * sin(adm.shift)
             tm2 = tm^2
@@ -2019,7 +1954,7 @@ function add_constraints!(
     con_ub = add_constraints_container!(
         container, FlowRateConstraint, T, branch_names, time_steps; meta = "ub",
     )
-    _for_each_branch(reps) do rep
+    _foreach_branch(reps) do rep
         name = rep.name
         if name in ts_branch_names
             param = get_parameter_column_refs(param_container, name)
@@ -2086,13 +2021,13 @@ function add_constraints!(
             nothing
         end
 
-    _for_each_branch(reps) do rep
+    _foreach_branch(reps) do rep
         name = rep.name
         b = _dc_susceptance(rep)
         shift = _dc_shift(rep)
         from_name = _from_name(rep)
         to_name = _to_name(rep)
-        tap_controlled = _tap_controlled(device_model, rep)
+        tap_controlled = _tap_controlled(rep, device_model, network_model)
         tap = tap_controlled ? _admittance(rep).tap : 1.0
         for t in time_steps
             angle =
@@ -2127,15 +2062,6 @@ Add the B-θ branch-flow expression for ACBranch StaticBranch under DCPNetworkMo
 
 with the DC `b`/`shift` pair described on the `NetworkFlowConstraint` builder above, so the
 `b·shift` offset matches PNM's `arc_dc_shift_injection`.
-
-Angles are the only decision variables for StaticBranch under DCP — there is no
-`FlowActivePowerVariable` and no defining Ohm's-law equality; the flow is carried
-directly as this expression. Uses the same `reps = _representative_branches(...)` walk
-(one geometry per reduced arc, claimed against the `NetworkFlowConstraint` family so
-it interoperates with other branch types/formulations sharing an arc) as the
-variable-based Ohm's-law builder above. Also wires the expression into the two
-terminal `ActivePowerBalance` entries (-1.0 from, +1.0 to), matching the sign
-convention `_add_both_terminals_to_nodal!` uses for the flow variable.
 """
 function add_expressions!(
     container::OptimizationContainer,
@@ -2159,7 +2085,7 @@ function add_expressions!(
     nodal_expr = get_expression(container, ActivePowerBalance, PSY.ACBus)
     jump_model = get_jump_model(container)
 
-    _for_each_branch(reps) do rep
+    _foreach_branch(reps) do rep
         b = _dc_susceptance(rep)
         shift = _dc_shift(rep)
         from_name = _from_name(rep)
@@ -2219,7 +2145,7 @@ function add_constraints!(
         container, FlowRateConstraint, T, branch_names, time_steps; meta = "ub",
     )
 
-    _for_each_branch(reps) do rep
+    _foreach_branch(reps) do rep
         name = rep.name
         if name in ts_branch_names
             param = get_parameter_column_refs(param_container, name)
@@ -2288,7 +2214,7 @@ function add_constraints!(
         container, AngleDifferenceConstraint, T, branch_names, time_steps,
     )
 
-    _for_each_branch(constrained) do rep
+    _foreach_branch(constrained) do rep
         # angle limits are in radians — no per-unit conversion
         lims = _angle_limits(rep)
         from_name = _from_name(rep)
@@ -2349,7 +2275,7 @@ function add_constraints!(
     )
 
     jump_model = get_jump_model(container)
-    _for_each_branch(constrained) do rep
+    _foreach_branch(constrained) do rep
         # angle limits are in radians — no per-unit conversion
         lims = _angle_limits(rep)
         fr = _from_name(rep)
@@ -2397,7 +2323,7 @@ function _set_dcpll_flow_bounds!(
     time_steps = get_time_steps(container)
     pft = get_variable(container, FlowActivePowerFromToVariable, T)
     ptf = get_variable(container, FlowActivePowerToFromVariable, T)
-    _for_each_branch(_all_branches(network_model, T)) do rep
+    _foreach_branch(_all_branches(network_model, T)) do rep
         rate = _directional_flow_rating(rep, device_model)
         for t in time_steps
             _tighten_flow_bound!(pft[rep.name, t], rate)
@@ -2447,7 +2373,7 @@ function add_constraints!(
         container, FlowRateConstraint, T, branch_names, time_steps; meta = "tf_lb",
     )
 
-    _for_each_branch(reps) do rep
+    _foreach_branch(reps) do rep
         name = rep.name
         limits = min_max_flow_limits(rep, device_model)
         for t in time_steps
@@ -2501,13 +2427,13 @@ function add_constraints!(
             nothing
         end
 
-    _for_each_branch(reps) do rep
+    _foreach_branch(reps) do rep
         name = rep.name
         b = _dc_susceptance(rep)
         shift = _dc_shift(rep)
         from_name = _from_name(rep)
         to_name = _to_name(rep)
-        tap_controlled = _tap_controlled(device_model, rep)
+        tap_controlled = _tap_controlled(rep, device_model, network_model)
         tap = tap_controlled ? _admittance(rep).tap : 1.0
         for t in time_steps
             angle =
@@ -2557,7 +2483,7 @@ function add_constraints!(
     )
 
     jump_model = get_jump_model(container)
-    _for_each_branch(reps) do rep
+    _foreach_branch(reps) do rep
         r = _dc_resistance(rep)
         for t in time_steps
             cons[rep.name, t] = JuMP.@constraint(
