@@ -7,7 +7,15 @@ const AC_NETWORKS = (VOLTAGE_NETWORKS..., IVRNetworkModel)
 const DC_NETWORKS = (DCPNetworkModel, DCPLLNetworkModel)
 const ALL_NETWORKS = (AC_NETWORKS..., DC_NETWORKS...)
 
+const CONTROL_FORMULATIONS = (StaticBranch, StaticBranchBounds)
+
 const TRANSFORMER_NAMES = ["Trans1", "Trans2", "Trans3", "Trans4"]
+
+# A controlled-quantity band is objective-shaped: VOLTAGE bands are bus voltage magnitudes,
+# REACTIVE_POWER_FLOW bands are terminal flows in per-unit and have to fit inside the
+# circuit rating.
+_default_quantity_limits(objective) =
+    objective === Q_FLOW_CONTROL ? (min = -0.05, max = 0.05) : (min = 0.95, max = 1.05)
 
 const T3W_NAME = "ThreeWindingTransformer_busD"
 const T3W_WINDINGS = ["$(T3W_NAME)_winding_$i" for i in 1:3]
@@ -20,7 +28,7 @@ function _controlled_sys14(
     objective;
     circuit_index = 1,
     regulated = 9,
-    quantity_limits = (min = 0.95, max = 1.05),
+    quantity_limits = _default_quantity_limits(objective),
     control_limits = (min = 0.9, max = 1.1),
 )
     sys = PSB.build_system(PSITestSystems, "c_sys14")
@@ -158,7 +166,7 @@ function _controlled_sys3w(
     objective;
     circuit_index = 1,
     regulated = nothing,
-    quantity_limits = (min = 0.95, max = 1.05),
+    quantity_limits = _default_quantity_limits(objective),
     control_limits = (min = 0.9, max = 1.1),
 )
     sys = _sys5_with_3w()
@@ -209,3 +217,44 @@ const THREE_WINDING_CASE = (
 )
 
 const TRANSFORMER_CASES = (TWO_WINDING_CASE, THREE_WINDING_CASE)
+
+function _controlled_template(
+    network_formulation,
+    device_type;
+    enable = true,
+    formulation = StaticBranch,
+    kwargs...,
+)
+    template =
+        get_thermal_dispatch_template_network(NetworkModel(network_formulation; kwargs...))
+    set_device_model!(
+        template,
+        DeviceModel(
+            device_type,
+            formulation;
+            attributes = Dict(
+                POM.ENABLE_CONTROLS_KEY => enable,
+            ),
+        ),
+    )
+    return template
+end
+
+function _build_controlled(
+    sys,
+    network_formulation,
+    device_type;
+    enable = true,
+    optimizer,
+    formulation = StaticBranch,
+    output_dir = mktempdir(; cleanup = true),
+    kwargs...,
+)
+    template = _controlled_template(
+        network_formulation, device_type;
+        enable = enable, formulation = formulation, kwargs...,
+    )
+    model = DecisionModel(template, sys; optimizer = optimizer)
+    status = build!(model; output_dir = output_dir)
+    return model, status
+end

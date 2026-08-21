@@ -171,7 +171,7 @@ function _pin_transformer_controls!(
     m::DeviceModel{<:_TRANSFORMERS},
     sys::PSY.System,
     network_model::NetworkModel
-) where {N}
+)
     _control_enabled(m) || return
     for transformer in get_device_cache(m)
         for circuit in PSY.get_circuits(transformer)

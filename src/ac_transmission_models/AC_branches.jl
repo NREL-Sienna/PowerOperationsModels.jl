@@ -21,22 +21,7 @@ get_initial_conditions_device_model(::IOM.AbstractOptimizationModel, ::DeviceMod
 #### Properties of slack variables
 get_variable_binary(::Type{FlowActivePowerSlackUpperBound}, ::Type{<:PSY.ACTransmission}, ::Type{<:AbstractBranchFormulation}) = false
 get_variable_binary(::Type{FlowActivePowerSlackLowerBound}, ::Type{<:PSY.ACTransmission}, ::Type{<:AbstractBranchFormulation}) = false
-# These two methods are defined to avoid ambiguities
-get_variable_upper_bound(::Type{FlowActivePowerSlackUpperBound}, ::PSY.ACTransmission, ::Type{<:AbstractBranchFormulation}) = nothing
-get_variable_lower_bound(::Type{FlowActivePowerSlackUpperBound}, ::PSY.ACTransmission, ::Type{<:AbstractBranchFormulation}) = 0.0
-get_variable_upper_bound(::Type{FlowActivePowerSlackLowerBound}, ::PSY.ACTransmission, ::Type{<:AbstractBranchFormulation}) = nothing
-get_variable_lower_bound(::Type{FlowActivePowerSlackLowerBound}, ::PSY.ACTransmission, ::Type{<:AbstractBranchFormulation}) = 0.0
-get_variable_upper_bound(::Type{FlowActivePowerVariable}, ::PNM.BranchesSeries, ::Type{<:AbstractBranchFormulation}) = nothing
-get_variable_lower_bound(::Type{FlowActivePowerVariable}, ::PNM.BranchesSeries, ::Type{<:AbstractBranchFormulation}) = nothing
-get_variable_upper_bound(::Type{FlowActivePowerVariable}, ::PNM.BranchesParallel, ::Type{<:AbstractBranchFormulation}) = nothing
-get_variable_lower_bound(::Type{FlowActivePowerVariable}, ::PNM.BranchesParallel, ::Type{<:AbstractBranchFormulation}) = nothing
-get_variable_upper_bound(::Type{FlowActivePowerVariable}, ::PNM.ThreeWindingTransformerCircuit, ::Type{<:AbstractBranchFormulation}) = nothing
-get_variable_lower_bound(::Type{FlowActivePowerVariable}, ::PNM.ThreeWindingTransformerCircuit, ::Type{<:AbstractBranchFormulation}) = nothing
 
-# Active-flow variable creation bounds: matches the bridge convention so
-# `check_variable_bounded(...)` in test_device_branch_constructors.jl finds box bounds on
-# directional flow variables. Reactive-flow variables have no default here; under
-# StaticBranchBounds they fall back to the thermal rating in `_branch_variable_bounds`.
 get_variable_upper_bound(::Type{FlowActivePowerFromToVariable}, d::PSY.MonitoredLine, ::Type{<:AbstractBranchFormulation}) = PSY.get_flow_limits(d, PSY.SU).from_to
 get_variable_lower_bound(::Type{FlowActivePowerFromToVariable}, d::PSY.MonitoredLine, ::Type{<:AbstractBranchFormulation}) = -1 * PSY.get_flow_limits(d, PSY.SU).from_to
 get_variable_upper_bound(::Type{FlowActivePowerToFromVariable}, d::PSY.MonitoredLine, ::Type{<:AbstractBranchFormulation}) = PSY.get_flow_limits(d, PSY.SU).to_from
@@ -58,11 +43,11 @@ const _TRANSFORMERS = Union{PSY.TwoWindingTransformer, PSY.ThreeWindingTransform
 const ENABLE_CONTROLS_KEY = "enable_controls"
 
 _control_attribute(::Union{Type{<:_TRANSFORMERS}}) = (ENABLE_CONTROLS_KEY => false,)
-_control_attribute(_) = ()
+_control_attribute(::Type{<:PSY.ACTransmission}) = ()
 
 _control_enabled(m::DeviceModel{<:_TRANSFORMERS}) =
     get_attribute(m, ENABLE_CONTROLS_KEY) === true
-_control_enabled(_) = false
+_control_enabled(::DeviceModel) = false
 
 """
 DeviceModel attribute key selecting which `PowerNetworkMatrices` function aggregates
@@ -131,38 +116,39 @@ const _CONTROL_VARS = Union{Type{TapRatioVariable}, Type{PhaseShifterAngle}}
 
 # If this a control variable, controls must be enabled (early stop).
 _control_var_enabled(::_CONTROL_VARS, d::DeviceModel) = _control_enabled(d)
-_control_var_enabled(_, _) = true
+_control_var_enabled(::Type{<:VariableType}, ::DeviceModel) = true
 
 # Does this branch use this control variable?
-_branch_uses_control(::Type{TapRatioVariable}, branch, device_model, network_model) = _tap_controlled(branch, device_model, network_model)
-_branch_uses_control(::Type{PhaseShifterAngle}, branch, device_model, network_model) = _phase_controlled(branch, device_model, network_model)
+_branch_uses_control(::Type{TapRatioVariable}, branch, device_model::DeviceModel, network_model::NetworkModel) = _tap_controlled(branch, device_model, network_model)
+_branch_uses_control(::Type{PhaseShifterAngle}, branch, device_model::DeviceModel, network_model::NetworkModel) = _phase_controlled(branch, device_model, network_model)
 
 _warn_tap_nonconvex(::Type{TapRatioVariable}, ::NetworkModel{LPACCNetworkModel}, branches) = isempty(branches) || @warn "Tap control makes LPAC network models non-convex. Use Ipopt or change circuit controls."
-_warn_tap_nonconvex(_, _, _) = nothing
+_warn_tap_nonconvex(::Type{<:VariableType}, ::NetworkModel, _) = nothing
 
 # If this is a control variable, only get branches with that control active.
-function _branches_for_var(V::_CONTROL_VARS, d::DeviceModel{T}, n::NetworkModel) where {T}
+function _branches_for_var(V::_CONTROL_VARS, device_model::DeviceModel{T}, network_model::NetworkModel) where {T}
     members = RepresentativeBranch[]
-    _foreach_branch(_all_branches(n, T)) do branch
-        !_branch_uses_control(V, branch, d, n) && return
+    _foreach_branch(_all_branches(network_model, T)) do branch
         if branch.reduction !== DIRECT_BRANCH_MAP
-            names = _controlled_circuit_names(branch)
+            names = _controlled_circuit_names(branch, device_model)
+            isempty(names) && return
             error(
                 "Controlled transformer circuit $(join(names, ", ")) was merged into the \
                  reduced arc $(branch.name) ($(branch.reduction)). Either remove the parallel \
                  branch or disable control for this circuit.",
             )
         end
+        !_branch_uses_control(V, branch, device_model, network_model) && return
         push!(members, branch)
     end
-    _warn_tap_nonconvex(V, n, members)
+    _warn_tap_nonconvex(V, network_model, members)
     return members
 end
-_branches_for_var(_, ::DeviceModel{T}, n::NetworkModel) where {T} = _all_branches(n, T)
+_branches_for_var(::Type{<:VariableType}, ::DeviceModel{T}, network_model::NetworkModel) where {T} = _all_branches(network_model, T)
 
 _branch_variable_bounds(
     ::Type{V},
-    rep,
+    rep::RepresentativeBranch,
     ::DeviceModel{D, F},
     ::NetworkModel,
 ) where {V, D <: PSY.ACTransmission, F <: AbstractBranchFormulation} =
@@ -173,7 +159,7 @@ _branch_variable_bounds(
 
 function _branch_variable_bounds(
     ::Type{CosineApproximation},
-    rep,
+    rep::RepresentativeBranch,
     ::DeviceModel{<:PSY.ACTransmission, <:AbstractBranchFormulation},
     ::NetworkModel,
 )
@@ -189,14 +175,14 @@ end
 
 _branch_variable_bounds(
     ::Type{TapRatioVariable},
-    rep,
+    rep::RepresentativeBranch,
     ::DeviceModel{<:PSY.ACTransmission, <:AbstractBranchFormulation},
     ::NetworkModel,
 ) = _control_limits(rep)
 
 function _branch_variable_bounds(
     ::Type{<:AbstractBranchCurrentVariable},
-    rep,
+    rep::RepresentativeBranch,
     device_model::DeviceModel{<:PSY.ACTransmission, <:AbstractBranchFormulation},
     ::NetworkModel,
 )
@@ -204,33 +190,33 @@ function _branch_variable_bounds(
     return (-rating, rating)
 end
 
-# FlowRateConstraint. Active power uses `_flow_limits`; reactive uses
-# thermal rating.
-_static_branch_rate_limits(::Type{<:AbstractACActivePowerFlow}, rep, device_model) =
+_static_branch_rate_limits(::Type{<:AbstractACActivePowerFlow}, rep::RepresentativeBranch, device_model::DeviceModel) =
     _flow_limits(rep, device_model)
 
 function _static_branch_rate_limits(
     ::Type{<:AbstractACReactivePowerFlow},
-    rep,
-    device_model,
+    rep::RepresentativeBranch,
+    device_model::DeviceModel,
 )
     rating = _branch_rating(rep, device_model)
     return (min = -rating, max = rating)
 end
 
+_is_slack(::Union{Type{FlowActivePowerSlackLowerBound}, Type{FlowActivePowerSlackUpperBound}}) = true
+_is_slack(::Type{<:VariableType}) = false
+
 function _branch_variable_bounds(
     ::Type{V},
-    rep,
+    rep::RepresentativeBranch,
     device_model::DeviceModel{D, StaticBranchBounds},
     ::NetworkModel,
 ) where {
     V <: Union{AbstractACActivePowerFlow, AbstractACReactivePowerFlow},
     D <: PSY.ACTransmission,
 }
+    _is_slack(V) && return (0.0, nothing)
     limits = _static_branch_rate_limits(V, rep, device_model)
     @assert limits.min <= limits.max "Infeasible rate limits for branch $(rep.name)"
-    # A device-specific default (`MonitoredLine`'s asymmetric flow limits) is tighter and
-    # authoritative; the rating only fills the sides it leaves open.
     return (
         something(get_variable_lower_bound(V, rep.branch, StaticBranchBounds), limits.min),
         something(get_variable_upper_bound(V, rep.branch, StaticBranchBounds), limits.max),
@@ -241,7 +227,7 @@ end
 # flows, so the rating must not also land on the variables.
 _branch_variable_bounds(
     ::Type{V},
-    rep,
+    rep::RepresentativeBranch,
     ::DeviceModel{D, StaticBranchBounds},
     ::NetworkModel{DCPLLNetworkModel},
 ) where {V <: AbstractACActivePowerFlow, D <: PSY.ACTransmission} = (
@@ -251,7 +237,7 @@ _branch_variable_bounds(
 
 _branch_variable_start(::Type{CosineApproximation}) = 1.0
 _branch_variable_start(::Type{TapRatioVariable}) = 1.0
-_branch_variable_start(_) = nothing
+_branch_variable_start(::Type{<:VariableType}) = nothing
 
 """
 Branch variables for reduction-aware networks. Every entry of a reduced arc
@@ -1436,20 +1422,19 @@ function _add_voltage_control_constraints!(
     time_steps = get_time_steps(container)
     jump_model = get_jump_model(container)
     _foreach_branch(
-        _representative_branches(network_model, T, VoltageMagnitudeConstraint),
+        _representative_branches(network_model, T, VoltageControlConstraint),
     ) do rep
         _voltage_controlled(rep, device_model) || return
 
+        cont_lims = _quantity_limits(rep)
         bus = PSY.get_bus(sys, _regulated_number(rep))
         bus_name = PSY.get_name(bus)
-        bus_limits = PSY.get_voltage_limits(bus)
-        ctl_limits = _quantity_limits(rep)
-        # TODO: temporary pending PSY#1755
-        (bus_limits.min <= ctl_limits.min <= ctl_limits.max <= bus_limits.max) || error(
+        bus_lims = PSY.get_voltage_limits(bus)
+        (bus_lims.min <= cont_lims.min <= cont_lims.max <= bus_lims.max) || error(
             "Bus voltage limits for $bus_name disagree with control limits for circuit $(rep.name).",
         )
 
-        lims = _voltage_limits(ctl_limits, network_model)
+        lims = _voltage_limits(cont_lims, network_model)
         vm = _voltage_magnitude(container, bus_name, network_model)
         for t in time_steps
             cons[rep.name, 1, t] = JuMP.@constraint(jump_model, vm[t] >= lims.min)
@@ -1493,13 +1478,16 @@ function _add_reactive_control_constraints!(
         _representative_branches(network_model, T, ReactivePowerFlowControlConstraint),
     ) do rep
         _reactive_controlled(rep, device_model) || return
-        lims = _quantity_limits(rep)
+        cont_lims = _quantity_limits(rep)
+        line_lims = _flow_limits(rep, device_model)
+
+        (line_lims.min <= cont_lims.min <= cont_lims.max <= line_lims.max) || error("Control limits and line rating for circuit $(rep.name) disagree.")
 
         for t in time_steps
             cons[rep.name, 1, t] =
-                JuMP.@constraint(jump_model, qft[rep.name, t] >= lims.min)
+                JuMP.@constraint(jump_model, qft[rep.name, t] >= cont_lims.min)
             cons[rep.name, 2, t] =
-                JuMP.@constraint(jump_model, qft[rep.name, t] <= lims.max)
+                JuMP.@constraint(jump_model, qft[rep.name, t] <= cont_lims.max)
         end
     end
     return

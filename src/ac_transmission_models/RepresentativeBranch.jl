@@ -142,9 +142,9 @@ _dc_resistance(rep::RepresentativeBranch) = PNM.arc_dc_resistance(rep.nr, rep.ar
 
 _get_circuit(t::PSY.TwoWindingTransformer) = PSY.get_circuit(t)
 _get_circuit(t::PNM.ThreeWindingTransformerCircuit) = t.circuit
-_get_circuit(_) = nothing
+_get_circuit(::Union{PSY.ACTransmission, PNM.AbstractReductionAggregate}) = nothing
 
-_control_objective(::Nothing, _) = PSY.TransformerControlObjective.UNDEFINED
+_control_objective(::Nothing, ::DeviceModel) = PSY.TransformerControlObjective.UNDEFINED
 _control_objective(c::PSY.TransformerCircuit, d::DeviceModel) =
     if PSY.get_available(c) && _control_enabled(d)
         PSY.get_control_objective(c)
@@ -163,11 +163,22 @@ _tap_controlled(rep::RepresentativeBranch, d::DeviceModel, ::NetworkModel{<:Nati
     _control_objective(rep, d) in _TAP_CONTROLS
 _tap_controlled(::RepresentativeBranch, ::DeviceModel, ::NetworkModel) = false
 
-_controlled_circuit_names(branch) =
-    _control_enabled(_get_circuit(branch)) ? [PNM.get_name(branch)] : String[]
-_controlled_circuit_names(entry::PNM.AbstractReductionAggregate) =
-    reduce(vcat, (_controlled_circuit_names(member) for member in entry); init = String[])
-_controlled_circuit_names(rep::RepresentativeBranch) = _controlled_circuit_names(rep.branch)
+_controlled_circuit_names(
+    branch::Union{PSY.ACTransmission, PNM.ThreeWindingTransformerCircuit},
+    device_model::DeviceModel,
+) =
+    _control_objective(_get_circuit(branch), device_model) in _TAP_CONTROLS ?
+    [PNM.get_name(branch)] : String[]
+_controlled_circuit_names(
+    entry::PNM.AbstractReductionAggregate,
+    device_model::DeviceModel,
+) = reduce(
+    vcat,
+    (_controlled_circuit_names(member, device_model) for member in entry);
+    init = String[],
+)
+_controlled_circuit_names(rep::RepresentativeBranch, device_model::DeviceModel) =
+    _controlled_circuit_names(rep.branch, device_model)
 
 _control_limits(::Nothing) = (min = -Inf, max = Inf)
 _control_limits(c::PSY.TransformerCircuit) = PSY.get_control_limits(c)
@@ -241,7 +252,7 @@ end
 function _flow_limits(rep::RepresentativeBranch{PSY.MonitoredLine}, model::DeviceModel)
     lims = PSY.get_flow_limits(rep.branch, PSY.SU)
     if lims.from_to != lims.to_from
-        @warn "Flow limits in MonitoredLine $(PSY.get_name(device)) aren't equal; the minimum will be used."
+        @warn "Flow limits in MonitoredLine $(rep.name) aren't equal; the minimum will be used."
     end
     limit = min(_branch_rating(rep, model), lims.from_to, lims.to_from)
     return (min = -limit, max = limit)
