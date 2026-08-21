@@ -377,14 +377,15 @@ function _voltage_regulated_buses(
     pairs = Tuple{String, PSY.ACBus}[]
     _control_enabled(device_model) || return pairs
     for d in get_available_components(device_model, sys)
-        for circuit in PSY.get_circuits(d)
+        for (i, circuit) in enumerate(PSY.get_circuits(d))
             PSY.get_control_objective(circuit) === _VOLTAGE_CONTROL || continue
             _supports_tap(network_model) || continue
             bus = PSY.get_bus(sys, PSY.get_regulated_bus_number(circuit))
+            name = "$(PSY.get_name(d))_winding_$i"
             if isnothing(bus)
-                error("The regulated bus number for circuit $(PSY.get_name(circuit)) is not a valid bus number: it must correspond to a valid bus number in the network.")
+                error("The regulated bus number for circuit $name is not a valid bus number: it must correspond to a valid bus number in the network.")
             end
-            push!(pairs, (PSY.get_name(circuit), bus))
+            push!(pairs, (name, bus))
         end
     end
     return pairs

@@ -137,7 +137,7 @@ _control_var_enabled(_, _) = true
 _branch_uses_control(::Type{TapRatioVariable}, branch, device_model, network_model) = _tap_controlled(branch, device_model, network_model)
 _branch_uses_control(::Type{PhaseShifterAngle}, branch, device_model, network_model) = _phase_controlled(branch, device_model, network_model)
 
-_warn_tap_nonconvex(::Type{TapRatioVariable}, ::NetworkModel{N}, branches) where {N <: Union{LPACCNetworkModel, DCPNetworkModel, DCPLLNetworkModel}} = isempty(branches) || @warn "Tap control makes $N network models non-convex. Use Ipopt or change circuit controls."
+_warn_tap_nonconvex(::Type{TapRatioVariable}, ::NetworkModel{LPACCNetworkModel}, branches) = isempty(branches) || @warn "Tap control makes LPAC network models non-convex. Use Ipopt or change circuit controls."
 _warn_tap_nonconvex(_, _, _) = nothing
 
 # If this is a control variable, only get branches with that control active.
@@ -1425,7 +1425,7 @@ function _add_voltage_control_constraints!(
 
     cons = add_constraints_container!(
         container,
-        VoltageMagnitudeConstraint,
+        VoltageControlConstraint,
         T,
         String[],
         Int[],
@@ -1497,9 +1497,9 @@ function _add_reactive_control_constraints!(
 
         for t in time_steps
             cons[rep.name, 1, t] =
-                JuMP.@constraint(jump_model, qft[name, t] >= lims.min)
+                JuMP.@constraint(jump_model, qft[rep.name, t] >= lims.min)
             cons[rep.name, 2, t] =
-                JuMP.@constraint(jump_model, qft[name, t] <= lims.max)
+                JuMP.@constraint(jump_model, qft[rep.name, t] <= lims.max)
         end
     end
     return
@@ -1955,8 +1955,6 @@ function add_constraints!(
         from_name = _from_name(rep)
         to_name = _to_name(rep)
         for t in time_steps
-            angle =
-                JuMP.@expression(jump_model, va[from_name, t] - va[to_name, t] - shift)
             flow =
                 if use_slacks
                     JuMP.@expression(
@@ -1966,7 +1964,7 @@ function add_constraints!(
                 else
                     p[name, t]
                 end
-            cons[name, t] = JuMP.@constraint(jump_model, tap_var[name, t] == b * angle)
+            cons[name, t] = JuMP.@constraint(jump_model, flow == b * (va[from_name, t] - va[to_name, t] - shift))
         end
     end
     return

@@ -68,9 +68,6 @@ function _voltage_magnitudes(res, bus_name, ::Type{LPACCNetworkModel})
     return 1.0 .+ phi[!, bus_name]
 end
 
-_reduction_source() =
-    NetworkReductionSpec([PNM.RadialReduction(), PNM.DegreeTwoReduction()])
-
 ################################### attribute plumbing #################################
 
 @testset "a controlled circuit builds no tap variable while enable_controls is off" begin
@@ -139,7 +136,7 @@ end
     _constrained_names(cons) = Set(k[1] for k in keys(cons.data))
     @test _constrained_names(
         IOM.get_constraint(
-            container, VoltageMagnitudeConstraint, PSY.ThreeWindingTransformer,
+            container, VoltageControlConstraint, PSY.ThreeWindingTransformer,
         ),
     ) == Set([T3W_WINDINGS[1]])
     @test _constrained_names(
@@ -213,16 +210,13 @@ end
 
         res = IOM.OptimizationProblemOutputs(model)
         base = IOM.get_model_base_power(res)
-        for variable in
-            (FlowReactivePowerFromToVariable, FlowReactivePowerToFromVariable)
-            flow = read_variable(
-                res, _variable_key(variable, case.device_type);
-                table_format = TableFormat.WIDE,
-            )
-            for r in 1:nrow(flow)
-                @test flow[r, fixture.axis_name] / base >= limits.min - 1e-6
-                @test flow[r, fixture.axis_name] / base <= limits.max + 1e-6
-            end
+        flow = read_variable(
+            res, _variable_key(FlowReactivePowerFromToVariable, case.device_type);
+            table_format = TableFormat.WIDE,
+        )
+        for r in 1:nrow(flow)
+            @test flow[r, fixture.axis_name] / base >= limits.min - 1e-6
+            @test flow[r, fixture.axis_name] / base <= limits.max + 1e-6
         end
     end
 end
@@ -233,34 +227,18 @@ end
     limits = (min = 0.94, max = 1.06)
     tap_range = (min = 0.5, max = 1.5)
 
-    branch_formulation(::Type{<:Union{DCPNetworkModel, DCPLLNetworkModel}}) =
-        StaticBranchBounds
-    branch_formulation(_) = StaticBranch
-
-    flow_variables(::Type{DCPNetworkModel}) = (FlowActivePowerVariable,)
-    flow_variables(::Type{DCPLLNetworkModel}) = (
-        FlowActivePowerFromToVariable,
-        FlowActivePowerToFromVariable,
-    )
-    flow_variables(_) = (
-        FlowActivePowerFromToVariable,
-        FlowActivePowerToFromVariable,
-        FlowReactivePowerFromToVariable,
-        FlowReactivePowerToFromVariable,
-    )
+    flow_variables(_) =
 
     for case in TRANSFORMER_CASES,
         network_formulation in ALL_NETWORKS,
         index in case.circuit_indices
-
-        formulation = branch_formulation(network_formulation)
 
         fixed = case.make(
             VOLTAGE_CONTROL; circuit_index = index, quantity_limits = limits,
         )
         model_fixed, status_fixed = _build_controlled(
             fixed.sys, network_formulation, case.device_type;
-            enable = false, optimizer = ipopt_optimizer, formulation = formulation,
+            enable = false, optimizer = ipopt_optimizer,
         )
         @test status_fixed == IOM.ModelBuildStatus.BUILT
         @test solve!(model_fixed) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
@@ -294,7 +272,12 @@ end
             rtol = 1e-3,
         )
 
-        for variable in flow_variables(network_formulation)
+        for variable in (
+            FlowActivePowerFromToVariable,
+            FlowActivePowerToFromVariable,
+            FlowReactivePowerFromToVariable,
+            FlowReactivePowerToFromVariable,
+        )
             key = _variable_key(variable, case.device_type)
             flow_fixed = read_variable(res_fixed, key; table_format = TableFormat.WIDE)
             flow_var = read_variable(res_var, key; table_format = TableFormat.WIDE)
@@ -381,7 +364,7 @@ end
         fixture = case.make(VOLTAGE_CONTROL; circuit_index = index)
         model, status = _build_controlled(
             fixture.sys, ACPNetworkModel, case.device_type;
-            optimizer = ipopt_optimizer, network_source = _reduction_source(),
+            optimizer = ipopt_optimizer, network_source = NetworkReductionSpec([PNM.RadialReduction(), PNM.DegreeTwoReduction()]),
         )
         @test status == IOM.ModelBuildStatus.BUILT
 

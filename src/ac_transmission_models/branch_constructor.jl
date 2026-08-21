@@ -286,7 +286,7 @@ function construct_device!(
     devices = get_available_components(device_model, sys)
     _add_static_branch_flow_variables!(container, devices, device_model, network_model)
     _add_static_branch_balance_arguments!(container, device_model, devices, network_model)
-    add_variables!(container, TapRatioVariable, devices, devices, network_model)
+    add_variables!(container, TapRatioVariable, devices, device_model, network_model)
     return
 end
 
@@ -410,7 +410,7 @@ function construct_device!(
     devices = get_available_components(device_model, sys)
     _add_static_branch_flow_variables!(container, devices, device_model, network_model)
     _add_static_branch_balance_arguments!(container, device_model, devices, network_model)
-    add_variables!(container, TapRatioVariable, devices, devices, network_model)
+    add_variables!(container, TapRatioVariable, devices, device_model, network_model)
     return
 end
 
@@ -523,7 +523,7 @@ function construct_device!(
     _add_static_branch_flow_variables!(container, devices, device_model, network_model)
     add_variables!(container, CosineApproximation, devices, device_model, network_model)
     _add_static_branch_balance_arguments!(container, device_model, devices, network_model)
-    add_variables!(container, TapRatioVariable, devices, devices, network_model)
+    add_variables!(container, TapRatioVariable, devices, device_model, network_model)
     return
 end
 
@@ -692,7 +692,7 @@ function construct_device!(
             network_model,
         )
     end
-    add_variables!(container, TapRatioVariable, devices, devices, network_model)
+    add_variables!(container, TapRatioVariable, devices, device_model, network_model)
     add_feedforward_arguments!(container, device_model, devices)
     return
 end

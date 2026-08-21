@@ -200,6 +200,11 @@ struct ReferenceBusConstraint <: ConstraintType end
 """Rectangular-coordinate voltage magnitude bounds: vmin² ≤ vr² + vi² ≤ vmax²."""
 struct VoltageMagnitudeConstraint <: ConstraintType end
 """
+Imposed by transformer circuits with VOLTAGE control on a branch formulation
+with controls enabled.
+"""
+struct VoltageControlConstraint <: ConstraintType end
+"""
 Imposed by transformer circuits with REACTIVE_POWER_FLOW control on a branch
 formulation with controls enabled.
 """

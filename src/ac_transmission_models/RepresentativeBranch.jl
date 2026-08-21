@@ -131,7 +131,7 @@ _dc_shift(branch::PNM.AbstractReductionAggregate, nr::PNM.NetworkReductionData) 
     PNM.get_series_phase_shift(branch, nr)
 _dc_shift(branch::PSY.ACTransmission, ::PNM.NetworkReductionData) =
     PNM.get_series_phase_shift(branch)
-_dc_shift(rep::RepresentativeBranch) = _dc_phase_shift(rep.branch, rep.nr)
+_dc_shift(rep::RepresentativeBranch) = _dc_shift(rep.branch, rep.nr)
 
 # DC susceptance `1/(tap*x)` — tap-divided, not the r-inclusive π-model susceptance.
 _dc_susceptance(rep::RepresentativeBranch) =
@@ -238,11 +238,12 @@ function _flow_limits(rep::RepresentativeBranch, model::DeviceModel)
     rating = _branch_rating(rep, model)
     return (min = -rating, max = rating)
 end
-function _flow_limits(rep::RepresentativeBranch{PSY.MonitoredLine}, ::DeviceModel)
+function _flow_limits(rep::RepresentativeBranch{PSY.MonitoredLine}, model::DeviceModel)
     lims = PSY.get_flow_limits(rep.branch, PSY.SU)
-    if limits.from_to != lims.to_from
+    if lims.from_to != lims.to_from
         @warn "Flow limits in MonitoredLine $(PSY.get_name(device)) aren't equal; the minimum will be used."
-    limit = min(_branch_rating(rep), lims.from_to, lims.to_from)
+    end
+    limit = min(_branch_rating(rep, model), lims.from_to, lims.to_from)
     return (min = -limit, max = limit)
 end
 
