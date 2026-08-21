@@ -257,18 +257,87 @@ N-1 security constraints are built with Modified Outage Distribution Factors (PN
 | `ACPNetworkModel`, `ACRNetworkModel`, `IVRNetworkModel`, `LPACCNetworkModel`, `DCPLLNetworkModel` | **Blocked** at template validation with an `IS.ConflictingInputsError`: the MODF post-contingency formulation is a lossless linear DC construct and is not available on AC or lossy network models                                                                                                                                      |
 | `NFANetworkModel`, `CopperPlateNetworkModel`, `AreaBalanceNetworkModel`                           | Deliberate no-op — a `@warn` states the security constraints are inert                                                                                                                                                                                                                                                                  |
 
-#### Tap and phase-angle control
+#### Transformer tap and phase-angle control
 
-| Formulation         | Supported on                                                                                                                                                                                                                                                    |
-|:------------------- |:--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `VoltageControlTap` | `ACPNetworkModel`, `ACRNetworkModel`, `IVRNetworkModel`. Gated by `models_reactive_power`, so it is dropped from active-power (DC) templates with an `@info` message rather than being built; explicitly rejected on `LPACCNetworkModel` by template validation |
-| `TapControl`        | `DCPNetworkModel` only                                                                                                                                                                                                                                          |
-| `PhaseAngleControl` | `DCPNetworkModel` and the PTDF models only                                                                                                                                                                                                                      |
+Transformer control is not a branch formulation. It is switched on with the
+`enable_controls` **`DeviceModel` attribute** on a `TwoWindingTransformer` or
+`ThreeWindingTransformer` model, and each `TransformerCircuit` then declares what it
+regulates through its own `control_objective`, `control_limits` (the free variable's band)
+and `controlled_quantity_limits` (the regulated quantity's band):
 
-Under `ACRNetworkModel` and `IVRNetworkModel`, `VoltageControlTap` additionally creates a
+```julia
+DeviceModel(
+    PSY.TwoWindingTransformer,
+    StaticBranch;
+    attributes = Dict("enable_controls" => true),
+)
+```
+
+Only `StaticBranch` and `StaticBranchBounds` carry the control variables; any other branch
+formulation ignores the objective and warns.
+
+| `control_objective`   | Free variable       | Constraint                           | Networks                                                                           |
+|:--------------------- |:------------------- |:------------------------------------ |:---------------------------------------------------------------------------------- |
+| `VOLTAGE`             | `TapRatioVariable`  | `VoltageControlConstraint`           | `ACPNetworkModel`, `ACRNetworkModel`, `IVRNetworkModel`, `LPACCNetworkModel`       |
+| `REACTIVE_POWER_FLOW` | `TapRatioVariable`  | `ReactivePowerFlowControlConstraint` | as above                                                                           |
+| `ACTIVE_POWER_FLOW`   | `PhaseShifterAngle` | `ActivePowerFlowControlConstraint`   | `DCPNetworkModel`, `DCPLLNetworkModel`, `PTDFNetworkModel`, `AreaPTDFNetworkModel` |
+| anything else         | —                   | —                                    | none — warned and ignored                                                          |
+
+Every unsupported pairing is a build-time `@warn` naming the objective and the network
+formulation, after which the circuit (and its regulated bus) is free to be reduced away.
+`NFANetworkModel`, `CopperPlateNetworkModel` and `AreaBalanceNetworkModel` implement no
+control at all: they carry no voltage angles or magnitudes for one to act on.
+
+Tap control makes `LPACCNetworkModel` non-convex (the tap multiplies the voltage-product
+terms), so it is built but warned about — solve it with Ipopt or change the circuit's
+objective.
+
+Under `ACRNetworkModel` and `IVRNetworkModel`, `VOLTAGE` control additionally creates a
 `RegulatedVoltageMagnitude` variable and a `RegulatedVoltageMagnitudeConstraint` (both with
-`meta = "1"`), because those formulations have no scalar voltage-magnitude primitive to fix. Under
-`ACPNetworkModel` the network's own `VoltageMagnitude` variable is fixed directly instead.
+`meta = "1"`), because those formulations have no scalar voltage-magnitude primitive to fix.
+Under `ACPNetworkModel` the network's own `VoltageMagnitude` variable is fixed directly
+instead.
+
+##### Phase-angle control
+
+`PhaseShifterAngle` is the **absolute** shift angle in radians (mirroring `TapRatioVariable`,
+which is the absolute tap), bounded by the circuit's `control_limits` and started at `0.0`.
+It replaces the stored `α` wherever the DC model reads it, following PowerNetworkMatrices'
+sign convention:
+
+```math
+f_{c,t} = b_c \left( \theta_{f,t} - \theta_{t,t} - \alpha_{c,t} \right)
+```
+
+with the matching nodal injection pair ``+b_c \alpha_{c,t}`` at the from bus and
+``-b_c \alpha_{c,t}`` at the to bus. Note the **minus** sign on ``\alpha``: legacy
+PowerSimulations' `PhaseAngleControl` used the opposite convention.
+
+The angle enters linearly, so every DC formulation stays an LP/QP. On the AC formulations it
+would enter as ``\cos\alpha`` / ``\sin\alpha`` inside the admittance rotation — nonlinear
+for ACR/IVR and non-convex for LPACC — which is why phase control is DC-only.
+
+Per network model:
+
+| Network model                              | Where ``\alpha`` enters                                                                                                                                                                          |
+|:------------------------------------------ |:------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `DCPNetworkModel`                          | the `BThetaBranchFlow` expression (`StaticBranch`) or the `NetworkFlowConstraint` Ohm's law (`StaticBranchBounds`); the nodal balance picks it up from the flow                                  |
+| `DCPLLNetworkModel`                        | the `NetworkFlowConstraint` on `FlowActivePowerFromToVariable`                                                                                                                                   |
+| `PTDFNetworkModel`, `AreaPTDFNetworkModel` | a variable nodal-injection pair on `ActivePowerBalance` plus a ``-b_c \alpha_{c,t}`` offset on `PTDFBranchFlow`, replacing the constant `PNM.arc_dc_shift_injection` that a fixed-shift arc gets |
+
+!!! warning "Phase control is rejected alongside security-constrained branches"
+    
+    Post-contingency MODF flows are built from the **constant** phase shift, so a variable
+    ``\alpha`` would leave them silently wrong. A template combining a phase-controlled
+    circuit with any `AbstractSecurityConstrainedStaticBranch` model is rejected at
+    validation with an `IS.ConflictingInputsError`.
+
+!!! warning "Power-flow-in-the-loop does not see taps or phase angles"
+    
+    The `PowerFlows` evaluators push injections and voltages, never taps or ``\alpha``. A
+    power-flow evaluation alongside a controlled model therefore solves the power flow with
+    the **stored** tap and shift, not the optimized ones. This affects tap and phase control
+    alike.
 
 ### HVDC formulations
 

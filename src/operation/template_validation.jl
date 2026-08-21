@@ -110,6 +110,7 @@ function validate_template_impl!(model::IOM.AbstractOptimizationModel)
     end
     _check_security_constrained_three_winding_transformer!(template.branches)
     _check_security_constrained_network!(template.branches, network_model)
+    _check_security_constrained_phase_control!(template.branches, network_model)
     _check_voltage_regulation_conflicts!(template, system, network_model)
     _check_branch_rating_time_series_formulation!(template.branches, system)
     validate_network_model(network_model, unmodeled_branch_types, model_has_branch_filters)
@@ -326,6 +327,59 @@ function _check_flow_slack_support(
     )
 end
 
+# Circuits this model puts in ACTIVE_POWER_FLOW control, named as the optimization axis
+# names them. Read off the device cache: the network reduction does not exist yet at
+# validation time, so the `RepresentativeBranch` API is unavailable here.
+function _phase_controlled_circuit_names(
+    device_model::DeviceModel{<:_TRANSFORMERS, F},
+) where {F <: AbstractBranchFormulation}
+    names = String[]
+    (_control_enabled(device_model) && _control_capable(F)) || return names
+    for d in get_device_cache(device_model)
+        circuits = PSY.get_circuits(d)
+        for (i, circuit) in enumerate(circuits)
+            PSY.get_available(circuit) || continue
+            PSY.get_control_objective(circuit) === _ACTIVE_CONTROL || continue
+            push!(
+                names,
+                length(circuits) == 1 ? PSY.get_name(d) : "$(PSY.get_name(d))_winding_$i",
+            )
+        end
+    end
+    return names
+end
+
+_phase_controlled_circuit_names(::IOM.DeviceModelForBranches) = String[]
+
+# Post-contingency MODF flows are built from the CONSTANT `PNM.arc_dc_shift_injection`, so
+# a variable α would leave them silently wrong. Reject the pair rather than build it.
+function _check_security_constrained_phase_control!(
+    branch_models::IOM.BranchModelContainer,
+    network_model::NetworkModel,
+)
+    _ACTIVE_CONTROL in _implemented_controls(network_model) || return
+    sc_types = [
+        get_component_type(m) for m in values(branch_models) if
+        get_formulation(m) <: AbstractSecurityConstrainedStaticBranch
+    ]
+    isempty(sc_types) && return
+    controlled = reduce(
+        vcat,
+        (_phase_controlled_circuit_names(m) for m in values(branch_models));
+        init = String[],
+    )
+    isempty(controlled) && return
+    throw(
+        IS.ConflictingInputsError(
+            "Phase-controlled transformer circuit(s) $(join(controlled, ", ")) cannot be \
+             combined with the security-constrained branch model(s) for \
+             $(join(sc_types, ", ")): post-contingency MODF flows are built from the fixed \
+             phase shift, so a variable phase-shifter angle would make them wrong. Disable \
+             the circuit control or drop the security-constrained formulation.",
+        ),
+    )
+end
+
 function _check_security_constrained_network!(
     branch_models::IOM.BranchModelContainer,
     network_model::NetworkModel,
@@ -377,10 +431,11 @@ function _voltage_regulated_buses(
 ) where {F <: AbstractBranchFormulation}
     pairs = Tuple{String, PSY.ACBus}[]
     _control_enabled(device_model) || return pairs
+    _VOLTAGE_CONTROL in _implemented_controls(network_model) || return pairs
+    _control_capable(F) || return pairs
     for d in get_available_components(device_model, sys)
         for (i, circuit) in enumerate(PSY.get_circuits(d))
             PSY.get_control_objective(circuit) === _VOLTAGE_CONTROL || continue
-            _supports_tap(network_model) || continue
             bus = PSY.get_bus(sys, PSY.get_regulated_bus_number(circuit))
             name = "$(PSY.get_name(d))_winding_$i"
             if isnothing(bus)

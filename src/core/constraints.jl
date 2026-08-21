@@ -210,6 +210,19 @@ formulation with controls enabled.
 """
 struct ReactivePowerFlowControlConstraint <: ConstraintType end
 """
+Imposed by transformer circuits with ACTIVE_POWER_FLOW control on a branch formulation
+with controls enabled. Holds the circuit's active flow inside its
+`controlled_quantity_limits` band (system per-unit) at every time step, the phase-shifter
+angle ``\\theta^\\text{shift}`` being the free variable that achieves it:
+
+```math
+F^\\text{min} \\le f_{c,t} \\le F^\\text{max}, \\quad \\forall t \\in \\{1,\\dots,T\\}
+```
+
+Only the DC network formulations build it — see [`PhaseShifterAngle`](@ref).
+"""
+struct ActivePowerFlowControlConstraint <: ConstraintType end
+"""
 Ties a component-owned [`RegulatedVoltageMagnitude`](@ref) auxiliary variable to the
 rectangular voltage components at its regulated bus under ACR/IVR formulations. One
 entry per regulating device per time step:
@@ -349,18 +362,6 @@ Struct to create the start-up time limit constraints for ThermalMultiStart.
 For more information check [ThermalGen Formulations](@ref ThermalGen-Formulations) for ThermalMultiStartUnitCommitment.
 """
 struct StartupTimeLimitTemperatureConstraint <: ConstraintType end
-"""
-Struct to create the constraint that set the angle limits through a PhaseShiftingTransformer.
-
-For more information check [Branch Formulations](@ref PowerSystems.Branch-Formulations).
-
-The specified constraint is formulated as:
-
-```math
-\\Theta^\\text{min} \\le \\theta^\\text{shift}_t \\le \\Theta^\\text{max}, \\quad \\forall t \\in \\{1,\\dots,T\\}
-```
-"""
-struct PhaseAngleControlLimit <: ConstraintType end
 struct InterfaceFlowLimit <: ConstraintType end
 struct HVDCFlowCalculationConstraint <: ConstraintType end
 

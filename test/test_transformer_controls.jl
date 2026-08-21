@@ -125,7 +125,10 @@ end
         @test !_has_control_constraints(container)
 
         log = read(joinpath(output_dir, "operation_problem.log"), String)
-        @test occursin("DC networks do not support variable-tap", log)
+        @test occursin(
+            "tap control is not supported on $(nameof(network_formulation)) networks",
+            log,
+        )
     end
 end
 

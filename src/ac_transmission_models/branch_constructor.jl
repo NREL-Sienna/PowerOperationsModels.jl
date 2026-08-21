@@ -846,6 +846,7 @@ function construct_device!(
     @debug "construct_device DCP (ArgumentConstructStage)" _group =
         LOG_GROUP_BRANCH_CONSTRUCTIONS
     devices = get_available_components(device_model, sys)
+    add_variables!(container, PhaseShifterAngle, devices, device_model, network_model)
     if get_use_slacks(device_model)
         _add_flow_slacks!(container, devices, device_model, network_model)
     end
@@ -883,6 +884,9 @@ function construct_device!(
     add_constraints!(container, FlowRateConstraint, devices, device_model, network_model)
     add_constraints!(
         container, sys, AngleDifferenceConstraint, devices, device_model, network_model,
+    )
+    _add_transformer_control_constraints!(
+        container, sys, devices, device_model, network_model,
     )
     add_feedforward_constraints!(container, device_model, devices)
     add_to_objective_function!(container, devices, device_model, DCPNetworkModel)
@@ -1009,6 +1013,7 @@ function construct_device!(
     @debug "construct_device DCPLL (ArgumentConstructStage)" _group =
         LOG_GROUP_BRANCH_CONSTRUCTIONS
     devices = get_available_components(device_model, sys)
+    add_variables!(container, PhaseShifterAngle, devices, device_model, network_model)
     add_variables!(
         container,
         FlowActivePowerFromToVariable,
@@ -1069,6 +1074,9 @@ function construct_device!(
     add_constraints!(
         container, sys, AngleDifferenceConstraint, devices, device_model, network_model,
     )
+    _add_transformer_control_constraints!(
+        container, sys, devices, device_model, network_model,
+    )
     add_feedforward_constraints!(container, device_model, devices)
     add_to_objective_function!(container, devices, device_model, DCPLLNetworkModel)
     add_constraint_dual!(container, sys, device_model)
@@ -1091,6 +1099,7 @@ function construct_device!(
     @debug "construct_device DCPLL StaticBranchBounds (ArgumentConstructStage)" _group =
         LOG_GROUP_BRANCH_CONSTRUCTIONS
     devices = get_available_components(device_model, sys)
+    add_variables!(container, PhaseShifterAngle, devices, device_model, network_model)
     add_variables!(
         container,
         FlowActivePowerFromToVariable,
@@ -1150,6 +1159,9 @@ function construct_device!(
     add_constraints!(
         container, sys, AngleDifferenceConstraint, devices, device_model, network_model,
     )
+    _add_transformer_control_constraints!(
+        container, sys, devices, device_model, network_model,
+    )
     add_feedforward_constraints!(container, device_model, devices)
     add_to_objective_function!(container, devices, device_model, DCPLLNetworkModel)
     add_constraint_dual!(container, sys, device_model)
@@ -1172,6 +1184,7 @@ function construct_device!(
     @debug "construct_device DCP StaticBranchBounds (ArgumentConstructStage)" _group =
         LOG_GROUP_BRANCH_CONSTRUCTIONS
     devices = get_available_components(device_model, sys)
+    add_variables!(container, PhaseShifterAngle, devices, device_model, network_model)
     add_variables!(container, FlowActivePowerVariable, devices, device_model, network_model)
     if get_use_slacks(device_model)
         _add_flow_slacks!(container, devices, device_model, network_model)
@@ -1209,6 +1222,9 @@ function construct_device!(
     add_constraints!(
         container, sys, AngleDifferenceConstraint, devices, device_model, network_model,
     )
+    _add_transformer_control_constraints!(
+        container, sys, devices, device_model, network_model,
+    )
     add_feedforward_constraints!(container, device_model, devices)
     add_to_objective_function!(container, devices, device_model, DCPNetworkModel)
     add_constraint_dual!(container, sys, device_model)
@@ -1224,6 +1240,15 @@ function construct_device!(
     network_model::NetworkModel{<:AbstractPTDFNetworkModel},
 ) where {T <: PSY.ACTransmission}
     devices = get_available_components(device_model, sys)
+    add_variables!(container, PhaseShifterAngle, devices, device_model, network_model)
+    add_to_expression!(
+        container,
+        ActivePowerBalance,
+        PhaseShifterAngle,
+        devices,
+        device_model,
+        network_model,
+    )
     if get_use_slacks(device_model)
         _add_flow_slacks!(container, devices, device_model, network_model)
     end
@@ -1290,6 +1315,9 @@ function construct_device!(
             network_model,
         )
     end
+    _add_transformer_control_constraints!(
+        container, sys, devices, device_model, network_model,
+    )
     add_feedforward_constraints!(container, device_model, devices)
     add_to_objective_function!(container, devices, device_model, PTDFNetworkModel)
     add_constraint_dual!(container, sys, device_model)
@@ -1304,6 +1332,15 @@ function construct_device!(
     network_model::NetworkModel{<:AbstractPTDFNetworkModel},
 ) where {T <: PSY.ACTransmission}
     devices = get_available_components(device_model, sys)
+    add_variables!(container, PhaseShifterAngle, devices, device_model, network_model)
+    add_to_expression!(
+        container,
+        ActivePowerBalance,
+        PhaseShifterAngle,
+        devices,
+        device_model,
+        network_model,
+    )
 
     add_variables!(container, FlowActivePowerVariable, devices, device_model, network_model)
 
@@ -1333,6 +1370,9 @@ function construct_device!(
     )
 
     add_constraints!(container, NetworkFlowConstraint, devices, device_model, network_model)
+    _add_transformer_control_constraints!(
+        container, sys, devices, device_model, network_model,
+    )
     add_feedforward_constraints!(container, device_model, devices)
     add_to_objective_function!(container, devices, device_model, PTDFNetworkModel)
     add_constraint_dual!(container, sys, device_model)

@@ -263,12 +263,6 @@ struct SecurityConstrainedStaticBranch <: AbstractSecurityConstrainedStaticBranc
 
 IOM.supports_outages(::Type{<:AbstractSecurityConstrainedStaticBranch}) = true
 
-# psy6: disabled pending transformer refactor
-# """
-# Branch formulation for PhaseShiftingTransformer flow control
-# """
-# struct PhaseAngleControl <: AbstractBranchFormulation end
-
 ############################### DC Branch Formulations #####################################
 abstract type AbstractTwoTerminalDCLineFormulation <: AbstractBranchFormulation end
 """

@@ -155,14 +155,42 @@ function construct_network!(
     return
 end
 
+_collect_phase_controlled_arcs!(
+    arcs::Set{Tuple{Int, Int}},
+    device_model::DeviceModel{T},
+    network_model::NetworkModel,
+) where {T <: PSY.ACTransmission} =
+    _foreach_branch(_all_branches(network_model, T)) do rep
+        _phase_controlled(rep, device_model, network_model) && push!(arcs, rep.arc)
+    end
+_collect_phase_controlled_arcs!(::Set{Tuple{Int, Int}}, ::DeviceModel, ::NetworkModel) =
+    nothing
+
+function _phase_controlled_arcs(
+    model::NetworkModel,
+    template::PowerOperationsProblemTemplate,
+)
+    arcs = Set{Tuple{Int, Int}}()
+    for branch_model in values(get_branch_models(template))
+        _collect_phase_controlled_arcs!(arcs, branch_model, model)
+    end
+    return arcs
+end
+
+# The constant `±b·α` injection pair for every shifted arc whose α is fixed. A
+# phase-controlled arc is skipped here and gets the variable pair from
+# `add_to_expression!(ActivePowerBalance, PhaseShifterAngle, ...)` instead.
 function _add_dc_phase_shift_injections!(
     container::OptimizationContainer,
     model::NetworkModel{<:AbstractPTDFNetworkModel},
+    template::PowerOperationsProblemTemplate,
 )
     network_reduction = get_network_reduction(model)
     nodal_expr = get_expression(container, ActivePowerBalance, PSY.ACBus)
     time_steps = get_time_steps(container)
+    controlled_arcs = _phase_controlled_arcs(model, template)
     for arc in PNM.get_arc_axis(network_reduction)
+        arc in controlled_arcs && continue
         injection = PNM.arc_dc_shift_injection(network_reduction, arc)
         iszero(injection) && continue
         from_no, to_no = arc
@@ -178,11 +206,11 @@ function construct_network!(
     container::OptimizationContainer,
     sys::PSY.System,
     model::NetworkModel{<:AbstractPTDFNetworkModel},
-    ::PowerOperationsProblemTemplate,
+    template::PowerOperationsProblemTemplate,
     ::ArgumentConstructStage,
 )
     _add_balance_slack_variables!(container, sys, model; reactive = false)
-    _add_dc_phase_shift_injections!(container, model)
+    _add_dc_phase_shift_injections!(container, model, template)
     return
 end
 

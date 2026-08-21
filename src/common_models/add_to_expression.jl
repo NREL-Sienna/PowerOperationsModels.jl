@@ -1909,46 +1909,6 @@ function add_to_expression!(
     return
 end
 
-# psy6: disabled pending transformer refactor
-# """
-# Implementation of add_to_expression! for lossless branch/network models
-# """
-# function add_to_expression!(
-#     container::OptimizationContainer,
-#     ::Type{T},
-#     ::Type{U},
-#     devices::IS.FlattenIteratorWrapper{PSY.PhaseShiftingTransformer},
-#     ::DeviceModel{PSY.PhaseShiftingTransformer, V},
-#     network_model::NetworkModel{<:AbstractPTDFNetworkModel},
-# ) where {T <: ActivePowerBalance, U <: PhaseShifterAngle, V <: PhaseAngleControl}
-#     var = get_variable(container, U, PSY.PhaseShiftingTransformer)
-#     expression = get_expression(container, T, PSY.ACBus)
-#     network_reduction = get_network_reduction(network_model)
-#     time_steps = get_time_steps(container)
-#     for d in devices
-#         name = PSY.get_name(d)
-#         bus_no_from =
-#             PNM.get_mapped_bus_number(network_reduction, PSY.get_from(PSY.get_arc(d)))
-#         bus_no_to = PNM.get_mapped_bus_number(network_reduction, PSY.get_to(PSY.get_arc(d)))
-#         # Per-device reactance multiplier for phase shifter
-#         x_mult = 1.0 / PSY.get_x(d, PSY.SU)
-#         for t in time_steps
-#             flow_variable = var[name, t]
-#             add_proportional_to_jump_expression!(
-#                 expression[bus_no_from, t],
-#                 flow_variable,
-#                 -x_mult * get_variable_multiplier(U, PSY.PhaseShiftingTransformer, V),
-#             )
-#             add_proportional_to_jump_expression!(
-#                 expression[bus_no_to, t],
-#                 flow_variable,
-#                 x_mult * get_variable_multiplier(U, PSY.PhaseShiftingTransformer, V),
-#             )
-#         end
-#     end
-#     return
-# end
-
 function add_to_expression!(
     container::OptimizationContainer,
     ::Type{T},
@@ -3175,5 +3135,47 @@ function add_to_expression!(
     _add_terminal_flow_to_nodal!(
         container, ReactivePowerBalance, U, devices, network_model, -1.0,
     )
+    return
+end
+
+"""
+Wire a phase-controlled circuit's variable shift into the PTDF nodal injections:
+
+    expr[from, t] += +b · α[c, t]        expr[to, t] += −b · α[c, t]
+
+the variable form of `PNM.arc_dc_shift_injection`, whose constant counterpart
+`_add_dc_phase_shift_injections!` skips for exactly these arcs. The pair cancels across the
+system balance, so copper-plate/area totals are untouched.
+"""
+function add_to_expression!(
+    container::OptimizationContainer,
+    ::Type{ActivePowerBalance},
+    ::Type{PhaseShifterAngle},
+    ::IS.FlattenIteratorWrapper{T},
+    device_model::DeviceModel{T, <:AbstractBranchFormulation},
+    network_model::NetworkModel{<:AbstractPTDFNetworkModel},
+) where {T <: PSY.ACTransmission}
+    has_container_key(container, PhaseShifterAngle, T) || return
+    var = get_variable(container, PhaseShifterAngle, T)
+    expression = get_expression(container, ActivePowerBalance, PSY.ACBus)
+    tracker = get_reduced_branch_tracker(network_model)
+    time_steps = get_time_steps(container)
+    _foreach_branch(_all_branches(network_model, T)) do rep
+        _phase_controlled(rep, device_model, network_model) || return
+        search_for_reduced_branch_expression!(
+            tracker, rep.arc, ActivePowerBalance, PhaseShifterAngle,
+        ) && return
+        b = _dc_susceptance(rep)
+        from_no = _from_number(rep)
+        to_no = _to_number(rep)
+        for t in time_steps
+            add_proportional_to_jump_expression!(
+                expression[from_no, t], var[rep.name, t], b,
+            )
+            add_proportional_to_jump_expression!(
+                expression[to_no, t], var[rep.name, t], -b,
+            )
+        end
+    end
     return
 end

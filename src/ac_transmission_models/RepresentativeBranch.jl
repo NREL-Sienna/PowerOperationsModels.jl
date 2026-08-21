@@ -144,9 +144,16 @@ _get_circuit(t::PSY.TwoWindingTransformer) = PSY.get_circuit(t)
 _get_circuit(t::PNM.ThreeWindingTransformerCircuit) = t.circuit
 _get_circuit(::Union{PSY.ACTransmission, PNM.AbstractReductionAggregate}) = nothing
 
+# Only these two branch formulations build the control variables, so a circuit modeled with
+# any other one has no control however its objective is set. Gating here rather than at each
+# consumer keeps the tap path, the phase path and the reduction taxonomy on one rule.
+_control_capable(::Type{<:Union{StaticBranch, StaticBranchBounds}}) = true
+_control_capable(::Type) = false
+_control_capable(::DeviceModel{D, F}) where {D, F} = _control_capable(F)
+
 _control_objective(::Nothing, ::DeviceModel) = PSY.TransformerControlObjective.UNDEFINED
 _control_objective(c::PSY.TransformerCircuit, d::DeviceModel) =
-    if PSY.get_available(c) && _control_enabled(d)
+    if PSY.get_available(c) && _control_enabled(d) && _control_capable(d)
         PSY.get_control_objective(c)
     else
         PSY.TransformerControlObjective.UNDEFINED
@@ -156,12 +163,29 @@ _control_objective(rep::RepresentativeBranch, d::DeviceModel) =
 
 const _VOLTAGE_CONTROL = PSY.TransformerControlObjective.VOLTAGE
 const _REACTIVE_CONTROL = PSY.TransformerControlObjective.REACTIVE_POWER_FLOW
+const _ACTIVE_CONTROL = PSY.TransformerControlObjective.ACTIVE_POWER_FLOW
+# Objectives the tap variable serves, and the one the phase-shifter angle serves.
 const _TAP_CONTROLS = (_VOLTAGE_CONTROL, _REACTIVE_CONTROL)
+const _PHASE_CONTROLS = (_ACTIVE_CONTROL,)
+
+"""
+The control objectives this network formulation actually builds. Sole authority for both
+the reduction taxonomy (`reduction_exceptions.jl`) and the merged-circuit guard in
+`_controlled_circuit_names`, so the two cannot drift.
+"""
+_implemented_controls(::NetworkModel{<:NativeACNetworkModel}) = _TAP_CONTROLS
+_implemented_controls(::NetworkModel{<:AbstractDCPNetworkModel}) = _PHASE_CONTROLS
+# NFA has no angles, so it carries neither control.
+_implemented_controls(::NetworkModel{<:AbstractNFANetworkModel}) = ()
+_implemented_controls(::NetworkModel) = ()
 
 _voltage_controlled(rep::RepresentativeBranch, d::DeviceModel) =
     _control_objective(rep, d) === _VOLTAGE_CONTROL
 _reactive_controlled(rep::RepresentativeBranch, d::DeviceModel) =
     _control_objective(rep, d) === _REACTIVE_CONTROL
+_active_controlled(rep::RepresentativeBranch, d::DeviceModel) =
+    _control_objective(rep, d) === _ACTIVE_CONTROL
+
 _tap_controlled(
     rep::RepresentativeBranch,
     d::DeviceModel,
@@ -170,11 +194,27 @@ _tap_controlled(
     _control_objective(rep, d) in _TAP_CONTROLS
 _tap_controlled(::RepresentativeBranch, ::DeviceModel, ::NetworkModel) = false
 
+_phase_controlled(
+    rep::RepresentativeBranch,
+    d::DeviceModel,
+    ::NetworkModel{<:AbstractDCPNetworkModel},
+) =
+    _control_objective(rep, d) in _PHASE_CONTROLS
+_phase_controlled(
+    ::RepresentativeBranch,
+    ::DeviceModel,
+    ::NetworkModel{<:AbstractNFANetworkModel},
+) =
+    false
+_phase_controlled(::RepresentativeBranch, ::DeviceModel, ::NetworkModel) = false
+
 _controlled_circuit_names(
     branch::Union{PSY.ACTransmission, PNM.ThreeWindingTransformerCircuit},
     device_model::DeviceModel,
+    network_model::NetworkModel,
 ) =
-    if _control_objective(_get_circuit(branch), device_model) in _TAP_CONTROLS
+    if _control_objective(_get_circuit(branch), device_model) in
+       _implemented_controls(network_model)
         [PNM.get_name(branch)]
     else
         String[]
@@ -182,13 +222,20 @@ _controlled_circuit_names(
 _controlled_circuit_names(
     entry::PNM.AbstractReductionAggregate,
     device_model::DeviceModel,
+    network_model::NetworkModel,
 ) = reduce(
     vcat,
-    (_controlled_circuit_names(member, device_model) for member in entry);
+    (
+        _controlled_circuit_names(member, device_model, network_model) for
+        member in entry
+    );
     init = String[],
 )
-_controlled_circuit_names(rep::RepresentativeBranch, device_model::DeviceModel) =
-    _controlled_circuit_names(rep.branch, device_model)
+_controlled_circuit_names(
+    rep::RepresentativeBranch,
+    device_model::DeviceModel,
+    network_model::NetworkModel,
+) = _controlled_circuit_names(rep.branch, device_model, network_model)
 
 _control_limits(::Nothing) = (min = -Inf, max = Inf)
 _control_limits(c::PSY.TransformerCircuit) = PSY.get_control_limits(c)

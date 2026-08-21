@@ -778,6 +778,7 @@ export ActiveRangeICConstraint
 export NodalBalanceActiveConstraint
 export ReferenceBusConstraint
 export VoltageMagnitudeConstraint
+export ActivePowerFlowControlConstraint
 export ReactivePowerFlowControlConstraint
 export VoltageControlConstraint
 export RegulatedVoltageMagnitudeConstraint
@@ -891,7 +892,6 @@ export StaticBranchBounds
 export StaticBranchUnbounded
 export SecurityConstrainedStaticBranch
 # psy6: disabled pending transformer refactor
-# export PhaseAngleControl
 # export TapControl
 # export VoltageControlTap
 export TapRatioVariable

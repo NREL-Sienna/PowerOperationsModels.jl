@@ -159,40 +159,58 @@ _pin_model_all_branches!(::Set{Int}, ::DeviceModel) = nothing
 
 _warn_circuit(o, m) =
     @warn "Circuit has control $o enabled but $m. This control will be ignored, and the circuit and its regulated bus may be reduced."
-_supports_tap(::NetworkModel{<:AbstractDCPNetworkModel}) = false
-_supports_tap(::NetworkModel) = true
 
-const _IMPLEMENTED_CONTROLS = _TAP_CONTROLS
+# One warn per rejected circuit, keyed on why it was rejected. `_implemented_controls` is
+# the single table both this taxonomy and `_controlled_circuit_names` read.
+function _warn_unimplemented_control(obj, network_model::NetworkModel)
+    network = nameof(get_network_formulation(network_model))
+    if obj in _TAP_CONTROLS
+        _warn_circuit(obj, "tap control is not supported on $network networks")
+    elseif obj in _PHASE_CONTROLS
+        _warn_circuit(obj, "phase control is not supported on $network networks")
+    else
+        _warn_circuit(
+            obj,
+            "this control is not yet implemented for this DeviceModel/NetworkModel pair",
+        )
+    end
+    return
+end
 
-# A transformer circuit with a bus-based control objective on a transformer
-# with controls enabled must not be reduced away, nor can its regulated bus.
+# A transformer circuit with a control objective this network model actually implements
+# must not be reduced away, nor can the bus its control regulates.
 function _pin_transformer_controls!(
     buses::Set{Int},
-    m::DeviceModel{<:_TRANSFORMERS},
+    m::DeviceModel{<:_TRANSFORMERS, F},
     sys::PSY.System,
     network_model::NetworkModel,
-)
+) where {F <: AbstractBranchFormulation}
     _control_enabled(m) || return
+    implemented = _implemented_controls(network_model)
+    capable = _control_capable(F)
     for transformer in get_device_cache(m)
         for circuit in PSY.get_circuits(transformer)
             obj = PSY.get_control_objective(circuit)
-            if obj.value > 0 && !PSY.get_available(circuit)
+            obj.value > 0 || continue
+            if !PSY.get_available(circuit)
                 _warn_circuit(obj, "the circuit is unavailable")
                 continue
             end
-            if obj in _TAP_CONTROLS && !_supports_tap(network_model)
-                _warn_circuit(obj, "DC networks do not support variable-tap")
-                continue
-            end
-            if !(obj in _IMPLEMENTED_CONTROLS)
+            if !capable
                 _warn_circuit(
                     obj,
-                    "this control is not yet implemented for this DeviceModel/NetworkModel pair",
+                    "the $(nameof(F)) formulation carries no control variable",
                 )
                 continue
             end
+            if !(obj in implemented)
+                _warn_unimplemented_control(obj, network_model)
+                continue
+            end
             _push_component_buses!(buses, circuit)
-            if PSY.get_control_objective(circuit) === _VOLTAGE_CONTROL
+            # Only VOLTAGE control reaches off the circuit; the flow objectives regulate
+            # the circuit's own flow.
+            if obj === _VOLTAGE_CONTROL
                 push!(buses, PSY.get_regulated_bus_number(circuit))
             end
         end

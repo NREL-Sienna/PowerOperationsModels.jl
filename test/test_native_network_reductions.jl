@@ -362,55 +362,6 @@ end
     @test occursin("absorbed by a network reduction", log)
 end
 
-# TODO: reenable with Phase angle control
-@testset "PhaseAngleControl branch absorbed by a network reduction fails with a clear error" begin
-    #    # "1-6-i_1" is one segment of the (1,2) series chain, so under reduction it has no
-    #    # direct-branch entry of its own — the same _validate_controlled_branch_not_reduced
-    #    # gate exercised above for VoltageControlTap also covers PhaseAngleControl.
-    #    sys = _case11_with_forecast()
-    #    line = PSY.get_component(Line, sys, "1-6-i_1")
-    #    arc = PSY.get_arc(line)
-    #
-    #    # TODO: phase_angle_limits?
-    #    ps = PSY.TwoWindingTransformer(;
-    #        name = PSY.get_name(line),
-    #        circuit = PSY.TransformerCircuit(;
-    #            available = true,
-    #            active_power_flow = 0.0,
-    #            reactive_power_flow = 0.0,
-    #            r = PSY.get_r(line, PSY.SU),
-    #            x = PSY.get_x(line, PSY.SU),
-    #            tap = 1.0,
-    #            α = 0.0,
-    #            rating = PSY.get_rating(line, PSY.SU),
-    #            arc = arc,
-    #            base_power = PSY.get_base_power(sys, PSY.NU)
-    #        ),
-    #        magnetizing_shunt = 0.0 + 0.0im,
-    #        shunt_location = TwoWindingTransformerShuntLocation.PRIMARY
-    #    )
-    #    PSY.add_component!(sys, ps)
-    #    PSY.remove_component!(sys, line)
-    #
-    #    net = NetworkModel(
-    #        DCPNetworkModel;
-    #        network_source = NetworkReductionSpec(
-    #            PNM.RadialReduction(),
-    #            PNM.DegreeTwoReduction(),
-    #        ),
-    #    )
-    #    template = get_thermal_dispatch_template_network(net)
-    #    set_device_model!(
-    #        template, DeviceModel(PSY.TwoWindingTransformer, PhaseAngleControl),
-    #    )
-    #    model = DecisionModel(template, sys; optimizer = HiGHS_optimizer)
-    #    out = mktempdir(; cleanup = true)
-    #    @test build!(model; output_dir = out, console_level = Logging.Error) ==
-    #          IOM.ModelBuildStatus.FAILED
-    #    log = read(joinpath(out, "operation_problem.log"), String)
-    #    @test occursin("absorbed by a network reduction", log)
-end
-
 @testset "a controlled circuit survives the network reduction" begin
     # Controlled transformers pin their endpoint buses irreducible, so the circuit keeps
     # its own arc (and therefore its own tap variable) even with reductions requested.
