@@ -334,12 +334,11 @@ function _phase_controlled_circuit_names(
     device_model::DeviceModel{<:_TRANSFORMERS, F},
 ) where {F <: AbstractBranchFormulation}
     names = String[]
-    (_control_enabled(device_model) && _control_capable(F)) || return names
+    _control_enabled(device_model) || return names
     for d in get_device_cache(device_model)
         circuits = PSY.get_circuits(d)
         for (i, circuit) in enumerate(circuits)
-            PSY.get_available(circuit) || continue
-            PSY.get_control_objective(circuit) === _ACTIVE_CONTROL || continue
+            _control_objective(circuit, device_model, network_model) in (_ACTIVE_CONTROL, _VOLTAGE_CONTROL) || continue
             push!(
                 names,
                 length(circuits) == 1 ? PSY.get_name(d) : "$(PSY.get_name(d))_winding_$i",
@@ -365,7 +364,7 @@ function _check_security_constrained_phase_control!(
     isempty(sc_types) && return
     controlled = reduce(
         vcat,
-        (_phase_controlled_circuit_names(m) for m in values(branch_models));
+        (_phase_controlled_circuit_names(m, network_model) for m in values(branch_models));
         init = String[],
     )
     isempty(controlled) && return
@@ -432,10 +431,9 @@ function _voltage_regulated_buses(
     pairs = Tuple{String, PSY.ACBus}[]
     _control_enabled(device_model) || return pairs
     _VOLTAGE_CONTROL in _implemented_controls(network_model) || return pairs
-    _control_capable(F) || return pairs
     for d in get_available_components(device_model, sys)
         for (i, circuit) in enumerate(PSY.get_circuits(d))
-            PSY.get_control_objective(circuit) === _VOLTAGE_CONTROL || continue
+            _control_objective(circuit, device_model, network_model) === _VOLTAGE_CONTROL || continue
             bus = PSY.get_bus(sys, PSY.get_regulated_bus_number(circuit))
             name = "$(PSY.get_name(d))_winding_$i"
             if isnothing(bus)

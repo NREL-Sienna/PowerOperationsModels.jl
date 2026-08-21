@@ -187,20 +187,12 @@ function _pin_transformer_controls!(
 ) where {F <: AbstractBranchFormulation}
     _control_enabled(m) || return
     implemented = _implemented_controls(network_model)
-    capable = _control_capable(F)
     for transformer in get_device_cache(m)
         for circuit in PSY.get_circuits(transformer)
             obj = PSY.get_control_objective(circuit)
             obj.value > 0 || continue
             if !PSY.get_available(circuit)
                 _warn_circuit(obj, "the circuit is unavailable")
-                continue
-            end
-            if !capable
-                _warn_circuit(
-                    obj,
-                    "the $(nameof(F)) formulation carries no control variable",
-                )
                 continue
             end
             if !(obj in implemented)

@@ -43,13 +43,14 @@ function get_default_time_series_names(
 end
 
 const _TRANSFORMERS = Union{PSY.TwoWindingTransformer, PSY.ThreeWindingTransformer}
+const _CONTROL_FORMULATIONS = Union{StaticBranch, StaticBranchBounds}
 
 const ENABLE_CONTROLS_KEY = "enable_controls"
 
-_control_attribute(::Union{Type{<:_TRANSFORMERS}}) = (ENABLE_CONTROLS_KEY => false,)
-_control_attribute(::Type{<:PSY.ACTransmission}) = ()
+_control_attribute(::Type{<:_TRANSFORMERS}, ::Type{<:_CONTROL_FORMULATIONS}) = (ENABLE_CONTROLS_KEY => false,)
+_control_attribute(::Type{<:PSY.ACTransmission}, ::Type{<:AbstractBranchFormulation}) = ()
 
-_control_enabled(m::DeviceModel{<:_TRANSFORMERS}) =
+_control_enabled(m::DeviceModel{<:_TRANSFORMERS, <:_CONTROL_FORMULATIONS}) =
     get_attribute(m, ENABLE_CONTROLS_KEY) === true
 _control_enabled(::DeviceModel) = false
 
@@ -66,9 +67,10 @@ function get_default_attributes(
     ::Type{U},
     ::Type{V},
 ) where {U <: PSY.ACTransmission, V <: AbstractBranchFormulation}
+    @show U, V
     return Dict{String, Any}(
         PARALLEL_BRANCH_MAX_RATING_KEY => "single_element_contingency",
-        _control_attribute(U)...,
+        _control_attribute(U, V)...,
     )
 end
 
@@ -79,7 +81,7 @@ function get_default_attributes(
     return Dict{String, Any}(
         PARALLEL_BRANCH_MAX_RATING_KEY => "single_element_contingency",
         "include_planned_outages" => false,
-        _control_attribute(U)...,
+        _control_attribute(U, V)...,
     )
 end
 
@@ -124,13 +126,13 @@ _control_var_enabled(::Type{<:VariableType}, ::DeviceModel) = true
 
 # Does this branch use this control variable or constraint?
 _branch_uses_control(
-    ::Type{TapRatioVariable, VoltageControlConstraint, ReactivePowerFlowControlConstraint},
+    ::Union{Type{TapRatioVariable}, Type{VoltageControlConstraint}, Type{ReactivePowerFlowControlConstraint}},
     branch,
     device_model::DeviceModel,
     network_model::NetworkModel,
 ) = _tap_controlled(branch, device_model, network_model)
 _branch_uses_control(
-    ::Type{PhaseShifterAngle, ActivePowerFlowControlConstraint},
+    ::Union{Type{PhaseShifterAngle}, Type{ActivePowerFlowControlConstraint}},
     branch,
     device_model::DeviceModel,
     network_model::NetworkModel,
@@ -198,16 +200,7 @@ function _branch_variable_bounds(
 end
 
 _branch_variable_bounds(
-    ::Type{TapRatioVariable},
-    rep::RepresentativeBranch,
-    ::DeviceModel{<:PSY.ACTransmission, <:AbstractBranchFormulation},
-    ::NetworkModel,
-) = _control_limits(rep)
-
-# `control_limits` is objective-shaped: phase-angle bounds in radians under an
-# ACTIVE_POWER_FLOW objective, so no base conversion (same as `_angle_limits`).
-_branch_variable_bounds(
-    ::Type{PhaseShifterAngle},
+    ::Union{Type{TapRatioVariable}, Type{PhaseShifterAngle}},
     rep::RepresentativeBranch,
     ::DeviceModel{<:PSY.ACTransmission, <:AbstractBranchFormulation},
     ::NetworkModel,
@@ -1493,7 +1486,7 @@ function _branches_for_cons(
         Type{VoltageControlConstraint},
         Type{ReactivePowerFlowControlConstraint},
         Type{ActivePowerFlowControlConstraint},
-    }
+    },
     device_model::DeviceModel{T},
     network_model::NetworkModel,
 ) where {T}
@@ -1502,6 +1495,7 @@ function _branches_for_cons(
         _branch_uses_control(C, branch, device_model, network_model) &&
             push!(members, branch)
     end
+    return members
 end
 
 _voltage_magnitude(container, name, ::NetworkModel{ACPNetworkModel}) =

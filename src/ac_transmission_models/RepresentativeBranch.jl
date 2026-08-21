@@ -140,44 +140,35 @@ _dc_resistance(rep::RepresentativeBranch) = PNM.arc_dc_resistance(rep.nr, rep.ar
 
 ################################## Transformer control #####################################
 
+_implemented_controls(::NetworkModel{<:_TAP_NETWORKS}) = _TAP_CONTROLS
+_implemented_controls(::NetworkModel{<:_PHASE_NETWORKS}) = _PHASE_CONTROLS
+_implemented_controls(::NetworkModel) = ()
+
 _get_circuit(t::PSY.TwoWindingTransformer) = PSY.get_circuit(t)
 _get_circuit(t::PNM.ThreeWindingTransformerCircuit) = t.circuit
 _get_circuit(::Union{PSY.ACTransmission, PNM.AbstractReductionAggregate}) = nothing
 
-# Only these two branch formulations build the control variables, so a circuit modeled with
-# any other one has no control however its objective is set. Gating here rather than at each
-# consumer keeps the tap path, the phase path and the reduction taxonomy on one rule.
-_control_capable(::Type{<:Union{StaticBranch, StaticBranchBounds}}) = true
-_control_capable(::Type) = false
-_control_capable(::DeviceModel{D, F}) where {D, F} = _control_capable(F)
+const _UNDEFINED_CONTROL = PSY.TransformerControlObjective.UNDEFINED
 
-_control_objective(::Nothing, ::DeviceModel) = PSY.TransformerControlObjective.UNDEFINED
-_control_objective(c::PSY.TransformerCircuit, d::DeviceModel) =
-    if PSY.get_available(c) && _control_enabled(d) && _control_capable(d)
-        PSY.get_control_objective(c)
+_control_objective(::Nothing, ::DeviceModel) = _UNDEFINED_CONTROL
+_control_objective(c::PSY.TransformerCircuit, d::DeviceModel, n::NetworkModel) =
+    if PSY.get_available(c) && _control_enabled(d)
+        obj = PSY.get_control_objective(c)
+        obj in _implemented_controls(n) ? obj : _UNDEFINED_CONTROL
     else
-        PSY.TransformerControlObjective.UNDEFINED
+        _UNDEFINED_CONTROL
     end
-_control_objective(rep::RepresentativeBranch, d::DeviceModel) =
-    _control_objective(_get_circuit(rep.branch), d)
+_control_objective(rep::RepresentativeBranch, d::DeviceModel, n::NetworkModel) =
+    _control_objective(_get_circuit(rep.branch), d, n)
 
 const _VOLTAGE_CONTROL = PSY.TransformerControlObjective.VOLTAGE
 const _REACTIVE_CONTROL = PSY.TransformerControlObjective.REACTIVE_POWER_FLOW
 const _ACTIVE_CONTROL = PSY.TransformerControlObjective.ACTIVE_POWER_FLOW
-# Objectives the tap variable serves, and the one the phase-shifter angle serves.
 const _TAP_CONTROLS = (_VOLTAGE_CONTROL, _REACTIVE_CONTROL)
 const _PHASE_CONTROLS = (_ACTIVE_CONTROL,)
 
-"""
-The control objectives this network formulation actually builds. Sole authority for both
-the reduction taxonomy (`reduction_exceptions.jl`) and the merged-circuit guard in
-`_controlled_circuit_names`, so the two cannot drift.
-"""
-_implemented_controls(::NetworkModel{<:NativeACNetworkModel}) = _TAP_CONTROLS
-_implemented_controls(::NetworkModel{<:AbstractDCPNetworkModel}) = _PHASE_CONTROLS
-# NFA has no angles, so it carries neither control.
-_implemented_controls(::NetworkModel{<:AbstractNFANetworkModel}) = ()
-_implemented_controls(::NetworkModel) = ()
+const _TAP_NETWORKS = NativeACNetworkModel
+const _PHASE_NETWORKS = Union{DCPNetworkModel, DCPLLNetworkModel, AbstractPTDFNetworkModel}
 
 _voltage_controlled(rep::RepresentativeBranch, d::DeviceModel) =
     _control_objective(rep, d) === _VOLTAGE_CONTROL
@@ -189,23 +180,15 @@ _active_controlled(rep::RepresentativeBranch, d::DeviceModel) =
 _tap_controlled(
     rep::RepresentativeBranch,
     d::DeviceModel,
-    ::NetworkModel{<:NativeACNetworkModel},
-) =
-    _control_objective(rep, d) in _TAP_CONTROLS
+    ::NetworkModel{<:_TAP_NETWORKS},
+) = _control_objective(rep, d) in _TAP_CONTROLS
 _tap_controlled(::RepresentativeBranch, ::DeviceModel, ::NetworkModel) = false
 
 _phase_controlled(
     rep::RepresentativeBranch,
     d::DeviceModel,
-    ::NetworkModel{<:AbstractDCPNetworkModel},
-) =
-    _control_objective(rep, d) in _PHASE_CONTROLS
-_phase_controlled(
-    ::RepresentativeBranch,
-    ::DeviceModel,
-    ::NetworkModel{<:AbstractNFANetworkModel},
-) =
-    false
+    ::NetworkModel{<:_PHASE_NETWORKS},
+) = _control_objective(rep, d) in _PHASE_CONTROLS
 _phase_controlled(::RepresentativeBranch, ::DeviceModel, ::NetworkModel) = false
 
 _controlled_circuit_names(
