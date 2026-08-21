@@ -151,15 +151,22 @@ _control_objective(c::PSY.TransformerCircuit, d::DeviceModel) =
     else
         PSY.TransformerControlObjective.UNDEFINED
     end
-_control_objective(rep::RepresentativeBranch, d::DeviceModel) = _control_objective(_get_circuit(rep.branch), d)
+_control_objective(rep::RepresentativeBranch, d::DeviceModel) =
+    _control_objective(_get_circuit(rep.branch), d)
 
 const _VOLTAGE_CONTROL = PSY.TransformerControlObjective.VOLTAGE
 const _REACTIVE_CONTROL = PSY.TransformerControlObjective.REACTIVE_POWER_FLOW
 const _TAP_CONTROLS = (_VOLTAGE_CONTROL, _REACTIVE_CONTROL)
 
-_voltage_controlled(rep::RepresentativeBranch, d::DeviceModel) = _control_objective(rep, d) === _VOLTAGE_CONTROL
-_reactive_controlled(rep::RepresentativeBranch, d::DeviceModel) = _control_objective(rep, d) === _REACTIVE_CONTROL
-_tap_controlled(rep::RepresentativeBranch, d::DeviceModel, ::NetworkModel{<:NativeACNetworkModel}) =
+_voltage_controlled(rep::RepresentativeBranch, d::DeviceModel) =
+    _control_objective(rep, d) === _VOLTAGE_CONTROL
+_reactive_controlled(rep::RepresentativeBranch, d::DeviceModel) =
+    _control_objective(rep, d) === _REACTIVE_CONTROL
+_tap_controlled(
+    rep::RepresentativeBranch,
+    d::DeviceModel,
+    ::NetworkModel{<:NativeACNetworkModel},
+) =
     _control_objective(rep, d) in _TAP_CONTROLS
 _tap_controlled(::RepresentativeBranch, ::DeviceModel, ::NetworkModel) = false
 
@@ -167,8 +174,11 @@ _controlled_circuit_names(
     branch::Union{PSY.ACTransmission, PNM.ThreeWindingTransformerCircuit},
     device_model::DeviceModel,
 ) =
-    _control_objective(_get_circuit(branch), device_model) in _TAP_CONTROLS ?
-    [PNM.get_name(branch)] : String[]
+    if _control_objective(_get_circuit(branch), device_model) in _TAP_CONTROLS
+        [PNM.get_name(branch)]
+    else
+        String[]
+    end
 _controlled_circuit_names(
     entry::PNM.AbstractReductionAggregate,
     device_model::DeviceModel,

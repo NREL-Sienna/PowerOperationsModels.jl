@@ -366,13 +366,14 @@ _voltage_regulation_can_collide(::NetworkModel{LPACCNetworkModel}) = true
 # DeviceModel alias, so this one default covers both device and branch models). One
 # specialization per regulating formulation, reusing each family's regulated-bus
 # resolver.
-_voltage_regulated_buses(::IOM.DeviceModel, ::PSY.System, ::NetworkModel) = Tuple{String, PSY.ACBus}[]
+_voltage_regulated_buses(::IOM.DeviceModel, ::PSY.System, ::NetworkModel) =
+    Tuple{String, PSY.ACBus}[]
 
 # Regulated buses from VOLTAGE-controlled transformers on AC networks
 function _voltage_regulated_buses(
     device_model::DeviceModel{<:_TRANSFORMERS, F},
     sys::PSY.System,
-    network_model::NetworkModel
+    network_model::NetworkModel,
 ) where {F <: AbstractBranchFormulation}
     pairs = Tuple{String, PSY.ACBus}[]
     _control_enabled(device_model) || return pairs
@@ -383,7 +384,9 @@ function _voltage_regulated_buses(
             bus = PSY.get_bus(sys, PSY.get_regulated_bus_number(circuit))
             name = "$(PSY.get_name(d))_winding_$i"
             if isnothing(bus)
-                error("The regulated bus number for circuit $name is not a valid bus number: it must correspond to a valid bus number in the network.")
+                error(
+                    "The regulated bus number for circuit $name is not a valid bus number: it must correspond to a valid bus number in the network.",
+                )
             end
             push!(pairs, (name, bus))
         end
@@ -391,11 +394,10 @@ function _voltage_regulated_buses(
     return pairs
 end
 
-
 function _voltage_regulated_buses(
     device_model::IOM.DeviceModel{T, ShuntSusceptanceDispatch},
     sys::PSY.System,
-    ::NetworkModel
+    ::NetworkModel,
 ) where {T <: PSY.FACTSControlDevice}
     pairs = Tuple{String, PSY.ACBus}[]
     for d in get_available_components(device_model, sys)
@@ -409,7 +411,7 @@ end
 function _voltage_regulated_buses(
     device_model::IOM.DeviceModel{T, VoltageControlConverter},
     sys::PSY.System,
-    ::NetworkModel
+    ::NetworkModel,
 ) where {T <: PSY.InterconnectingConverter}
     pairs = Tuple{String, PSY.ACBus}[]
     for d in get_available_components(device_model, sys)
@@ -423,7 +425,7 @@ end
 function _voltage_regulated_buses(
     device_model::IOM.DeviceModelForBranches{T, VoltageControlVSC},
     sys::PSY.System,
-    ::NetworkModel
+    ::NetworkModel,
 ) where {T <: PSY.TwoTerminalVSCLine}
     pairs = Tuple{String, PSY.ACBus}[]
     for d in get_available_components(device_model, sys)

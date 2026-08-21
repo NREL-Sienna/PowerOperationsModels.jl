@@ -131,7 +131,7 @@ function _pin_outage_buses!(buses::Set{Int}, m::DeviceModel, sys::PSY.System)
                     IS.ConflictingInputsError(
                         "Monitored component with UUID $(uuid) on outage $(IS.get_uuid(outage)) not found in system. Data requires correction",
                     ),
-)
+                )
             end
             _push_component_buses!(buses, component)
         end
@@ -170,7 +170,7 @@ function _pin_transformer_controls!(
     buses::Set{Int},
     m::DeviceModel{<:_TRANSFORMERS},
     sys::PSY.System,
-    network_model::NetworkModel
+    network_model::NetworkModel,
 )
     _control_enabled(m) || return
     for transformer in get_device_cache(m)
@@ -185,7 +185,10 @@ function _pin_transformer_controls!(
                 continue
             end
             if !(obj in _IMPLEMENTED_CONTROLS)
-                _warn_circuit(obj, "this control is not yet implemented for this DeviceModel/NetworkModel pair")
+                _warn_circuit(
+                    obj,
+                    "this control is not yet implemented for this DeviceModel/NetworkModel pair",
+                )
                 continue
             end
             _push_component_buses!(buses, circuit)
@@ -197,4 +200,5 @@ function _pin_transformer_controls!(
     return
 end
 
-_pin_transformer_controls!(::Set{Int}, ::DeviceModel, ::PSY.System, ::NetworkModel) = nothing
+_pin_transformer_controls!(::Set{Int}, ::DeviceModel, ::PSY.System, ::NetworkModel) =
+    nothing

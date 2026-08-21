@@ -119,14 +119,30 @@ _control_var_enabled(::_CONTROL_VARS, d::DeviceModel) = _control_enabled(d)
 _control_var_enabled(::Type{<:VariableType}, ::DeviceModel) = true
 
 # Does this branch use this control variable?
-_branch_uses_control(::Type{TapRatioVariable}, branch, device_model::DeviceModel, network_model::NetworkModel) = _tap_controlled(branch, device_model, network_model)
-_branch_uses_control(::Type{PhaseShifterAngle}, branch, device_model::DeviceModel, network_model::NetworkModel) = _phase_controlled(branch, device_model, network_model)
+_branch_uses_control(
+    ::Type{TapRatioVariable},
+    branch,
+    device_model::DeviceModel,
+    network_model::NetworkModel,
+) = _tap_controlled(branch, device_model, network_model)
+_branch_uses_control(
+    ::Type{PhaseShifterAngle},
+    branch,
+    device_model::DeviceModel,
+    network_model::NetworkModel,
+) = _phase_controlled(branch, device_model, network_model)
 
-_warn_tap_nonconvex(::Type{TapRatioVariable}, ::NetworkModel{LPACCNetworkModel}, branches) = isempty(branches) || @warn "Tap control makes LPAC network models non-convex. Use Ipopt or change circuit controls."
+_warn_tap_nonconvex(::Type{TapRatioVariable}, ::NetworkModel{LPACCNetworkModel}, branches) =
+    isempty(branches) ||
+    @warn "Tap control makes LPAC network models non-convex. Use Ipopt or change circuit controls."
 _warn_tap_nonconvex(::Type{<:VariableType}, ::NetworkModel, _) = nothing
 
 # If this is a control variable, only get branches with that control active.
-function _branches_for_var(V::_CONTROL_VARS, device_model::DeviceModel{T}, network_model::NetworkModel) where {T}
+function _branches_for_var(
+    V::_CONTROL_VARS,
+    device_model::DeviceModel{T},
+    network_model::NetworkModel,
+) where {T}
     members = RepresentativeBranch[]
     _foreach_branch(_all_branches(network_model, T)) do branch
         if branch.reduction !== DIRECT_BRANCH_MAP
@@ -144,7 +160,11 @@ function _branches_for_var(V::_CONTROL_VARS, device_model::DeviceModel{T}, netwo
     _warn_tap_nonconvex(V, network_model, members)
     return members
 end
-_branches_for_var(::Type{<:VariableType}, ::DeviceModel{T}, network_model::NetworkModel) where {T} = _all_branches(network_model, T)
+_branches_for_var(
+    ::Type{<:VariableType},
+    ::DeviceModel{T},
+    network_model::NetworkModel,
+) where {T} = _all_branches(network_model, T)
 
 _branch_variable_bounds(
     ::Type{V},
@@ -190,7 +210,11 @@ function _branch_variable_bounds(
     return (-rating, rating)
 end
 
-_static_branch_rate_limits(::Type{<:AbstractACActivePowerFlow}, rep::RepresentativeBranch, device_model::DeviceModel) =
+_static_branch_rate_limits(
+    ::Type{<:AbstractACActivePowerFlow},
+    rep::RepresentativeBranch,
+    device_model::DeviceModel,
+) =
     _flow_limits(rep, device_model)
 
 function _static_branch_rate_limits(
@@ -202,7 +226,9 @@ function _static_branch_rate_limits(
     return (min = -rating, max = rating)
 end
 
-_is_slack(::Union{Type{FlowActivePowerSlackLowerBound}, Type{FlowActivePowerSlackUpperBound}}) = true
+_is_slack(
+    ::Union{Type{FlowActivePowerSlackLowerBound}, Type{FlowActivePowerSlackUpperBound}},
+) = true
 _is_slack(::Type{<:VariableType}) = false
 
 function _branch_variable_bounds(
@@ -1481,7 +1507,8 @@ function _add_reactive_control_constraints!(
         cont_lims = _quantity_limits(rep)
         line_lims = _flow_limits(rep, device_model)
 
-        (line_lims.min <= cont_lims.min <= cont_lims.max <= line_lims.max) || error("Control limits and line rating for circuit $(rep.name) disagree.")
+        (line_lims.min <= cont_lims.min <= cont_lims.max <= line_lims.max) ||
+            error("Control limits and line rating for circuit $(rep.name) disagree.")
 
         for t in time_steps
             cons[rep.name, 1, t] =
@@ -1681,7 +1708,11 @@ function add_constraints!(
         x = -b / ymag2
 
         for t in time_steps
-            tm = _tap_controlled(rep, device_model, network_model) ? tap_var[name, t] : adm.tap
+            tm = if _tap_controlled(rep, device_model, network_model)
+                tap_var[name, t]
+            else
+                adm.tap
+            end
             tr = tm * cos(adm.shift)
             ti = tm * sin(adm.shift)
             tm2 = tm^2
@@ -1952,7 +1983,10 @@ function add_constraints!(
                 else
                     p[name, t]
                 end
-            cons[name, t] = JuMP.@constraint(jump_model, flow == b * (va[from_name, t] - va[to_name, t] - shift))
+            cons[name, t] = JuMP.@constraint(
+                jump_model,
+                flow == b * (va[from_name, t] - va[to_name, t] - shift)
+            )
         end
     end
     return

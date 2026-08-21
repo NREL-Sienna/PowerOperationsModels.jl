@@ -53,7 +53,8 @@ end
         fixture = case.make(mode)
         model, status = _build_controlled(
             fixture.sys, network_formulation, case.device_type;
-            enable = false, optimizer = ipopt_optimizer, formulation = branch_formulation,
+            enable = false, optimizer = ipopt_optimizer,
+            formulation = branch_formulation,
         )
         @test status == IOM.ModelBuildStatus.BUILT
 
@@ -149,7 +150,12 @@ end
         numbers = case.voltage_bus_numbers(rawsys)
         for network_formulation in VOLTAGE_NETWORKS, number in numbers
             bus_name = PSY.get_name(PSY.get_bus(rawsys, number))
-            free_vm = _uncontrolled_voltage(case, bus_name, network_formulation, branch_formulation)
+            free_vm = _uncontrolled_voltage(
+                case,
+                bus_name,
+                network_formulation,
+                branch_formulation,
+            )
             limits = (min = free_vm - 0.02, max = free_vm - 0.01)
 
             fixture =
@@ -218,7 +224,8 @@ end
         )
         model_fixed, status_fixed = _build_controlled(
             fixed.sys, network_formulation, case.device_type;
-            enable = false, optimizer = ipopt_optimizer, formulation = branch_formulation,
+            enable = false, optimizer = ipopt_optimizer,
+            formulation = branch_formulation,
         )
         @test status_fixed == IOM.ModelBuildStatus.BUILT
         @test solve!(model_fixed) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
