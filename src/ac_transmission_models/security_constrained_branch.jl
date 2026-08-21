@@ -2,70 +2,8 @@
 # (`SecurityConstrainedStaticBranch`). Ported from PowerSimulations.jl
 # `ac_transmission_security_constrained_models.jl` (PR #1579) and adapted to
 # PS6 units (`PSY.SU`). The MODF-derived post-contingency flow expression is
-# per-unit on the system base, so every emergency-rating RHS is per-unit too:
-# PNM aggregators (`get_equivalent_emergency_rating`) are already system-base
-# (NO `PSY.SU`); raw-device getters use `PSY.get_rating_b(d, PSY.SU)` (system
-# per-unit) with fallback to `PSY.get_rating(d, PSY.SU)`.
-
-# -----------------------------------------------------
-# ------ RATING FUNCTIONS FOR EMERGENCY RATINGS -------
-# -----------------------------------------------------
-"""
-Emergency Min and max limits for Abstract Branch Formulation and Post-Contingency conditions.
-Covers both `PNM.BranchesParallel` (homogeneous) and `PNM.MixedBranchesParallel`
-groups; PNM's `get_equivalent_emergency_rating` aggregates the per-circuit
-emergency ratings as a sum-of-max, matching the max-flow capacity of the group.
-The PNM aggregator is system-base (per-unit), so it is NOT passed `PSY.SU`.
-"""
-function get_emergency_min_max_limits(
-    double_circuit::PNM.AbstractBranchesParallel,
-    ::Type{<:PostContingencyConstraintType},
-    ::Type{<:AbstractBranchFormulation},
-)
-    equivalent_rating = PNM.get_equivalent_emergency_rating(double_circuit)
-    return (min = -1 * equivalent_rating, max = equivalent_rating)
-end
-
-"""
-Min and max limits for Abstract Branch Formulation and Post-Contingency conditions
-"""
-function get_emergency_min_max_limits(
-    transformer_entry::PNM.ThreeWindingTransformerCircuit,
-    ::Type{<:PostContingencyConstraintType},
-    ::Type{<:AbstractBranchFormulation},
-)
-    equivalent_rating = PNM.get_equivalent_emergency_rating(transformer_entry)
-    return (min = -1 * equivalent_rating, max = equivalent_rating)
-end
-
-"""
-Min and max limits for Abstract Branch Formulation and Post-Contingency conditions
-"""
-function get_emergency_min_max_limits(
-    series_chain::PNM.BranchesSeries,
-    ::Type{<:PostContingencyConstraintType},
-    ::Type{<:AbstractBranchFormulation},
-)
-    equivalent_rating = PNM.get_equivalent_emergency_rating(series_chain)
-    return (min = -1 * equivalent_rating, max = equivalent_rating)
-end
-
-"""
-Min and max limits for Abstract Branch Formulation and Post-Contingency conditions.
-Raw `PSY.ACTransmission` device: the emergency rating is sourced from
-`PNM.get_equivalent_emergency_rating` (system per-unit), which returns `rating_b`
-and falls back to the normal-operation `rating` when `rating_b` is undefined —
-matching the three reduction-entry methods above and keeping the rating fallback
-in a single place. PNM emits an `@debug` note when the fallback is used.
-"""
-function get_emergency_min_max_limits(
-    device::PSY.ACTransmission,
-    ::Type{<:PostContingencyConstraintType},
-    ::Type{<:AbstractBranchFormulation},
-)
-    equivalent_rating = PNM.get_equivalent_emergency_rating(device)
-    return (min = -1 * equivalent_rating, max = equivalent_rating)
-end
+# per-unit on the system base, and so is every emergency-rating RHS it is
+# compared against (see `_emergency_flow_limits`).
 
 # psy6: disabled pending transformer refactor
 # """
@@ -270,23 +208,21 @@ end
 """
 Pre-allocate a `SparseAxisArray` keyed by
 `(outage_id::String, monitored_name::String, t::Int)` holding `JuMP.AffExpr`
-zeros for every entry produced by `_resolve_monitored_arcs`. The pre-fill is
+zeros for every entry produced by `_resolve_monitored_branches`. The pre-fill is
 required so the parallel PTDF expression build below cannot race on Dict resize.
 """
 function _add_post_contingency_sparse_expression!(
     container::OptimizationContainer,
     ::Type{T},
     ::Type{V},
-    resolved::Vector{
-        Pair{Base.UUID, Vector{Tuple{DataType, String, Tuple{Int, Int}, String}}},
-    },
+    resolved::Vector{Pair{Base.UUID, Vector{RepresentativeBranch}}},
     time_steps::UnitRange{Int},
 ) where {T <: PostContingencyExpressions, V <: PSY.ACTransmission}
     contents = Dict{Tuple{String, String, Int}, JuMP.AffExpr}()
-    for (uuid, entries) in resolved
+    for (uuid, reps) in resolved
         outage_id = string(uuid)
-        for (_, name, _, _) in entries, t in time_steps
-            contents[(outage_id, name, t)] = zero(JuMP.AffExpr)
+        for rep in reps, t in time_steps
+            contents[(outage_id, rep.name, t)] = zero(JuMP.AffExpr)
         end
     end
     expr_container = SparseAxisArray(contents)
@@ -313,48 +249,30 @@ end
 
 """
 For each outage in `device_model.outages`, resolve every monitored component
-(across every monitored type) to its arc in the active reduction graph — using
-`component_to_reduction_name_map` as a redirect when the monitored name is an
-individual component that was reduced into a representative. Duplicate arcs
-within an outage are collapsed per-type. Outages sorted by UUID for
-deterministic axes.
-
-Returns `Vector{Pair{UUID, Vector{Tuple{Type, String, Tuple{Int, Int}, String}}}}`
-where each inner tuple is `(monitored_type, container_name, arc, reduction_kind)`.
+(across every monitored type) to the [`RepresentativeBranch`](@ref) of its arc in
+the active reduction graph. Duplicate arcs within an outage are collapsed
+per-type. Outages sorted by UUID for deterministic axes.
 """
-function _resolve_monitored_arcs(
+function _resolve_monitored_branches(
     device_model::DeviceModel,
-    net_reduction_data::PNM.NetworkReductionData,
+    network_model::NetworkModel,
 )
-    name_to_arc_maps = PNM.get_name_to_arc_maps(net_reduction_data)
-    component_to_reduction_maps =
-        PNM.get_component_to_reduction_name_map(net_reduction_data)
-    resolved =
-        Pair{Base.UUID, Vector{Tuple{DataType, String, Tuple{Int, Int}, String}}}[]
+    resolved = Pair{Base.UUID, Vector{RepresentativeBranch}}[]
     for (uuid, per_type) in get_outages(device_model)
-        kept = Tuple{DataType, String, Tuple{Int, Int}, String}[]
+        kept = RepresentativeBranch[]
         for (T, names) in per_type
-            name_to_arc = name_to_arc_maps[T]
-            component_to_reduction =
-                get(component_to_reduction_maps, T, Dict{String, String}())
             seen = Set{Tuple{Int, Int}}()
             for name in sort!(collect(names))
-                if haskey(name_to_arc, name)
-                    container_name = name
-                elseif haskey(component_to_reduction, name)
-                    container_name = component_to_reduction[name]
-                else
-                    error(
-                        "Monitored component \"$name\" (type $T) for outage $uuid is " *
-                        "absent from both the network-reduction name-to-arc map and the " *
-                        "component-to-reduction map. Verify the component exists in the " *
-                        "system and is modeled with a security-constrained branch formulation.",
-                    )
-                end
-                arc, reduction_kind = name_to_arc[container_name]
-                arc in seen && continue
-                push!(seen, arc)
-                push!(kept, (T, container_name, arc, reduction_kind))
+                rep = _representative_branch(network_model, T, name)
+                isnothing(rep) && error(
+                    "Monitored component \"$name\" (type $T) for outage $uuid is " *
+                    "absent from both the network-reduction name-to-arc map and the " *
+                    "component-to-reduction map. Verify the component exists in the " *
+                    "system and is modeled with a security-constrained branch formulation.",
+                )
+                rep.arc in seen && continue
+                push!(seen, rep.arc)
+                push!(kept, rep)
             end
         end
         push!(resolved, uuid => kept)
@@ -408,10 +326,7 @@ function add_constraints!(
 }
     time_steps = get_time_steps(container)
 
-    net_reduction_data = get_network_reduction(network_model)
-    all_branch_maps_by_type = PNM.get_all_branch_maps_by_type(net_reduction_data)
-
-    resolved = _resolve_monitored_arcs(device_model, net_reduction_data)
+    resolved = _resolve_monitored_branches(device_model, network_model)
 
     con_lb = _add_post_contingency_sparse_constraints!(container, T, V; meta = "lb")
     con_ub = _add_post_contingency_sparse_constraints!(container, T, V; meta = "ub")
@@ -419,7 +334,7 @@ function add_constraints!(
     use_slacks = get_use_slacks(device_model)
     # Local relaxation-slack containers keyed by `(outage_id, name, t)`. Built
     # here (not via `add_variables!`) because the post-contingency axes are only
-    # known after `_resolve_monitored_arcs`; registered after the loop iff used.
+    # known after `_resolve_monitored_branches`; registered after the loop iff used.
     slack_ub = SparseAxisArray(Dict{Tuple{String, String, Int}, JuMP.VariableRef}())
     slack_lb = SparseAxisArray(Dict{Tuple{String, String, Int}, JuMP.VariableRef}())
 
@@ -431,9 +346,11 @@ function add_constraints!(
         get_time_series_names(device_model),
         PostContingencyBranchRatingTimeSeriesParameter,
     )
-    for (uuid, entries) in resolved
+    for (uuid, reps) in resolved
         outage_id = string(uuid)
-        for (entry_type, name, arc, reduction_kind) in entries
+        for rep in reps
+            name = rep.name
+            entry_type = rep.component_type
             if has_other_v
                 src_lb, src_ub = _find_shared_post_contingency_constraint_sources(
                     container, T, V, outage_id, name, first(time_steps),
@@ -475,7 +392,6 @@ function add_constraints!(
                     continue
                 end
             end
-            reduction_entry = all_branch_maps_by_type[reduction_kind][entry_type][arc]
             if has_pc_rating && _has_post_contingency_rate(container, entry_type, name)
                 param, multiplier =
                     _post_contingency_rate_columns(container, entry_type, name)
@@ -510,7 +426,7 @@ function add_constraints!(
                     )
                 end
             else
-                limits = get_emergency_min_max_limits(reduction_entry, T, U)
+                limits = _emergency_flow_limits(rep)
                 for t in time_steps
                     sub = if use_slacks
                         _make_post_contingency_slack!(
@@ -565,21 +481,18 @@ function _build_post_contingency_flow_expressions_for_outage(
     outage_id::String,
     modf_cols::Dict{Tuple{String, Tuple{Int64, Int64}}, Vector{Float64}},
     nodal_balance_expressions::Matrix{JuMP.AffExpr},
-    entries::Vector{Tuple{DataType, String, Tuple{Int, Int}, String}},
-    net_reduction_data::IOM.AbstractInfrastructureNetworkReductionData,
+    reps::Vector{RepresentativeBranch},
 )
-    results = Vector{Tuple{String, Vector{JuMP.AffExpr}}}(undef, length(entries))
-    for (i, entry) in enumerate(entries)
-        (_, name, arc, _) = entry
-        modf_col = modf_cols[(outage_id, arc)]
+    results = Vector{Tuple{String, Vector{JuMP.AffExpr}}}(undef, length(reps))
+    for (i, rep) in enumerate(reps)
         _, expressions = _make_flow_expressions!(
-            name,
+            rep.name,
             time_steps,
-            modf_col,
+            modf_cols[(outage_id, rep.arc)],
             nodal_balance_expressions,
-            -PNM.arc_dc_shift_injection(net_reduction_data, arc),
+            -_dc_shift_injection(rep),
         )
-        results[i] = (name, expressions)
+        results[i] = (rep.name, expressions)
     end
     return results
 end
@@ -611,8 +524,7 @@ function _add_modf_post_contingency_flow_expressions!(
     modf_matrix = get_contingency_matrix(network_model)
     registered_contingencies = PNM.get_registered_contingencies(modf_matrix)
 
-    net_reduction_data = get_network_reduction(network_model)
-    resolved = _resolve_monitored_arcs(model, net_reduction_data)
+    resolved = _resolve_monitored_branches(model, network_model)
 
     expression_container = _add_post_contingency_sparse_expression!(
         container, T, V, resolved, time_steps,
@@ -626,19 +538,19 @@ function _add_modf_post_contingency_flow_expressions!(
     # Serial libklu pass: concurrent libklu calls are unsafe (PNM `_LIBKLU_LOCK`).
     # Each (outage, arc) pair is solved at most once.
     modf_cols = Dict{Tuple{String, Tuple{Int64, Int64}}, Vector{Float64}}()
-    for (uuid, entries) in fresh_resolved
+    for (uuid, reps) in fresh_resolved
         outage_spec = registered_contingencies[uuid]
         outage_id = string(uuid)
-        for (_, _, arc, _) in entries
-            key = (outage_id, arc)
+        for rep in reps
+            key = (outage_id, rep.arc)
             haskey(modf_cols, key) && continue
-            modf_cols[key] = modf_matrix[arc, outage_spec]
+            modf_cols[key] = modf_matrix[rep.arc, outage_spec]
         end
     end
 
     # Parallel JuMP `AffExpr` build (no libklu): tasks return results, the main
     # thread does the serial writes. The try/catch surfaces the inner exception.
-    tasks = map(fresh_resolved) do (uuid, entries)
+    tasks = map(fresh_resolved) do (uuid, reps)
         outage_id = string(uuid)
         Threads.@spawn try
             _build_post_contingency_flow_expressions_for_outage(
@@ -646,8 +558,7 @@ function _add_modf_post_contingency_flow_expressions!(
                 outage_id,
                 modf_cols,
                 nodal_injection_expressions,
-                entries,
-                net_reduction_data,
+                reps,
             )
         catch e
             @error "Post-contingency flow-expression task failed" outage_id =
@@ -811,29 +722,25 @@ function _copy_existing_post_contingency_expressions!(
     ::Type{T},
     ::Type{V},
     expression_container::SparseAxisArray,
-    resolved::Vector{
-        Pair{Base.UUID, Vector{Tuple{DataType, String, Tuple{Int, Int}, String}}},
-    },
+    resolved::Vector{Pair{Base.UUID, Vector{RepresentativeBranch}}},
     time_steps::UnitRange{Int},
 ) where {T <: PostContingencyExpressions, V <: PSY.ACTransmission}
     _has_other_v_container(IOM.get_expressions(container), T, V) || return resolved
 
-    fresh =
-        Pair{Base.UUID, Vector{Tuple{DataType, String, Tuple{Int, Int}, String}}}[]
-    for (uuid, entries) in resolved
+    fresh = Pair{Base.UUID, Vector{RepresentativeBranch}}[]
+    for (uuid, reps) in resolved
         outage_id = string(uuid)
-        unresolved = Tuple{DataType, String, Tuple{Int, Int}, String}[]
-        for entry in entries
-            (_, name, _, _) = entry
+        unresolved = RepresentativeBranch[]
+        for rep in reps
             src_ec = _find_shared_post_contingency_expression_source(
-                container, T, V, outage_id, name, first(time_steps),
+                container, T, V, outage_id, rep.name, first(time_steps),
             )
             if isnothing(src_ec)
-                push!(unresolved, entry)
+                push!(unresolved, rep)
             else
                 for t in time_steps
-                    expression_container[outage_id, name, t] =
-                        src_ec.data[(outage_id, name, t)]
+                    expression_container[outage_id, rep.name, t] =
+                        src_ec.data[(outage_id, rep.name, t)]
                 end
             end
         end

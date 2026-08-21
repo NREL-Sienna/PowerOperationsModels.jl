@@ -136,11 +136,7 @@ end
             # makes this a pure per-unit (system-base) units check.
             reduction_entry =
                 all_branch_maps_by_type[reduction_kind][entry_type][arc]
-            limits = POM.get_emergency_min_max_limits(
-                reduction_entry,
-                POM.PostContingencyFlowRateConstraint,
-                POM.SecurityConstrainedStaticBranch,
-            )
+            limits = POM._emergency_flow_limits(reduction_entry)
             expr_const = JuMP.constant(actual)
             @test JuMP.normalized_rhs(con_ub[outage_id_str, name, t]) + expr_const ≈
                   limits.max
@@ -797,11 +793,7 @@ end
 
         # RHS = +/- emergency rating in system per-unit.
         reduction_entry = all_branch_maps_by_type[reduction_kind][PSY.Line][arc]
-        limits = POM.get_emergency_min_max_limits(
-            reduction_entry,
-            POM.PostContingencyFlowRateConstraint,
-            POM.SecurityConstrainedStaticBranch,
-        )
+        limits = POM._emergency_flow_limits(reduction_entry)
         expr_const = JuMP.constant(actual)
         @test JuMP.normalized_rhs(con_ub[outage_id_str, name, t]) + expr_const ≈
               limits.max
@@ -1554,11 +1546,7 @@ end
     sys = PSB.build_system(PSITestSystems, "c_sys5")
     line = first(PSY.get_components(PSY.Line, sys))
     PSY.set_rating_b!(line, 0.9 * PSY.SU)
-    lim = POM.get_emergency_min_max_limits(
-        line,
-        POM.PostContingencyFlowRateConstraint,
-        POM.StaticBranch,
-    )
+    lim = POM._emergency_flow_limits(line)
     rb = PSY.get_rating_b(line, PSY.SU)
     @test lim.max ≈ rb
     @test lim.min ≈ -rb

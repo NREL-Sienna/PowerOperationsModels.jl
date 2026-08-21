@@ -10,10 +10,12 @@ One branch as the reduction-aware builders see it. Build with
 [`_foreach_branch`](@ref).
 
 `B` is either a PSY.Device, a PNM.AbstractReductionAggregate, or a
-PNM.ThreeWindingTransformerCircuit.
+PNM.ThreeWindingTransformerCircuit. `component_type` is the PSY type the arc is registered
+under, i.e. the component type its optimization containers are keyed by.
 """
 struct RepresentativeBranch{B}
     name::String
+    component_type::DataType
     arc::Tuple{Int, Int}
     reduction::String
     branch::B
@@ -45,6 +47,7 @@ function _make_representative_branch(
     (arc, reduction) = arc_map[name]
     return RepresentativeBranch(
         name,
+        T,
         arc,
         reduction,
         all_branch_maps_by_type[reduction][T][arc],
@@ -97,6 +100,40 @@ function _all_branches(
     ]
 end
 
+"""
+The [`RepresentativeBranch`](@ref) carrying component `name` of type `T`, or `nothing` when
+the name belongs to no reduced arc. A component absorbed into a reduction is redirected to
+the entry that represents it.
+"""
+function _representative_branch(
+    network_model::NetworkModel,
+    ::Type{T},
+    name::AbstractString;
+    number_to_name::Dict{Int, String} = _NO_BUS_NAMES,
+) where {T <: PSY.ACTransmission}
+    nr = get_network_reduction(network_model)
+    arc_map = get_name_to_arc_map_entries(nr, T)
+    entry_name = if haskey(arc_map, name)
+        name
+    else
+        redirects = get(
+            PNM.get_component_to_reduction_name_map(nr),
+            T,
+            Dict{String, String}(),
+        )
+        get(redirects, name, nothing)
+    end
+    isnothing(entry_name) && return nothing
+    return _make_representative_branch(
+        nr,
+        PNM.get_all_branch_maps_by_type(nr),
+        arc_map,
+        number_to_name,
+        T,
+        entry_name,
+    )
+end
+
 ################################## Topology ################################################
 
 _from_number(rep::RepresentativeBranch) = rep.arc[1]
@@ -137,6 +174,8 @@ _dc_shift(rep::RepresentativeBranch) = _dc_shift(rep.branch, rep.nr)
 _dc_susceptance(rep::RepresentativeBranch) =
     PNM.get_series_susceptance(rep.branch, PSY.SU)
 _dc_resistance(rep::RepresentativeBranch) = PNM.arc_dc_resistance(rep.nr, rep.arc)
+_dc_shift_injection(rep::RepresentativeBranch) =
+    PNM.arc_dc_shift_injection(rep.nr, rep.arc)
 
 ################################## Transformer control #####################################
 
@@ -235,11 +274,11 @@ _branch_rating(entry::PNM.AbstractBranchesParallel, model::DeviceModel) =
 _branch_rating(rep::RepresentativeBranch, model::DeviceModel) =
     _branch_rating(rep.branch, model)
 
-# TODO: SC branches don't use the RepBranch API but they need rating_b, so
-# move this or change SC to use this API.
-_branch_rating_b(d::PSY.ACTransmission) = PSY.get_rating(d, PSY.SU)
-_branch_rating_b(t::PSY.TwoWindingTransformer) = PSY.get_rating(PSY.get_circuit(t), PSY.SU)
-_branch_rating_b(t::PNM.ThreeWindingTransformerCircuit) = PSY.get_rating(t.circuit, PSY.SU)
+_branch_rating_b(d::PSY.ACTransmission) = PSY.get_rating_b(d, PSY.SU)
+_branch_rating_b(t::PSY.TwoWindingTransformer) =
+    PSY.get_rating_b(PSY.get_circuit(t), PSY.SU)
+_branch_rating_b(t::PNM.ThreeWindingTransformerCircuit) =
+    PSY.get_rating_b(t.circuit, PSY.SU)
 
 """
 [`_branch_rating`](@ref) with a zero guard, for the flow limits that would otherwise pin
@@ -267,6 +306,18 @@ function _flow_limits(rep::RepresentativeBranch{PSY.MonitoredLine}, model::Devic
     limit = min(_branch_rating(rep, model), lims.from_to, lims.to_from)
     return (min = -limit, max = limit)
 end
+
+"""
+Post-contingency (emergency) flow limits of the arc. `PNM.get_equivalent_emergency_rating`
+covers raw devices, reduction aggregates and three-winding circuits alike — it returns
+`rating_b` and falls back to `rating` where `rating_b` is undefined — and is already
+system-base per-unit, so it takes no `PSY.SU`.
+"""
+function _emergency_flow_limits(branch::PSY.ACTransmission)
+    rating = PNM.get_equivalent_emergency_rating(branch)
+    return (min = -rating, max = rating)
+end
+_emergency_flow_limits(rep::RepresentativeBranch) = _emergency_flow_limits(rep.branch)
 
 function _min_endpoint_voltage_limit(branch::PSY.ACTransmission)
     arc = PSY.get_arc(branch)
