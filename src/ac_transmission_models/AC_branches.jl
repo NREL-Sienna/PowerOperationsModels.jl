@@ -43,13 +43,14 @@ function get_default_time_series_names(
 end
 
 const _TRANSFORMERS = Union{PSY.TwoWindingTransformer, PSY.ThreeWindingTransformer}
+const _CONTROL_FORMULATIONS = Union{PSY.StaticBranch, PSY.StaticBranchBounds}
 
 const ENABLE_CONTROLS_KEY = "enable_controls"
 
-_control_attribute(::Union{Type{<:_TRANSFORMERS}}) = (ENABLE_CONTROLS_KEY => false,)
-_control_attribute(::Type{<:PSY.ACTransmission}) = ()
+_control_attribute(::Type{<:_TRANSFORMERS}, ::Type{<:_CONTROL_FORMULATIONS}) = (ENABLE_CONTROLS_KEY => false,)
+_control_attribute(::Type{<:PSY.ACTransmission}, ::Type{<:AbstractBranchFormulation}) = ()
 
-_control_enabled(m::DeviceModel{<:_TRANSFORMERS}) =
+_control_enabled(m::DeviceModel{<:_TRANSFORMERS, <:_CONTROL_FORMULATIONS}) =
     get_attribute(m, ENABLE_CONTROLS_KEY) === true
 _control_enabled(::DeviceModel) = false
 
@@ -68,7 +69,7 @@ function get_default_attributes(
 ) where {U <: PSY.ACTransmission, V <: AbstractBranchFormulation}
     return Dict{String, Any}(
         PARALLEL_BRANCH_MAX_RATING_KEY => "single_element_contingency",
-        _control_attribute(U)...,
+        _control_attribute(U, V)...,
     )
 end
 
@@ -79,7 +80,7 @@ function get_default_attributes(
     return Dict{String, Any}(
         PARALLEL_BRANCH_MAX_RATING_KEY => "single_element_contingency",
         "include_planned_outages" => false,
-        _control_attribute(U)...,
+        _control_attribute(U, V)...,
     )
 end
 
@@ -129,12 +130,12 @@ _branch_uses_control(
     device_model::DeviceModel,
     network_model::NetworkModel,
 ) = _tap_controlled(branch, device_model, network_model)
-_branch_uses_control(
-    ::Type{PhaseShifterAngle},
-    branch,
-    device_model::DeviceModel,
-    network_model::NetworkModel,
-) = _phase_controlled(branch, device_model, network_model)
+# _branch_uses_control(
+#     ::Type{PhaseShifterAngle},
+#     branch,
+#     device_model::DeviceModel,
+#     network_model::NetworkModel,
+# ) = _phase_controlled(branch, device_model, network_model)
 
 _warn_tap_nonconvex(::Type{TapRatioVariable}, ::NetworkModel{LPACCNetworkModel}, branches) =
     isempty(branches) ||
@@ -350,7 +351,7 @@ end
 # the exception: a series on one member can't be split across the group, so the
 # summed (emergency) rating is used regardless of the attribute. Every PNM
 # reduction wrapper is `<: PSY.ACTransmission`; the parallel methods are more
-# specific (`<: AbstractBranchesParallel`), so they win for reproups.
+# specific (`<: AbstractBranchesParallel`), so they win for groups.
 _resolve_branch_multiplier(p, d, f, ::DeviceModel) = get_multiplier_value(p, d, f)
 
 function _resolve_branch_multiplier(

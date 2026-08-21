@@ -194,8 +194,6 @@ function check_flow_variable_values(
     return true
 end
 
-# psy6: a TwoWindingTransformer's arc, rating and impedance live on its TransformerCircuit,
-# not on the parent device — mirrors POM's `_two_winding_rating` / `_branch_arc`.
 branch_rating_su(d::PSY.ACTransmission) = PSY.get_rating(d, PSY.SU)
 branch_rating_su(d::PSY.TwoWindingTransformer) = PSY.get_rating(PSY.get_circuit(d), PSY.SU)
 

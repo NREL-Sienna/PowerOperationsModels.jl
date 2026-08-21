@@ -270,7 +270,6 @@ _branch_rating(t::PNM.ThreeWindingTransformerCircuit, ::DeviceModel) =
 _branch_rating(entry::PNM.BranchesSeries, ::DeviceModel) = PNM.get_equivalent_rating(entry)
 _branch_rating(entry::PNM.AbstractBranchesParallel, model::DeviceModel) =
     _parallel_branches_rating(model, entry)
-
 _branch_rating(rep::RepresentativeBranch, model::DeviceModel) =
     _branch_rating(rep.branch, model)
 
@@ -279,6 +278,8 @@ _branch_rating_b(t::PSY.TwoWindingTransformer) =
     PSY.get_rating_b(PSY.get_circuit(t), PSY.SU)
 _branch_rating_b(t::PNM.ThreeWindingTransformerCircuit) =
     PSY.get_rating_b(t.circuit, PSY.SU)
+_branch_rating_b(rep::RepresentativeBranch, model::DeviceModel) =
+    _branch_rating_b(rep.branch, model)
 
 """
 [`_branch_rating`](@ref) with a zero guard, for the flow limits that would otherwise pin

@@ -1,8 +1,4 @@
 ################################# Generic AC Branch  Models ################################
-# Kept as concrete-formulation no-op pairs (StaticBranch, StaticBranchBounds) rather than one
-# {<:AbstractBranchFormulation} method: widening to that bound is ambiguous with the real
-# StaticBranchUnbounded (NetworkModel{<:AbstractNetworkModel}), VoltageControlTap and
-# AbstractSecurityConstrainedStaticBranch methods that also match CopperPlate/AreaBalance.
 function construct_device!(
     ::OptimizationContainer,
     ::PSY.System,
@@ -511,7 +507,6 @@ ArgumentConstructStage for StaticBranch under LPACCNetworkModel.
 Creates the four directional flow variables, the bus-pair cosine variable (cs), optional
 slacks, and registers each flow's contribution to the per-bus ActivePowerBalance and
 ReactivePowerBalance expressions.
-
 """
 function construct_device!(
     container::OptimizationContainer,

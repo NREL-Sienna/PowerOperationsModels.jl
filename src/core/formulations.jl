@@ -175,30 +175,6 @@ Branch type to add unbounded flow variables and use flow constraints
 """
 struct StaticBranch <: AbstractBranchFormulation end
 
-# psy6: disabled pending transformer refactor
-# """
-# Branch formulation for transformers that models the off-nominal tap ratio in the DC
-# power-flow Ohm's law. Use as `DeviceModel(TwoWindingTransformer, TapControl)` under an
-# active-power DC network (e.g. DCPNetworkModel). Reduces to `StaticBranch` when tap == 1.
-# """
-# struct TapControl <: AbstractBranchFormulation end
-#
-# """
-# Branch formulation for voltage-controlling tap transformers under an AC network model. The
-# off-nominal tap ratio is a bounded continuous decision variable `t ∈ [t_min, t_max]`
-# (`TapRatioVariable`, continuous relaxation of `number_of_tap_positions`) that enters the AC
-# π-model Ohm's law nonlinearly. Under a `TransformerControlObjective.VOLTAGE` objective the
-# regulated bus voltage is fixed to `voltage_setpoint`; under `REACTIVE_POWER_FLOW` /
-# `ACTIVE_POWER_FLOW` the corresponding terminal flow is fixed to its target (the model is
-# otherwise identical across modes — count-invariant `JuMP.fix`). Use as
-# `DeviceModel(TwoWindingTransformer, VoltageControlTap)` under an AC network (e.g. ACPNetworkModel).
-# Only valid under AC network models; dropped from DC templates automatically via
-# `models_reactive_power`.
-# """
-# struct VoltageControlTap <: AbstractBranchFormulation end
-#
-# models_reactive_power(::Type{VoltageControlTap}) = true
-
 """
 Branch type to add bounded flow variables and use flow constraints
 """

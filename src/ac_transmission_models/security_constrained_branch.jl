@@ -1,27 +1,5 @@
-# MODF security-constrained branch formulation
-# (`SecurityConstrainedStaticBranch`). Ported from PowerSimulations.jl
-# `ac_transmission_security_constrained_models.jl` (PR #1579) and adapted to
-# PS6 units (`PSY.SU`). The MODF-derived post-contingency flow expression is
-# per-unit on the system base, and so is every emergency-rating RHS it is
-# compared against (see `_emergency_flow_limits`).
+# MODF security-constrained branch formulation. PC flow is p.u. on system base.
 
-# psy6: disabled pending transformer refactor
-# """
-# Min and max limits for Abstract Branch Formulation and Post-Contingency conditions
-# """
-# function get_emergency_min_max_limits(
-#     entry::PSY.PhaseShiftingTransformer,
-#     ::Type{PhaseAngleControlLimit},
-#     ::Type{PhaseAngleControl},
-# )
-#     return get_min_max_limits(entry, PhaseAngleControlLimit, PhaseAngleControl)
-# end
-
-# -----------------------------------------------------
-# ------ MULTI-COMPONENT OUTAGE DEDUP HELPERS ---------
-# -----------------------------------------------------
-# Dispatch (not an `isa` branch) skips non-sparse shared-arc containers: only
-# the post-contingency `SparseAxisArray`s are keyed by (outage_id, name, t).
 _post_contingency_match(c::SparseAxisArray, target::Tuple) = haskey(c.data, target)
 _post_contingency_match(::AbstractArray, ::Tuple) = false
 
