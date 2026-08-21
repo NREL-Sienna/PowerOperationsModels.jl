@@ -1489,13 +1489,18 @@ function add_constraints!(
 end
 
 function _branches_for_cons(
-    C::Union{Type{VoltageControlConstraint}, Type{ReactivePowerFlowControlConstraint}, Type{ActivePowerFlowControlConstraint}}
+    C::Union{
+        Type{VoltageControlConstraint},
+        Type{ReactivePowerFlowControlConstraint},
+        Type{ActivePowerFlowControlConstraint},
+    }
     device_model::DeviceModel{T},
     network_model::NetworkModel,
 ) where {T}
     members = RepresentativeBranch[]
     _foreach_branch(_representative_branches(network_model, T, C)) do branch
-        _branch_uses_control(C, branch, device_model, network_model) && push!(members, branch)
+        _branch_uses_control(C, branch, device_model, network_model) &&
+            push!(members, branch)
     end
 end
 
@@ -1579,7 +1584,8 @@ function _add_reactive_control_constraints!(
 ) where {T <: _TRANSFORMERS}
     _control_enabled(device_model) || return
 
-    branches = _branches_for_cons(ReactivePowerFlowControlConstraint, device_model, network_model)
+    branches =
+        _branches_for_cons(ReactivePowerFlowControlConstraint, device_model, network_model)
     time_steps = get_time_steps(container)
     cons = add_constraints_container!(
         container,
@@ -1659,7 +1665,8 @@ function _add_active_control_constraints!(
 ) where {T <: _TRANSFORMERS}
     _control_enabled(device_model) || return
 
-    branches = _branches_for_cons(ActivePowerFlowControlConstraint, device_model, network_model)
+    branches =
+        _branches_for_cons(ActivePowerFlowControlConstraint, device_model, network_model)
     time_steps = get_time_steps(container)
     cons = add_constraints_container!(
         container,
