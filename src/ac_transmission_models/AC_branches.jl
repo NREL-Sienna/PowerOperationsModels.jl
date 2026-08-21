@@ -47,7 +47,8 @@ const _CONTROL_FORMULATIONS = Union{StaticBranch, StaticBranchBounds}
 
 const ENABLE_CONTROLS_KEY = "enable_controls"
 
-_control_attribute(::Type{<:_TRANSFORMERS}, ::Type{<:_CONTROL_FORMULATIONS}) = (ENABLE_CONTROLS_KEY => false,)
+_control_attribute(::Type{<:_TRANSFORMERS}, ::Type{<:_CONTROL_FORMULATIONS}) =
+    (ENABLE_CONTROLS_KEY => false,)
 _control_attribute(::Type{<:PSY.ACTransmission}, ::Type{<:AbstractBranchFormulation}) = ()
 
 _control_enabled(m::DeviceModel{<:_TRANSFORMERS, <:_CONTROL_FORMULATIONS}) =
@@ -126,7 +127,11 @@ _control_var_enabled(::Type{<:VariableType}, ::DeviceModel) = true
 
 # Does this branch use this control variable or constraint?
 _branch_uses_control(
-    ::Union{Type{TapRatioVariable}, Type{VoltageControlConstraint}, Type{ReactivePowerFlowControlConstraint}},
+    ::Union{
+        Type{TapRatioVariable},
+        Type{VoltageControlConstraint},
+        Type{ReactivePowerFlowControlConstraint},
+    },
     branch,
     device_model::DeviceModel,
     network_model::NetworkModel,

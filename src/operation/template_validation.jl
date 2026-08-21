@@ -338,7 +338,8 @@ function _phase_controlled_circuit_names(
     for d in get_device_cache(device_model)
         circuits = PSY.get_circuits(d)
         for (i, circuit) in enumerate(circuits)
-            _control_objective(circuit, device_model, network_model) in (_ACTIVE_CONTROL, _VOLTAGE_CONTROL) || continue
+            _control_objective(circuit, device_model, network_model) in
+            (_ACTIVE_CONTROL, _VOLTAGE_CONTROL) || continue
             push!(
                 names,
                 length(circuits) == 1 ? PSY.get_name(d) : "$(PSY.get_name(d))_winding_$i",
@@ -433,7 +434,8 @@ function _voltage_regulated_buses(
     _VOLTAGE_CONTROL in _implemented_controls(network_model) || return pairs
     for d in get_available_components(device_model, sys)
         for (i, circuit) in enumerate(PSY.get_circuits(d))
-            _control_objective(circuit, device_model, network_model) === _VOLTAGE_CONTROL || continue
+            _control_objective(circuit, device_model, network_model) === _VOLTAGE_CONTROL ||
+                continue
             bus = PSY.get_bus(sys, PSY.get_regulated_bus_number(circuit))
             name = "$(PSY.get_name(d))_winding_$i"
             if isnothing(bus)
