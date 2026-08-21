@@ -43,11 +43,12 @@ function get_default_time_series_names(
 end
 
 const _TRANSFORMERS = Union{PSY.TwoWindingTransformer, PSY.ThreeWindingTransformer}
-const _CONTROL_FORMULATIONS = Union{PSY.StaticBranch, PSY.StaticBranchBounds}
+const _CONTROL_FORMULATIONS = Union{StaticBranch, StaticBranchBounds}
 
 const ENABLE_CONTROLS_KEY = "enable_controls"
 
-_control_attribute(::Type{<:_TRANSFORMERS}, ::Type{<:_CONTROL_FORMULATIONS}) = (ENABLE_CONTROLS_KEY => false,)
+_control_attribute(::Type{<:_TRANSFORMERS}, ::Type{<:_CONTROL_FORMULATIONS}) =
+    (ENABLE_CONTROLS_KEY => false,)
 _control_attribute(::Type{<:PSY.ACTransmission}, ::Type{<:AbstractBranchFormulation}) = ()
 
 _control_enabled(m::DeviceModel{<:_TRANSFORMERS, <:_CONTROL_FORMULATIONS}) =

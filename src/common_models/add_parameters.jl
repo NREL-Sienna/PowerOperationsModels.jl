@@ -121,7 +121,11 @@ end
 # Helpers for _add_time_series_parameters!
 #################################################################################
 
-function _static_rating(device::PSY.Device, model::DeviceModel, ::Type{PostContingencyBranchRatingTimeSeriesParameter})
+function _static_rating(
+    device::PSY.Device,
+    model::DeviceModel,
+    ::Type{PostContingencyBranchRatingTimeSeriesParameter},
+)
     rating_b = _branch_rating_b(device)
     if isnothing(rating_b)
         @warn "Device $(typeof(device)) '$(PSY.get_name(device))' has Parameter PostContingencyBranchRatingTimeSeriesParameter but it has no static 'rating_b' defined."
@@ -130,7 +134,11 @@ function _static_rating(device::PSY.Device, model::DeviceModel, ::Type{PostConti
     return rating_b
 end
 
-_static_rating(device::PSY.Device, model::DeviceModel, ::Type{<:AbstractBranchRatingTimeSeriesParameter}) =
+_static_rating(
+    device::PSY.Device,
+    model::DeviceModel,
+    ::Type{<:AbstractBranchRatingTimeSeriesParameter},
+) =
     _branch_rating(device, model)
 
 function _check_branch_rating_ts(
