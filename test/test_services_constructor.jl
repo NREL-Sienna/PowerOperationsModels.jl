@@ -176,8 +176,9 @@ end
     PSY.remove_time_series!(sys, PSY.Deterministic, r1, "requirement")
     PSY.remove_time_series!(sys, PSY.Deterministic, r11, "requirement")
     PSY.add_time_series!(sys, [r1, r11], forecast)
-    @test IS.get_time_series_uuid(PSY.Deterministic, r1, "requirement") ==
-          IS.get_time_series_uuid(PSY.Deterministic, r11, "requirement")
+    requirement_hashes =
+        IS.get_time_series_hashes((r1, r11), PSY.Deterministic, "requirement")
+    @test requirement_hashes[IS.get_id(r1)] == requirement_hashes[IS.get_id(r11)]
 
     template = get_thermal_dispatch_template_network(CopperPlateNetworkModel)
     set_service_model!(template, ServiceModel(OnlineReserve{ReserveUp}, RangeReserve))
@@ -777,8 +778,7 @@ end
     forecast_minflow = Deterministic(
         "min_active_power_flow_limit",
         data_minflow,
-        Hour(1);
-        scaling_factor_multiplier = PSY.get_min_active_power_flow_limit,
+        Hour(1),
     )
     maxflow_day = [
         0.9, 0.85, 0.95, 0.2, 0.15, 0.2,
@@ -793,8 +793,7 @@ end
     forecast_maxflow = Deterministic(
         "max_active_power_flow_limit",
         data_maxflow,
-        Hour(1);
-        scaling_factor_multiplier = PSY.get_max_active_power_flow_limit,
+        Hour(1),
     )
     add_time_series!(c_sys5_uc, interface, forecast_minflow)
     add_time_series!(c_sys5_uc, interface, forecast_maxflow)
@@ -858,10 +857,7 @@ end
         active_power_flow_limits = (min = 0.0, max = 400.0),
     )
     add_service!(sys, interface, [get_component(Line, sys, l) for l in ("1", "2", "6")])
-    for (ts_name, sfm) in (
-        ("min_active_power_flow_limit", PSY.get_min_active_power_flow_limit),
-        ("max_active_power_flow_limit", PSY.get_max_active_power_flow_limit),
-    )
+    for ts_name in ("min_active_power_flow_limit", "max_active_power_flow_limit")
         data = Dict(
             DateTime("2024-01-01T00:00:00") => fill(0.5, 24),
             DateTime("2024-01-02T00:00:00") => fill(0.5, 24),
@@ -869,7 +865,7 @@ end
         add_time_series!(
             sys,
             interface,
-            Deterministic(ts_name, data, Hour(1); scaling_factor_multiplier = sfm),
+            Deterministic(ts_name, data, Hour(1)),
         )
     end
 

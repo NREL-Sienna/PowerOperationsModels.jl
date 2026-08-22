@@ -617,8 +617,8 @@ IOM.transform_single_time_series!(
     interval::Dates.Period;
     kwargs...,
 ) = PSY.transform_single_time_series!(sys, horizon, interval; kwargs...)
-# sys.data.internal UUID, not sys's wrapper UUID — IOM uses this as a filename identifier.
-IOM.get_system_uuid(sys::PSY.System) = IS.get_uuid(sys.data.internal)
+# The system's own UUID (`System.metadata.uuid`) — IOM uses this as a filename identifier.
+IOM.get_system_uuid(sys::PSY.System) = PSY.get_system_uuid(sys)
 # PSY.get_components restricts T <: PSY.Component; IOM passes IS.InfrastructureSystemsComponent.
 # Bridge directly to IS.get_components to preserve the looser typing.
 IOM.get_subsystem_components(

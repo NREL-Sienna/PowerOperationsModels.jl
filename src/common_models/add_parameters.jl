@@ -177,8 +177,8 @@ function _add_time_series_parameters!(
     device_names = String[]
     devices_with_time_series = D[]
     initial_values = Dict{String, AbstractArray}()
-    # device name -> ts_uuid cache so the second loop below doesn't re-query IS.
-    device_ts_uuids = Dict{String, String}()
+    # device name -> data hash cache so the second loop below doesn't re-query IS.
+    device_ts_hashes = Dict{String, String}()
     model_interval = get_interval(get_settings(container))
     is_ts_interval = _to_is_interval(model_interval)
     model_resolution = get_resolution(get_settings(container))
@@ -186,26 +186,34 @@ function _add_time_series_parameters!(
 
     @debug "adding" T D ts_name ts_type _group = IOM.LOG_GROUP_OPTIMIZATION_CONTAINER
 
+    # One catalog query resolves the content hash of every device's stored array.
+    # Devices whose time series share an array share a hash, so the parameter rows
+    # dedupe on it (the role the per-array time series UUID used to play).
+    ts_hashes_by_id = IS.get_time_series_hashes(
+        devices,
+        ts_type,
+        ts_name;
+        resolution = is_ts_resolution,
+        interval = is_ts_interval,
+    )
     for device::D in devices
         if !PSY.has_time_series(device, ts_type, ts_name)
             @debug "Time series $(ts_type):$(ts_name) for $D, $(PSY.get_name(device)) not found. Skipping parameter addition for this device."
             continue
         end
         device_name = PSY.get_name(device)
+        ts_hash = get(ts_hashes_by_id, IS.get_id(device), nothing)
+        if ts_hash === nothing
+            error(
+                "Time series $(ts_type):$(ts_name) for $D, $device_name does not " *
+                "match resolution=$model_resolution interval=$model_interval.",
+            )
+        end
         push!(device_names, device_name)
         push!(devices_with_time_series, device)
-        ts_uuid = string(
-            IS.get_time_series_uuid(
-                ts_type,
-                device,
-                ts_name;
-                resolution = is_ts_resolution,
-                interval = is_ts_interval,
-            ),
-        )
-        device_ts_uuids[device_name] = ts_uuid
-        if !(ts_uuid in keys(initial_values))
-            initial_values[ts_uuid] =
+        device_ts_hashes[device_name] = ts_hash
+        if !(ts_hash in keys(initial_values))
+            initial_values[ts_hash] =
                 IOM.get_time_series_initial_values!(
                     container,
                     ts_type,
@@ -214,7 +222,7 @@ function _add_time_series_parameters!(
                     interval = model_interval,
                     resolution = model_resolution,
                 )
-            _check_branch_rating_ts(initial_values[ts_uuid], param, device, model)
+            _check_branch_rating_ts(initial_values[ts_hash], param, device, model)
         end
     end
 
@@ -242,7 +250,7 @@ function _add_time_series_parameters!(
     jump_model = get_jump_model(container)
     param_instance = T()
     parent_param = IOM.get_parameter_array_data(param_container)
-    for (i, (ts_uuid, raw_ts_vals)) in enumerate(initial_values)
+    for (i, (ts_hash, raw_ts_vals)) in enumerate(initial_values)
         ts_vals = IOM.unwrap_for_param.((param_instance,), raw_ts_vals, (additional_axes,))
         @assert all(_size_wrapper.(ts_vals) .== (length.(additional_axes),))
 
@@ -259,7 +267,7 @@ function _add_time_series_parameters!(
         IOM.add_component_name!(
             IOM.get_attributes(param_container),
             device_name,
-            device_ts_uuids[device_name],
+            device_ts_hashes[device_name],
         )
     end
     return
@@ -296,7 +304,7 @@ function _add_time_series_parameters!(
     model_interval = get_interval(get_settings(container))
     ts_interval = model_interval
     model_resolution = get_resolution(get_settings(container))
-    device_name_axis, ts_uuid_axis =
+    device_name_axis, ts_hash_axis =
         get_branch_argument_parameter_axes(
             net_reduction_data,
             devices,
@@ -309,9 +317,9 @@ function _add_time_series_parameters!(
         @info "No devices with time series $ts_name found for $D devices. Skipping parameter addition."
         return
     end
-    # name -> ts_uuid cache built from the axis pair so the per-branch loop below
-    # doesn't re-query IS.get_time_series_uuid for each branch.
-    branch_ts_uuids = Dict{String, String}(zip(device_name_axis, ts_uuid_axis))
+    # name -> data hash cache built from the axis pair so the per-branch loop below
+    # doesn't re-query the store catalog for each branch.
+    branch_ts_hashes = Dict{String, String}(zip(device_name_axis, ts_hash_axis))
     additional_axes = ()
     param_container = add_param_container!(
         container,
@@ -319,9 +327,9 @@ function _add_time_series_parameters!(
         D,
         ts_type,
         ts_name,
-        # Branches can share one stored series, so the UUID axis is deduplicated; the
-        # per-branch row lookups below already key by UUID and name separately.
-        unique(ts_uuid_axis),
+        # Branches can share one stored array, so the hash axis is deduplicated; the
+        # per-branch row lookups below already key by hash and name separately.
+        unique(ts_hash_axis),
         device_name_axis,
         additional_axes,
         time_steps,
@@ -331,10 +339,10 @@ function _add_time_series_parameters!(
     jump_model = get_jump_model(container)
     parent_param = IOM.get_parameter_array_data(param_container)
     parent_mult = IOM.get_multiplier_array_data(param_container)
-    # The param array's first axis is `ts_uuid_axis` (UUID-keyed) while the multiplier
-    # array's first axis is `device_name_axis` (name-keyed); we need two separate row
-    # lookups so parallel branches sharing a UUID still write their multiplier to the
-    # correct (per-branch-name) row.
+    # The param array's first axis is `ts_hash_axis` (content-hash-keyed) while the
+    # multiplier array's first axis is `device_name_axis` (name-keyed); we need two
+    # separate row lookups so parallel branches sharing an array still write their
+    # multiplier to the correct (per-branch-name) row.
     param_lookup = get_parameter_array(param_container).lookup[1]
     mult_lookup = get_multiplier_array(param_container).lookup[1]
     for (name, (arc, reduction)) in PNM.get_name_to_arc_map(net_reduction_data, D)
@@ -344,8 +352,8 @@ function _add_time_series_parameters!(
         if device_with_time_series === nothing
             continue
         end
-        ts_uuid = branch_ts_uuids[name]
-        i_param = param_lookup[ts_uuid]
+        ts_hash = branch_ts_hashes[name]
+        i_param = param_lookup[ts_hash]
         i_mult = mult_lookup[name]
 
         has_entry, tracker_container = search_for_reduced_branch_parameter!(
@@ -402,7 +410,7 @@ function _add_time_series_parameters!(
         IOM.add_component_name!(
             IOM.get_attributes(param_container),
             name,
-            ts_uuid,
+            ts_hash,
         )
     end
     return
@@ -438,7 +446,8 @@ function _get_time_series_name(
 )
     op_cost = PSY.get_operation_cost(device)
     IS.@assert_op op_cost isa TS_OFFER_CURVE_COST_TYPES
-    return IS.get_name(IS.get_time_series_key(PSY.get_start_up(op_cost)))
+    # The TS-backed startup field is the time-series key itself.
+    return IS.get_name(PSY.get_start_up(op_cost))
 end
 
 function _get_time_series_name(
@@ -844,24 +853,29 @@ function _add_parameters!(
     is_ts_resolution = _to_is_resolution(model_resolution)
     names = [PSY.get_name(s) for s in services]
 
-    # Services can share one stored time series, so the UUID parameter axis is deduplicated
-    # while the multiplier axis stays one row per service, joined by the name -> uuid map.
+    # Services can share one stored array, so the hash parameter axis is deduplicated while
+    # the multiplier axis stays one row per service, joined by the name -> hash map.
     # `resolution` accompanies `interval` so an off-resolution series is rejected, not read.
-    service_ts_uuids = Dict{String, String}()
+    ts_hashes = IS.get_time_series_hashes(
+        services,
+        ts_type,
+        ts_name;
+        resolution = is_ts_resolution,
+        interval = is_ts_interval,
+    )
+    service_ts_hashes = Dict{String, String}()
     initial_values = Dict{String, AbstractArray}()
     for (name, service) in zip(names, services)
-        ts_uuid = string(
-            IS.get_time_series_uuid(
-                ts_type,
-                service,
-                ts_name;
-                resolution = is_ts_resolution,
-                interval = is_ts_interval,
-            ),
-        )
-        service_ts_uuids[name] = ts_uuid
-        if !haskey(initial_values, ts_uuid)
-            initial_values[ts_uuid] = IOM.get_time_series_initial_values!(
+        ts_hash = get(ts_hashes, IS.get_id(service), nothing)
+        if ts_hash === nothing
+            error(
+                "Time series $(ts_type):$(ts_name) for $U, $name does not match " *
+                "interval=$model_interval, resolution=$model_resolution.",
+            )
+        end
+        service_ts_hashes[name] = ts_hash
+        if !haskey(initial_values, ts_hash)
+            initial_values[ts_hash] = IOM.get_time_series_initial_values!(
                 container,
                 ts_type,
                 service,
@@ -872,7 +886,7 @@ function _add_parameters!(
         end
     end
 
-    uuid_axis = collect(keys(initial_values))
+    hash_axis = collect(keys(initial_values))
     additional_axes = calc_additional_axes(container, T, services, model)
     # Key the container by the MODEL's component type `V`, not the element type `U`: readers
     # fetch with `SR` from the `ServiceModel`, and the two diverge when the model is declared
@@ -881,7 +895,7 @@ function _add_parameters!(
         V,
         ts_type,
         ts_name,
-        uuid_axis,
+        hash_axis,
         names,
         additional_axes,
         time_steps,
@@ -892,10 +906,10 @@ function _add_parameters!(
     parent_param = IOM.get_parameter_array_data(parameter_container)
     parent_mult = IOM.get_multiplier_array_data(parameter_container)
 
-    # Parameter rows follow `uuid_axis`, multiplier rows follow `names`; the two differ in
+    # Parameter rows follow `hash_axis`, multiplier rows follow `names`; the two differ in
     # length when services share a series.
-    for (i, ts_uuid) in enumerate(uuid_axis)
-        ts_vector = initial_values[ts_uuid]
+    for (i, ts_hash) in enumerate(hash_axis)
+        ts_vector = initial_values[ts_hash]
         for t in time_steps
             IOM._set_parameter_at!(parent_param, jump_model, ts_vector[t], i, t)
         end
@@ -903,7 +917,7 @@ function _add_parameters!(
     for (i, service) in enumerate(services)
         name = names[i]
         IOM._set_multiplier_at!(parent_mult, get_multiplier_value(T, service, W), i)
-        IOM.add_component_name!(attributes, name, service_ts_uuids[name])
+        IOM.add_component_name!(attributes, name, service_ts_hashes[name])
     end
     return
 end

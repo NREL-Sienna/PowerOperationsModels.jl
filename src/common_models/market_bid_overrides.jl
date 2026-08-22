@@ -80,8 +80,19 @@ function IOM.validate_occ_component(
     device::PSY.ThermalMultiStart,
 )
     startup = PSY.get_start_up(PSY.get_operation_cost(device))
-    # TupleTimeSeries{PSY.StartUpStages} guarantees NTuple{3, Float64} values at construction
-    startup isa IS.TupleTimeSeries && return
+    # A TS-backed startup is a bare time-series key referencing NTuple{3, Float64}
+    # stages; its element type is checked when the parameter is populated.
+    if startup isa IS.TimeSeriesKey
+        if eltype(typeof(startup)) != NTuple{3, Float64}
+            # TODO: should this be a helper in IOM?
+            throw(
+                ArgumentError(
+                    "Expected element type NTuple{3, Float64} but got $(typeof(startup))",
+                ),
+            )
+        end
+        return
+    end
     _validate_eltype(
         Union{Float64, NTuple{3, Float64}, PSY.StartUpStages},
         device,
@@ -99,7 +110,8 @@ function IOM.validate_occ_component(
     startup = PSY.get_start_up(PSY.get_operation_cost(device))
     apply_maybe_across_time_series(device, startup) do x
         # x may be Float64 (TGC), PSY.StartUpStages (static MBC), or NTuple{3, Float64}
-        # (TupleTimeSeries elements). `values` normalizes both NamedTuple and Tuple.
+        # (elements of a TS-backed startup key). `values` normalizes both NamedTuple
+        # and Tuple.
         if any(!iszero, x isa Number ? (x,) : values(x))
             @warn "Nonzero startup cost detected for renewable generation or storage device $(get_name(device))."
         end
@@ -211,11 +223,6 @@ _include_constant_min_gen_power_in_constraint(
 # Section 6: Source ImportExport — both incremental and decremental offers
 #################################################################################
 
-# FIXME behavior change: we now always add PWL terms for both import and export. The
-# previous `isnothing(...)` guard is dead in the new PSY (offer curves default to
-# `ZERO_OFFER_CURVE`, not nothing), and we don't yet have a way to introspect TS-backed
-# curves to decide "trivially empty". Skipping when the curve is trivial (one-directional
-# source) would be the better behavior — revisit once we have a cheap emptiness check.
 function add_variable_cost_to_objective!(
     container::OptimizationContainer,
     ::Type{ActivePowerOutVariable},
@@ -223,7 +230,7 @@ function add_variable_cost_to_objective!(
     cost_function::IEC_TYPES,
     ::Type{ImportExportSourceModel},
 )
-    isnothing(get_output_offer_curves(cost_function)) && return
+    IOM.is_nontrivial_offer(get_output_offer_curves(cost_function)) || return
     add_pwl_term_delta!(
         IncrementalOffer(),
         container,
@@ -242,7 +249,7 @@ function add_variable_cost_to_objective!(
     cost_function::IEC_TYPES,
     ::Type{ImportExportSourceModel},
 )
-    isnothing(get_input_offer_curves(cost_function)) && return
+    IOM.is_nontrivial_offer(get_input_offer_curves(cost_function)) || return
     add_pwl_term_delta!(
         DecrementalOffer(),
         container,

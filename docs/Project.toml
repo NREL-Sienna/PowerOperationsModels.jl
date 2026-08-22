@@ -9,7 +9,7 @@ Literate = "98b081ad-f1c9-55d3-8b20-4c87d4299306"
 PowerCoreOpenAPIModels = "b7b40286-e793-417d-a9a0-b1583e4da1cb"
 PowerOperationsOpenAPIModels = "a372b6d7-45a2-44c2-8199-6a724b72e8ff"
 PowerNetworkMatrices = "bed98974-b02a-5e2f-9fe0-a103f5c450dd"
-PowerOperationsModels = "bed98974-b02a-5e2f-9ee0-a103f5c450dd"
+PowerOperationsModels = "c9281074-0ec2-4761-850d-1a24107ea5e8"
 PowerSystems = "bcd98974-b02a-5e2f-9ee0-a103f5c450dd"
 PrettyTables = "08abe8d2-0d0c-5749-adfa-8a2ac140af0d"
 
