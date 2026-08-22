@@ -58,7 +58,7 @@ model declares no requirement series name (the formulation carries no requiremen
 function _has_ts_requirement(model::ServiceModel, s::PSY.AbstractReserve)
     ts_names = get_time_series_names(model)
     haskey(ts_names, RequirementTimeSeriesParameter) || return false
-    return PSY.has_time_series(s; name = ts_names[RequirementTimeSeriesParameter])
+    return PSY.has_time_series(s, ts_names[RequirementTimeSeriesParameter])
 end
 
 # ── ORDC (operating-reserve-demand-curve) predicates ─────────────────────────────────

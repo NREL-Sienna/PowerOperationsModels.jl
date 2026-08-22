@@ -220,7 +220,7 @@ end
 
 # Every PTDF-family matrix wraps one of these, so the tolerance and uuid are set once.
 _factor_core(ybus::PNM.Ybus, sys::PSY.System) =
-    PNM.VirtualFactorCore(ybus; tol = PTDF_ZERO_TOL, system_uuid = IS.get_id(sys))
+    PNM.VirtualFactorCore(ybus; tol = PTDF_ZERO_TOL, system_uuid = PSY.get_system_uuid(sys))
 
 #=
 The one source-aware Ybus resolution, dispatched on the source so every formulation

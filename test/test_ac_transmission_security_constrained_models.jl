@@ -97,8 +97,8 @@ end
         )]
 
         for (outage_id_str, name, t) in keys(pcbf.data)
-            uuid = Base.UUID(outage_id_str)
-            ctg = ground_truth_registered[uuid]
+            outage_id = parse(Int, outage_id_str)
+            ctg = ground_truth_registered[outage_id]
 
             # Resolve the monitored name to its arc and reduction kind.
             arc = nothing
@@ -341,8 +341,8 @@ end
         pcbf = IOM.get_expression(container, POM.PostContingencyBranchFlow, V)
         n_checked += 1
         for (outage_id_str, name, t) in keys(pcbf.data)
-            uuid = Base.UUID(outage_id_str)
-            ctg = ground_truth_registered[uuid]
+            outage_id = parse(Int, outage_id_str)
+            ctg = ground_truth_registered[outage_id]
             arc = nothing
             for n2a in values(name_to_arc_maps)
                 if haskey(n2a, name)
@@ -381,7 +381,7 @@ end
     c_sys5 = PSB.build_system(PSITestSystems, "c_sys5")
     all_branches = collect(get_components(PSY.ACTransmission, c_sys5))
     outage_components = ["1", "2", "3"]
-    outage_uuids = Base.UUID[]
+    outage_ids = Int[]
     for line_name in outage_components
         component = get_component(PSY.ACTransmission, c_sys5, line_name)
         transition_data = PSY.GeometricDistributionForcedOutage(;
@@ -390,7 +390,7 @@ end
             monitored_components = all_branches,
         )
         PSY.add_supplemental_attribute!(c_sys5, component, transition_data)
-        push!(outage_uuids, IS.get_id(transition_data))
+        push!(outage_ids, IS.get_id(transition_data))
     end
 
     auto_template = get_thermal_dispatch_template_network(
@@ -412,7 +412,7 @@ end
           IOM.ModelBuildStatus.BUILT
     auto_line_outages =
         IOM.get_outages(IOM.get_model(IOM.get_template(auto_model), PSY.Line))
-    @test Set(keys(auto_line_outages)) == Set(outage_uuids)
+    @test Set(keys(auto_line_outages)) == Set(outage_ids)
 
     container = IOM.get_optimization_container(auto_model)
     con_ub = IOM.get_constraint(
@@ -420,7 +420,7 @@ end
         IOM.ConstraintKey(POM.PostContingencyFlowRateConstraint, PSY.Line, "ub"),
     )
     ub_outages = Set(k[1] for k in keys(con_ub.data))
-    @test ub_outages == Set(string(u) for u in outage_uuids)
+    @test ub_outages == Set(string(u) for u in outage_ids)
 end
 
 @testset "DeviceModel.outages kwarg is dropped with a warning for non-SC formulations" begin
@@ -778,8 +778,8 @@ end
 
     n_checked = 0
     for (outage_id_str, name, t) in keys(pcbf.data)
-        uuid = Base.UUID(outage_id_str)
-        ctg = ground_truth_registered[uuid]
+        outage_id = parse(Int, outage_id_str)
+        ctg = ground_truth_registered[outage_id]
         arc, reduction_kind = name_to_arc_map[name]
 
         modf_col = ground_truth_modf[arc, ctg]
