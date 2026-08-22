@@ -46,7 +46,7 @@ function _has_post_contingency_rate(
     ) || return false
     param_container = get_parameter(
         container,
-        PostContingencyBranchRatingTimeSeriesParameter(),
+        PostContingencyBranchRatingTimeSeriesParameter,
         entry_type,
     )
     return name in axes(get_multiplier_array(param_container))[1]
@@ -61,7 +61,7 @@ function _post_contingency_rate_columns(
 )
     param_container = get_parameter(
         container,
-        PostContingencyBranchRatingTimeSeriesParameter(),
+        PostContingencyBranchRatingTimeSeriesParameter,
         entry_type,
     )
     return get_parameter_column_refs(param_container, name),
