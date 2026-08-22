@@ -241,8 +241,10 @@ end
     output_dir = mktempdir(; cleanup = true)
     @test build!(model; output_dir = output_dir) == IOM.ModelBuildStatus.FAILED
     # The build wraps its logging, so assert on the log rather than at the call site.
+    # The rejection is POM's add_parameters guard; the key-addressed store no longer errors first.
     log_contents = read(joinpath(output_dir, "operation_problem.log"), String)
-    @test occursin("No matching metadata", log_contents)
+    @test occursin("Deterministic:requirement", log_contents)
+    @test occursin("does not match interval=", log_contents)
 end
 
 @testset "Per-type populate errors when one service of the type has no contributing devices" begin
