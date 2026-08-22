@@ -120,6 +120,7 @@ function get_default_attributes(
         "reservation" => true,
         "cycling_limits" => false,
         "energy_target" => false,
+        "reserve_coverage" => true,
         "complete_coverage" => false,
         "regularization" => false,
     )
@@ -427,7 +428,7 @@ get_variable_multiplier(
     ::Type{StorageReserveBalanceExpression{PSY.ReserveDown, UnscaledReserve, ChargeSide}},
     d::PSY.Storage,
     ::Type{StorageDispatchWithReserves},
-    ::PSY.Reserve{PSY.ReserveUp},
+    ::UP_RESERVE,
 ) = 0.0
 
 get_variable_multiplier(
@@ -443,7 +444,7 @@ get_variable_multiplier(
     ::Type{StorageReserveBalanceExpression{PSY.ReserveUp, UnscaledReserve, ChargeSide}},
     d::PSY.Storage,
     ::Type{StorageDispatchWithReserves},
-    ::PSY.Reserve{PSY.ReserveUp},
+    ::UP_RESERVE,
 ) = 1.0
 
 get_variable_multiplier(
@@ -461,7 +462,7 @@ get_variable_multiplier(
     },
     d::PSY.Storage,
     ::Type{StorageDispatchWithReserves},
-    ::PSY.Reserve{PSY.ReserveUp},
+    ::UP_RESERVE,
 ) = 0.0
 
 get_variable_multiplier(
@@ -479,7 +480,7 @@ get_variable_multiplier(
     ::Type{StorageReserveBalanceExpression{PSY.ReserveUp, UnscaledReserve, DischargeSide}},
     d::PSY.Storage,
     ::Type{StorageDispatchWithReserves},
-    ::PSY.Reserve{PSY.ReserveUp},
+    ::UP_RESERVE,
 ) = 1.0
 
 get_variable_multiplier(
@@ -496,7 +497,7 @@ get_variable_multiplier(
     ::Type{StorageReserveBalanceExpression{PSY.ReserveDown, DeployedReserve, ChargeSide}},
     d::PSY.Storage,
     ::Type{StorageDispatchWithReserves},
-    ::PSY.Reserve{PSY.ReserveUp},
+    ::UP_RESERVE,
 ) = 0.0
 
 get_variable_multiplier(
@@ -512,7 +513,7 @@ get_variable_multiplier(
     ::Type{StorageReserveBalanceExpression{PSY.ReserveUp, DeployedReserve, ChargeSide}},
     d::PSY.Storage,
     ::Type{StorageDispatchWithReserves},
-    ::PSY.Reserve{PSY.ReserveUp},
+    ::UP_RESERVE,
 ) = 1.0
 
 get_variable_multiplier(
@@ -530,7 +531,7 @@ get_variable_multiplier(
     },
     d::PSY.Storage,
     ::Type{StorageDispatchWithReserves},
-    ::PSY.Reserve{PSY.ReserveUp},
+    ::UP_RESERVE,
 ) = 0.0
 
 get_variable_multiplier(
@@ -548,7 +549,7 @@ get_variable_multiplier(
     ::Type{StorageReserveBalanceExpression{PSY.ReserveUp, DeployedReserve, DischargeSide}},
     d::PSY.Storage,
     ::Type{StorageDispatchWithReserves},
-    ::PSY.Reserve{PSY.ReserveUp},
+    ::UP_RESERVE,
 ) = 1.0
 
 get_variable_multiplier(
@@ -561,16 +562,16 @@ get_variable_multiplier(
 
 #! format: off
 # Use 1.0 because this is to allow to reuse the code below on add_to_expression
-get_fraction(::Type{StorageReserveBalanceExpression{PSY.ReserveUp, UnscaledReserve, DischargeSide}}, d::PSY.Reserve) = 1.0
-get_fraction(::Type{StorageReserveBalanceExpression{PSY.ReserveUp, UnscaledReserve, ChargeSide}}, d::PSY.Reserve) = 1.0
-get_fraction(::Type{StorageReserveBalanceExpression{PSY.ReserveDown, UnscaledReserve, DischargeSide}}, d::PSY.Reserve) = 1.0
-get_fraction(::Type{StorageReserveBalanceExpression{PSY.ReserveDown, UnscaledReserve, ChargeSide}}, d::PSY.Reserve) = 1.0
+get_fraction(::Type{StorageReserveBalanceExpression{PSY.ReserveUp, UnscaledReserve, DischargeSide}}, d::PSY.AbstractReserve) = 1.0
+get_fraction(::Type{StorageReserveBalanceExpression{PSY.ReserveUp, UnscaledReserve, ChargeSide}}, d::PSY.AbstractReserve) = 1.0
+get_fraction(::Type{StorageReserveBalanceExpression{PSY.ReserveDown, UnscaledReserve, DischargeSide}}, d::PSY.AbstractReserve) = 1.0
+get_fraction(::Type{StorageReserveBalanceExpression{PSY.ReserveDown, UnscaledReserve, ChargeSide}}, d::PSY.AbstractReserve) = 1.0
 
 # Needs to implement served fraction in PSY
-get_fraction(::Type{StorageReserveBalanceExpression{PSY.ReserveUp, DeployedReserve, DischargeSide}}, d::PSY.Reserve) = PSY.get_deployed_fraction(d)
-get_fraction(::Type{StorageReserveBalanceExpression{PSY.ReserveUp, DeployedReserve, ChargeSide}}, d::PSY.Reserve) = PSY.get_deployed_fraction(d)
-get_fraction(::Type{StorageReserveBalanceExpression{PSY.ReserveDown, DeployedReserve, DischargeSide}}, d::PSY.Reserve) = PSY.get_deployed_fraction(d)
-get_fraction(::Type{StorageReserveBalanceExpression{PSY.ReserveDown, DeployedReserve, ChargeSide}}, d::PSY.Reserve) = PSY.get_deployed_fraction(d)
+get_fraction(::Type{StorageReserveBalanceExpression{PSY.ReserveUp, DeployedReserve, DischargeSide}}, d::PSY.AbstractReserve) = PSY.get_deployed_fraction(d)
+get_fraction(::Type{StorageReserveBalanceExpression{PSY.ReserveUp, DeployedReserve, ChargeSide}}, d::PSY.AbstractReserve) = PSY.get_deployed_fraction(d)
+get_fraction(::Type{StorageReserveBalanceExpression{PSY.ReserveDown, DeployedReserve, DischargeSide}}, d::PSY.AbstractReserve) = PSY.get_deployed_fraction(d)
+get_fraction(::Type{StorageReserveBalanceExpression{PSY.ReserveDown, DeployedReserve, ChargeSide}}, d::PSY.AbstractReserve) = PSY.get_deployed_fraction(d)
 #! format: on
 
 function add_to_expression!(
@@ -719,7 +720,7 @@ function add_to_expression!(
     T <: TotalReserveOffering,
     U <: ActivePowerReserveVariable,
     UV <: PSY.Storage,
-    V <: PSY.Reserve,
+    V <: PSY.AbstractReserve,
     W <: AbstractReservesFormulation,
 }
     s_name = PSY.get_name(service)
@@ -748,7 +749,8 @@ function add_constraints!(
     model::DeviceModel{V, StorageDispatchWithReserves},
     network_model::NetworkModel{X},
 ) where {V <: PSY.Storage, X <: AbstractNetworkModel}
-    if has_service_model(model)
+    # Decoupled AS: the SOC evolution carries no expected reserve-deployment energy.
+    if has_service_model(model) && get_attribute(model, "reserve_coverage")
         add_energybalance_with_reserves!(container, devices, model, network_model)
     else
         add_energybalance_without_reserves!(container, devices, model, network_model)
@@ -888,21 +890,20 @@ function add_energybalance_without_reserves!(
     return
 end
 
-# Reserve-assignment bounds for discharge (Up) / charge (Down):
-#   UB: power + up_assignment <= max
-#   LB: power - down_assignment >= min
-# Same shape for both directions, parametrized by the "assignment" expression pair and
-# power variable/limits; routed through `IOM.add_range_bound_constraint!`.
+# Reserve-assignment bounds per side. Reserves swap roles on the charge side (down
+# INCREASES charging, up DECREASES it), same convention as the deployment expressions:
+#   UB: power + increasing <= max   (discharge: Up;   charge: Down)
+#   LB: power - decreasing >= min   (discharge: Down; charge: Up)
 _reserve_assignment_power_var(::Type{ReserveDischargeConstraint}) = ActivePowerOutVariable
 _reserve_assignment_power_var(::Type{ReserveChargeConstraint}) = ActivePowerInVariable
-_reserve_assignment_up_expr(::Type{ReserveDischargeConstraint}) =
+_reserve_assignment_increasing_expr(::Type{ReserveDischargeConstraint}) =
     StorageReserveBalanceExpression{PSY.ReserveUp, UnscaledReserve, DischargeSide}
-_reserve_assignment_down_expr(::Type{ReserveDischargeConstraint}) =
+_reserve_assignment_decreasing_expr(::Type{ReserveDischargeConstraint}) =
     StorageReserveBalanceExpression{PSY.ReserveDown, UnscaledReserve, DischargeSide}
-_reserve_assignment_up_expr(::Type{ReserveChargeConstraint}) =
-    StorageReserveBalanceExpression{PSY.ReserveUp, UnscaledReserve, ChargeSide}
-_reserve_assignment_down_expr(::Type{ReserveChargeConstraint}) =
+_reserve_assignment_increasing_expr(::Type{ReserveChargeConstraint}) =
     StorageReserveBalanceExpression{PSY.ReserveDown, UnscaledReserve, ChargeSide}
+_reserve_assignment_decreasing_expr(::Type{ReserveChargeConstraint}) =
+    StorageReserveBalanceExpression{PSY.ReserveUp, UnscaledReserve, ChargeSide}
 _reserve_assignment_limits(::Type{ReserveDischargeConstraint}, d) =
     PSY.get_output_active_power_limits(d, PSY.SU)
 _reserve_assignment_limits(::Type{ReserveChargeConstraint}, d) =
@@ -927,8 +928,8 @@ function add_constraints!(
     time_steps = get_time_steps(container)
     jump_model = get_jump_model(container)
     power_var = get_variable(container, _reserve_assignment_power_var(T), V)
-    r_up = get_expression(container, _reserve_assignment_up_expr(T), V)
-    r_dn = get_expression(container, _reserve_assignment_down_expr(T), V)
+    r_inc = get_expression(container, _reserve_assignment_increasing_expr(T), V)
+    r_dec = get_expression(container, _reserve_assignment_decreasing_expr(T), V)
 
     con_ub = add_constraints_container!(container, T, V, names, time_steps; meta = "ub")
     con_lb = add_constraints_container!(container, T, V, names, time_steps; meta = "lb")
@@ -937,10 +938,10 @@ function add_constraints!(
         limits = _reserve_assignment_limits(T, d)
         IOM.add_range_bound_constraint!(
             IOM.UpperBound(), jump_model, con_ub, name, t,
-            power_var[name, t] + r_up[name, t], limits.max)
+            power_var[name, t] + r_inc[name, t], limits.max)
         IOM.add_range_bound_constraint!(
             IOM.LowerBound(), jump_model, con_lb, name, t,
-            power_var[name, t] - r_dn[name, t], limits.min)
+            power_var[name, t] - r_dec[name, t], limits.min)
     end
     return
 end
@@ -976,7 +977,7 @@ function add_constraints!(
 
     for service in services_set
         service_name = PSY.get_name(service)
-        if typeof(service) <: PSY.Reserve{PSY.ReserveUp}
+        if typeof(service) <: UP_RESERVE
             add_constraints_container!(container, T,
                 V,
                 names,
@@ -1021,7 +1022,7 @@ function add_constraints!(
                 V,
                 _service_container_meta(service),
             )
-            if typeof(service) <: PSY.Reserve{PSY.ReserveUp}
+            if typeof(service) <: UP_RESERVE
                 con_discharge = get_constraint(
                     container,
                     T(),
@@ -1118,7 +1119,7 @@ function add_constraints!(
     services_types = unique(typeof.(services_set))
 
     for serv_type in services_types
-        if serv_type <: PSY.Reserve{PSY.ReserveUp}
+        if serv_type <: UP_RESERVE
             add_constraints_container!(container, T,
                 V,
                 names,
@@ -1165,7 +1166,7 @@ function add_constraints!(
                 V,
                 _service_container_meta(service),
             )
-            if typeof(service) <: PSY.Reserve{PSY.ReserveUp}
+            if typeof(service) <: UP_RESERVE
                 push!(
                     expr_up_discharge,
                     sustained_param_discharge * reserve_var_discharge[ci_name, :],
@@ -1180,7 +1181,7 @@ function add_constraints!(
             end
         end
         for serv_type in services_types
-            if serv_type <: PSY.Reserve{PSY.ReserveUp}
+            if serv_type <: UP_RESERVE
                 con_discharge =
                     get_constraint(container, T(), V, "$(serv_type)_discharge")
                 total_sustained = JuMP.AffExpr()

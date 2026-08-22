@@ -89,13 +89,11 @@ end
     ts_data = repeat(day_data, 2)
     ts_out = SingleTimeSeries(
         "max_active_power_out",
-        TimeArray(tstamp, ts_data);
-        scaling_factor_multiplier = get_max_active_power,
+        TimeArray(tstamp, ts_data),
     )
     ts_in = SingleTimeSeries(
         "max_active_power_in",
-        TimeArray(tstamp, ts_data);
-        scaling_factor_multiplier = get_max_active_power,
+        TimeArray(tstamp, ts_data),
     )
     add_time_series!(sys, source, ts_out)
     add_time_series!(sys, source, ts_in)
@@ -171,13 +169,11 @@ end
     ts_data = repeat(day_data, 2)
     ts_out = SingleTimeSeries(
         "max_active_power_out",
-        TimeArray(tstamp, ts_data);
-        scaling_factor_multiplier = get_max_active_power,
+        TimeArray(tstamp, ts_data),
     )
     ts_in = SingleTimeSeries(
         "max_active_power_in",
-        TimeArray(tstamp, ts_data);
-        scaling_factor_multiplier = get_max_active_power,
+        TimeArray(tstamp, ts_data),
     )
     add_time_series!(sys, source, ts_out)
     add_time_series!(sys, source, ts_in)
@@ -252,13 +248,11 @@ end
     ts_data = repeat(day_data, 2)
     ts_out = SingleTimeSeries(
         "max_active_power_out",
-        TimeArray(tstamp, ts_data);
-        scaling_factor_multiplier = get_max_active_power,
+        TimeArray(tstamp, ts_data),
     )
     ts_in = SingleTimeSeries(
         "max_active_power_in",
-        TimeArray(tstamp, ts_data);
-        scaling_factor_multiplier = get_max_active_power,
+        TimeArray(tstamp, ts_data),
     )
     add_time_series!(sys, source, ts_out)
     add_time_series!(sys, source, ts_in)

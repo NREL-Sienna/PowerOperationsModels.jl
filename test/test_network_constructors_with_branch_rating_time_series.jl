@@ -764,12 +764,13 @@ end
         [line_a, line_b],
         PSY.Deterministic(
             "branch_rating",
-            rating_data;
-            scaling_factor_multiplier = get_rating,
+            rating_data,
         ),
     )
-    @test IS.get_time_series_uuid(PSY.Deterministic, line_a, "branch_rating") ==
-          IS.get_time_series_uuid(PSY.Deterministic, line_b, "branch_rating")
+    branch_rating_hashes =
+        IS.get_time_series_hashes((line_a, line_b), PSY.Deterministic, "branch_rating")
+    @test branch_rating_hashes[IS.get_id(line_a)] ==
+          branch_rating_hashes[IS.get_id(line_b)]
 
     template = get_thermal_dispatch_template_network(
         NetworkModel(PTDFNetworkModel),

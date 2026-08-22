@@ -75,21 +75,24 @@ function _add_ancillary_services!(
     model::DeviceModel{T, U},
     network_model::NetworkModel{V},
 ) where {T <: PSY.Storage, U <: StorageDispatchWithReserves, V <: AbstractNetworkModel}
-    add_constraints!(
-        container,
-        ReserveCoverageConstraint,
-        devices,
-        model,
-        network_model,
-    )
+    # SOC coverage is physical feasibility, not market clearing - skipped when decoupled.
+    if get_attribute(model, "reserve_coverage")
+        add_constraints!(
+            container,
+            ReserveCoverageConstraint,
+            devices,
+            model,
+            network_model,
+        )
 
-    add_constraints!(
-        container,
-        ReserveCoverageConstraintEndOfPeriod,
-        devices,
-        model,
-        network_model,
-    )
+        add_constraints!(
+            container,
+            ReserveCoverageConstraintEndOfPeriod,
+            devices,
+            model,
+            network_model,
+        )
+    end
 
     add_constraints!(
         container,
@@ -165,7 +168,9 @@ function _active_power_and_energy_bounds(
     network_model::NetworkModel,
 ) where {T <: PSY.Storage, U <: StorageDispatchWithReserves}
     if has_service_model(model)
-        if get_attribute(model, "reservation")
+        # Decoupled AS (`reserve_coverage = false`): reserve bounds ignore the reservation
+        # binary; the binary still governs energy charge/discharge exclusivity.
+        if get_attribute(model, "reservation") && get_attribute(model, "reserve_coverage")
             add_reserve_range_constraint_with_deployment!(
                 container,
                 OutputActivePowerVariableLimitsConstraint,
@@ -307,20 +312,26 @@ function _energy_constraints_and_objective!(
 
     if has_service_model(model)
         if get_attribute(model, "complete_coverage")
-            add_constraints!(
-                container,
-                ReserveCompleteCoverageConstraint,
-                devices,
-                model,
-                network_model,
-            )
-            add_constraints!(
-                container,
-                ReserveCompleteCoverageConstraintEndOfPeriod,
-                devices,
-                model,
-                network_model,
-            )
+            if get_attribute(model, "reserve_coverage")
+                add_constraints!(
+                    container,
+                    ReserveCompleteCoverageConstraint,
+                    devices,
+                    model,
+                    network_model,
+                )
+                add_constraints!(
+                    container,
+                    ReserveCompleteCoverageConstraintEndOfPeriod,
+                    devices,
+                    model,
+                    network_model,
+                )
+            else
+                @warn "complete_coverage = true is ignored because reserve_coverage = false: " *
+                      "SOC coverage of AS awards (individual and complete) is disabled when " *
+                      "energy and ancillary services are decoupled."
+            end
         end
     end
 

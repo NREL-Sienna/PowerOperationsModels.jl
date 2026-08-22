@@ -6,8 +6,10 @@ DocumenterInterLinks = "d12716ef-a0f6-4df4-a9f1-a5a34e75c656"
 InfrastructureOptimizationModels = "bed98974-b02a-5e2f-9ee0-a103f5c45069"
 InfrastructureSystems = "2cd47ed4-ca9b-11e9-27f2-ab636a7671f1"
 Literate = "98b081ad-f1c9-55d3-8b20-4c87d4299306"
+PowerCoreOpenAPIModels = "b7b40286-e793-417d-a9a0-b1583e4da1cb"
+PowerOperationsOpenAPIModels = "a372b6d7-45a2-44c2-8199-6a724b72e8ff"
 PowerNetworkMatrices = "bed98974-b02a-5e2f-9fe0-a103f5c450dd"
-PowerOperationsModels = "bed98974-b02a-5e2f-9ee0-a103f5c450dd"
+PowerOperationsModels = "c9281074-0ec2-4761-850d-1a24107ea5e8"
 PowerSystems = "bcd98974-b02a-5e2f-9ee0-a103f5c450dd"
 PrettyTables = "08abe8d2-0d0c-5749-adfa-8a2ac140af0d"
 
@@ -16,6 +18,11 @@ InfrastructureSystems = {rev = "IS4", url = "https://github.com/Sienna-Platform/
 PowerSystems = {rev = "psy6", url = "https://github.com/Sienna-Platform/PowerSystems.jl"}
 InfrastructureOptimizationModels = {rev = "main", url = "https://github.com/Sienna-Platform/InfrastructureOptimizationModels.jl"}
 PowerNetworkMatrices = {rev = "psy6", url = "https://github.com/Sienna-Platform/PowerNetworkMatrices.jl"}
+# PSY psy6 depends on these unregistered packages; [sources] of non-root projects are
+# ignored by Pkg, so every environment resolving PSY must pin them itself (same rev as
+# PSY's own sources). Temporary until the OpenAPI packages are registered.
+PowerCoreOpenAPIModels = {rev = "main", url = "https://github.com/Sienna-Platform/PowerOpenAPIModels.git", subdir = "PowerCoreOpenAPIModels.jl"}
+PowerOperationsOpenAPIModels = {rev = "main", url = "https://github.com/Sienna-Platform/PowerOpenAPIModels.git", subdir = "PowerOperationsOpenAPIModels.jl"}
 
 [compat]
 Documenter = "^1.0"

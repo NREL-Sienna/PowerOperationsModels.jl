@@ -265,7 +265,7 @@ end
 
 function _modify_device_model!(
     devices_template::Dict{Symbol, DeviceModel},
-    service_model::ServiceModel{<:PSY.Reserve, <:AbstractReservesFormulation},
+    service_model::ServiceModel{<:PSY.AbstractReserve, <:AbstractReservesFormulation},
     contributing_devices::Vector{<:PSY.Component},
 )
     # Type stability: explicitly type the Set to avoid widening
@@ -284,9 +284,12 @@ function _modify_device_model!(
     return
 end
 
+# NonSpinningReserve awards ride ReservePowerConstraint (offline thermal headroom), not the
+# device range expressions, so device models must not register the service. Other reserve
+# formulations (e.g. an OfflineReserve ORDC under StepwiseCostReserve) register normally.
 function _modify_device_model!(
     ::Dict{Symbol, DeviceModel},
-    ::ServiceModel{<:PSY.OfflineReserve, <:AbstractReservesFormulation},
+    ::ServiceModel{<:PSY.OfflineReserve, NonSpinningReserve},
     ::Vector{<:PSY.Component},
 )
     return

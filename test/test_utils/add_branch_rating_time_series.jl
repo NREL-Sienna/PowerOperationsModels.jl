@@ -29,8 +29,7 @@ function add_branch_rating_time_series_to_system!(
             branch,
             PowerSystems.Deterministic(
                 ts_name,
-                rating_data;
-                scaling_factor_multiplier = get_rating,
+                rating_data,
             ),
         )
     end

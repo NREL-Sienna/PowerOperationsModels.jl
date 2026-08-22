@@ -31,10 +31,17 @@ struct ChargeSide <: ReserveSide end
 
 """
 Direction of a reserve. `OfflineReserve` (non-spinning) has no direction type parameter and is
-upward-only in every US market, so it maps to [`PSY.ReserveUp`](@ref).
+upward-only in every US market, so it maps to `PSY.ReserveUp`.
 """
 _reserve_direction(::PSY.Reserve{T}) where {T <: PSY.ReserveDirection} = T
 _reserve_direction(::PSY.OfflineReserve) = PSY.ReserveUp
+
+"""
+Upward reserve products a device can supply: up-direction reserves plus `OfflineReserve`
+(non-spinning is upward-only). Excludes `GroupReserve` - devices serve a group's members,
+never the group itself.
+"""
+const UP_RESERVE = Union{PSY.Reserve{PSY.ReserveUp}, PSY.OfflineReserve}
 
 "Whether a reserve is non-spinning: `OfflineReserve` vs everything else under `AbstractReserve`."
 _is_offline(::PSY.OfflineReserve) = true
@@ -60,7 +67,7 @@ end
 # (union-splits cleanly over the two `variable` members; reserves are few and read at build,
 # so the cost is negligible).
 
-"Whether a reserve's ORDC curve is time-varying. Dispatches on the value-curve type (no `isa`)."
+"Whether a reserve's or group's ORDC curve is time-varying. Dispatches on the value-curve type (no `isa`)."
 _ordc_is_ts(s::PSY.AbstractReserve) =
     _value_curve_is_ts(PSY.get_value_curve(PSY.get_variable(s)))
 _value_curve_is_ts(::PSY.TimeSeriesPiecewiseIncrementalCurve) = true

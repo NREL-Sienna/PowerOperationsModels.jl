@@ -809,7 +809,7 @@ end
             PNM.VirtualFactorCore(
                 PNM.Ybus(sys; network_reductions = reductions);
                 tol = POM.PTDF_ZERO_TOL,
-                system_uuid = IS.get_uuid(sys),
+                system_uuid = PSY.get_system_uuid(sys),
             ),
         ),
     )

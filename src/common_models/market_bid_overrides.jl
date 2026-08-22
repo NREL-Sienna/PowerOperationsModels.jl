@@ -80,8 +80,19 @@ function IOM.validate_occ_component(
     device::PSY.ThermalMultiStart,
 )
     startup = PSY.get_start_up(PSY.get_operation_cost(device))
-    # TupleTimeSeries{PSY.StartUpStages} guarantees NTuple{3, Float64} values at construction
-    startup isa IS.TupleTimeSeries && return
+    # A TS-backed startup is a bare time-series key referencing NTuple{3, Float64}
+    # stages; its element type is checked when the parameter is populated.
+    if startup isa IS.TimeSeriesKey
+        if eltype(typeof(startup)) != NTuple{3, Float64}
+            # TODO: should this be a helper in IOM?
+            throw(
+                ArgumentError(
+                    "Expected element type NTuple{3, Float64} but got $(typeof(startup))",
+                ),
+            )
+        end
+        return
+    end
     _validate_eltype(
         Union{Float64, NTuple{3, Float64}, PSY.StartUpStages},
         device,
@@ -99,7 +110,8 @@ function IOM.validate_occ_component(
     startup = PSY.get_start_up(PSY.get_operation_cost(device))
     apply_maybe_across_time_series(device, startup) do x
         # x may be Float64 (TGC), PSY.StartUpStages (static MBC), or NTuple{3, Float64}
-        # (TupleTimeSeries elements). `values` normalizes both NamedTuple and Tuple.
+        # (elements of a TS-backed startup key). `values` normalizes both NamedTuple
+        # and Tuple.
         if any(!iszero, x isa Number ? (x,) : values(x))
             @warn "Nonzero startup cost detected for renewable generation or storage device $(get_name(device))."
         end

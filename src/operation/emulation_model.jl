@@ -281,12 +281,17 @@ function run!(
                     export_problem_outputs && export_outputs(outputs)
                     if IOM.get_system_to_file(IOM.get_settings(model))
                         sys = IOM.get_system(model)
-                        sys_filename = joinpath(
+                        sys_dir = joinpath(
                             IOM.get_output_dir(model),
-                            IOM.make_system_filename(sys),
+                            IOM.make_system_dirname(sys),
                         )
                         # Re-solving into an existing directory must not rewrite the system and its time series.
-                        !ispath(sys_filename) && PSY.to_json(sys, sys_filename)
+                        # `unit_system = :device_base`, not the `:original` default: that one
+                        # reproduces the document a System was read from and needs the round-trip
+                        # ledger, which a model's system carries only when it was built from a
+                        # document. Device base is what PSY stores internally.
+                        !ispath(sys_dir) &&
+                            PSY.to_file(sys, sys_dir; unit_system = :device_base)
                     end
                 end
                 @info "\n$(RUN_OPERATION_MODEL_TIMER)\n"
