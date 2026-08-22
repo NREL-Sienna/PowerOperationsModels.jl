@@ -103,6 +103,79 @@ end
     ) ≈ [2.0]
 end
 
+@testset "Source + ImportExportSourceModel: an unoffered side adds no terms" begin
+    # A one-directional import source: PSY leaves the export side as `ZERO_OFFER_CURVE`,
+    # which must not become a block of PWL variables priced at zero.
+    cost = PSY.ImportExportCost(;
+        import_offer_curves = PSY.make_import_curve([0.0, 25.0, 100.0], [2.0, 5.0]),
+    )
+    sys = one_bus_one_source(cost; name = _SOURCE_NAME)
+    source = PSY.get_component(PSY.Source, sys, _SOURCE_NAME)
+
+    container = build_test_container(sys, 1:1)
+    add_jump_var!(container, IOM.ActivePowerOutVariable, PSY.Source, _SOURCE_NAME, 1)
+    add_jump_var!(container, IOM.ActivePowerInVariable, PSY.Source, _SOURCE_NAME, 1)
+
+    POM.add_variable_cost_to_objective!(
+        container, IOM.ActivePowerOutVariable, source, cost, POM.ImportExportSourceModel,
+    )
+    POM.add_variable_cost_to_objective!(
+        container, IOM.ActivePowerInVariable, source, cost, POM.ImportExportSourceModel,
+    )
+
+    @test IOM.has_container_key(
+        container, IOM.PiecewiseLinearBlockIncrementalOffer, PSY.Source,
+    )
+    @test !IOM.has_container_key(
+        container, IOM.PiecewiseLinearBlockDecrementalOffer, PSY.Source,
+    )
+end
+
+@testset "ImportExportBudgetConstraint: sub-hourly resolution" begin
+    cost = _static_iec([0.0, 0.25, 1.0], [2.0, 5.0], [0.0, 0.40, 0.9], [4.0, 8.0])
+    PSY.set_energy_import_weekly_limit!(cost, 168.0)
+    PSY.set_energy_export_weekly_limit!(cost, 336.0)
+    sys = one_bus_one_source(cost; name = _SOURCE_NAME)
+
+    time_steps = 1:12
+    container = build_test_container(sys, time_steps; resolution = Dates.Minute(5))
+    for t in time_steps
+        add_jump_var!(container, IOM.ActivePowerOutVariable, PSY.Source, _SOURCE_NAME, t)
+        add_jump_var!(container, IOM.ActivePowerInVariable, PSY.Source, _SOURCE_NAME, t)
+    end
+
+    POM.add_constraints!(
+        container,
+        POM.ImportExportBudgetConstraint,
+        PSY.get_components(PSY.Source, sys),
+        IOM.DeviceModel(PSY.Source, POM.ImportExportSourceModel),
+        IOM.NetworkModel(POM.CopperPlateNetworkModel),
+    )
+
+    # 12 × 5 min is one hour of horizon, so each weekly limit prorates by 1/168.
+    import_con =
+        IOM.get_constraint(
+            container,
+            POM.ImportExportBudgetConstraint,
+            PSY.Source,
+            "import",
+        )
+    export_con =
+        IOM.get_constraint(
+            container,
+            POM.ImportExportBudgetConstraint,
+            PSY.Source,
+            "export",
+        )
+    @test JuMP.normalized_rhs(import_con[_SOURCE_NAME, "horizon"]) ≈ 1.0
+    @test JuMP.normalized_rhs(export_con[_SOURCE_NAME, "horizon"]) ≈ 2.0
+    # Each 5-minute step contributes an hour twelfth of energy.
+    p_out = IOM.get_variable(container, IOM.ActivePowerOutVariable, PSY.Source)
+    @test JuMP.normalized_coefficient(
+        import_con[_SOURCE_NAME, "horizon"], p_out[_SOURCE_NAME, 1],
+    ) ≈ 1 / 12
+end
+
 @testset "Source + ImportExportSourceModel + TS IEC" begin
     cost = stub_ts_import_export_cost()
     sys = one_bus_one_source(cost; name = _SOURCE_NAME)
