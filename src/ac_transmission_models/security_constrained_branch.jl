@@ -721,7 +721,7 @@ function _copy_existing_post_contingency_expressions!(
                 end
             end
         end
-        isempty(unresolved) || push!(fresh, uuid => unresolved)
+        isempty(unresolved) || push!(fresh, id => unresolved)
     end
     return fresh
 end
