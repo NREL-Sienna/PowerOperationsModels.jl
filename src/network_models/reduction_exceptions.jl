@@ -160,8 +160,8 @@ _pin_model_all_branches!(::Set{Int}, ::DeviceModel) = nothing
 _warn_circuit(o, m) =
     @warn "Circuit has control $o enabled but $m. This control will be ignored, and the \
            circuit and its regulated bus may be reduced." maxlog = 5
-_supports_tap(::NetworkModel{<:AbstractDCPNetworkModel}) = false
-_supports_tap(::NetworkModel) = true
+_supports_tap(::NetworkModel{<:NativeACNetworkModel}) = true
+_supports_tap(::NetworkModel) = false
 
 const _IMPLEMENTED_CONTROLS = _TAP_CONTROLS
 
