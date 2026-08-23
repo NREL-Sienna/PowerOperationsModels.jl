@@ -158,7 +158,8 @@ end
 _pin_model_all_branches!(::Set{Int}, ::DeviceModel) = nothing
 
 _warn_circuit(o, m) =
-    @warn "Circuit has control $o enabled but $m. This control will be ignored, and the circuit and its regulated bus may be reduced."
+    @warn "Circuit has control $o enabled but $m. This control will be ignored, and the \
+           circuit and its regulated bus may be reduced." maxlog = 5
 _supports_tap(::NetworkModel{<:AbstractDCPNetworkModel}) = false
 _supports_tap(::NetworkModel) = true
 
@@ -182,6 +183,13 @@ function _pin_transformer_controls!(
             end
             if obj in _TAP_CONTROLS && !_supports_tap(network_model)
                 _warn_circuit(obj, "DC networks do not support variable-tap")
+                continue
+            end
+            # `obj.value <= 0` is absent (`UNDEFINED`), manual (`FIXED`) or explicitly
+            # disabled control data, not an unimplemented feature: skip it silently.
+            # `enable_controls` is a per-DeviceModel switch, so most circuits under it
+            # legitimately carry no control block at all.
+            if obj.value <= 0
                 continue
             end
             if !(obj in _IMPLEMENTED_CONTROLS)

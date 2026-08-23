@@ -376,7 +376,7 @@ function _resolve_branch_multiplier(
     @warn "Parallel reduction $(PNM.get_name(d)) has a member with a \
            post-contingency branch rating time series; using the summed emergency \
            rating as the multiplier, regardless of the \
-           `$PARALLEL_BRANCH_MAX_RATING_KEY` attribute."
+           `$PARALLEL_BRANCH_MAX_RATING_KEY` attribute." maxlog = 5
     return PNM.get_equivalent_emergency_rating(d)
 end
 
