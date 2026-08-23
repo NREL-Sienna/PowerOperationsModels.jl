@@ -121,47 +121,6 @@ end
 # Helpers for _add_time_series_parameters!
 #################################################################################
 
-function _static_rating(
-    device::PSY.Device,
-    model::DeviceModel,
-    ::Type{PostContingencyBranchRatingTimeSeriesParameter},
-)
-    rating_b = _branch_rating_b(device)
-    if isnothing(rating_b)
-        @warn "Device $(typeof(device)) '$(PSY.get_name(device))' has Parameter PostContingencyBranchRatingTimeSeriesParameter but it has no static 'rating_b' defined."
-        return _branch_rating(device, model)
-    end
-    return rating_b
-end
-
-_static_rating(
-    device::PSY.Device,
-    model::DeviceModel,
-    ::Type{<:AbstractBranchRatingTimeSeriesParameter},
-) =
-    _branch_rating(device, model)
-
-function _check_branch_rating_ts(
-    ts::AbstractArray,
-    ::Type{T},
-    device::PSY.Device,
-    model::DeviceModel{<:PSY.Component, W},
-) where {T <: AbstractBranchRatingTimeSeriesParameter, W <: AbstractDeviceFormulation}
-    rating = _static_rating(device, model, T)
-    multiplier = get_multiplier_value(T, device, W)
-    if !all(x -> x >= rating, multiplier * ts)
-        @warn "There are values of Parameter $T associated with $(typeof(device)) '$(PSY.get_name(device))' lower than the device static rating $(rating)."
-    end
-    return
-end
-
-_check_branch_rating_ts(
-    ::AbstractArray,
-    ::Type{<:TimeSeriesParameter},
-    ::PSY.Device,
-    ::DeviceModel,
-) = nothing
-
 # Extends `size` to tuples, treating them like scalars
 _size_wrapper(elem) = size(elem)
 _size_wrapper(::Tuple) = ()
@@ -229,7 +188,6 @@ function _add_time_series_parameters!(
                     interval = model_interval,
                     resolution = model_resolution,
                 )
-            _check_branch_rating_ts(initial_values[ts_uuid], param, device, model)
         end
     end
 
