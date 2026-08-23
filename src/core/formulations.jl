@@ -413,6 +413,13 @@ with the `PSY.GroupReserve` component type.
 struct GroupRangeReserve <: AbstractReservesFormulation end
 
 """
+Group analogue of [`StepwiseCostReserve`](@ref): one elastic demand curve (the `PSY.GroupReserve`'s
+`variable`) is met by the summed awards of its contributing services - one demand, one clearing
+price, with offers and caps living on the members. Ignores the group's `requirement`.
+"""
+struct GroupStepwiseCostReserve <: AbstractReservesFormulation end
+
+"""
 Struct for to add reserves to be larger than a specified requirement
 """
 struct RangeReserve <: AbstractReservesFormulation end
@@ -563,6 +570,7 @@ The formulation supports the following attributes when used in a [`PowerSimulati
     Combining cycle limits and energy target attributes is not recommended. Both
     attributes impose constraints on energy. There is no guarantee that the constraints can be satisfied simultaneously.
 
+  - `"reserve_coverage"`: Couples ancillary-service awards to the physical energy schedule. When `true` (default), the storage's state of charge must cover each service's sustained deployment (`ReserveCoverageConstraint` at both period endpoints) and the reserve band is limited by the reservation binary's dispatch side. Set `false` to DECOUPLE energy and AS, mirroring day-ahead market clearing (e.g., ERCOT DAM): AS awards are bounded by offer quantity and power capability only - no SOC feasibility, no reservation-binary coupling (the binary still governs energy charge/discharge exclusivity), no expected reserve-deployment energy in the SOC balance (deployment is a real-time settlement concept), and `complete_coverage` is ignored (with a warning).
   - `"complete_coverage"`: This attribute implements constraints that require the battery to cover the sum of all the ancillary services it participates in simultaneously. It is equivalent to holding energy in case all the services get deployed simultaneously. This constraint is added to the constraints that cover each service independently and corresponds to a more conservative operation regime.
   - `"regularization"`: This attribute smooths the charge/discharge profiles to avoid bang-bang solutions via a penalty on the absolute value of the intra-temporal variations of the charge and discharge power. Solving for optimal storage dispatch can stall in models with large amounts of curtailment or long periods with negative or zero prices due to numerical degeneracy. The regularization term is scaled by the storage device's power limits to normalize the term and avoid additional penalties to larger storage units.
 

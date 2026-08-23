@@ -2286,29 +2286,29 @@ function calculate_aux_variable_value!(
         d = PSY.get_component(T, system, name)
         for t in time_steps
             if has_container_key(container, HydroServedReserveUpExpression, typeof(d))
-                served_regup = jump_value(
+                served_reserve_up = jump_value(
                     get_expression(container, HydroServedReserveUpExpression, T)[
                         name,
                         t,
                     ],
                 )
             else
-                served_regup = 0.0
+                served_reserve_up = 0.0
             end
             if has_container_key(container, HydroServedReserveDownExpression, typeof(d))
-                served_regdn = jump_value(
+                served_reserve_down = jump_value(
                     get_expression(container, HydroServedReserveDownExpression, T)[
                         name,
                         t,
                     ],
                 )
             else
-                served_regdn = 0.0
+                served_reserve_down = 0.0
             end
             aux_variable_container[name, t] =
                 (
                     jump_value(p_variable_output[name, t]) +
-                    served_regup - served_regdn
+                    served_reserve_up - served_reserve_down
                 ) * fraction_of_hour
         end
     end

@@ -170,6 +170,43 @@ end
     @test isfile(joinpath(variables_dir, "ActivePowerVariable__ThermalStandard.csv"))
 end
 
+@testset "System bundle written alongside outputs" begin
+    c_sys5 = PSB.build_system(PSITestSystems, "c_sys5")
+    template = get_thermal_standard_uc_template()
+
+    output_dir = mktempdir(; cleanup = true)
+    model = DecisionModel(template, c_sys5; optimizer = HiGHS_optimizer)
+    @test build!(model; output_dir = output_dir) == IOM.ModelBuildStatus.BUILT
+    @test solve!(model) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
+    sys_dir = joinpath(output_dir, IOM.make_system_dirname(IOM.get_system(model)))
+    @test isdir(sys_dir)
+    # Assert on the document, not the directory: a directory's mtime does not reliably
+    # change when a file inside it is rewritten.
+    sys_document = joinpath(sys_dir, PSY.SYSTEM_DOCUMENT_FILE)
+    @test isfile(sys_document)
+
+    mtime_before = mtime(sys_document)
+    sleep(1)
+    @test solve!(model) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
+    @test mtime(sys_document) == mtime_before
+
+    output_dir_no_write = mktempdir(; cleanup = true)
+    model_no_write = DecisionModel(
+        template,
+        c_sys5;
+        optimizer = HiGHS_optimizer,
+        system_to_file = false,
+    )
+    @test build!(model_no_write; output_dir = output_dir_no_write) ==
+          IOM.ModelBuildStatus.BUILT
+    @test solve!(model_no_write) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
+    sys_dir_no_write = joinpath(
+        output_dir_no_write,
+        IOM.make_system_dirname(IOM.get_system(model_no_write)),
+    )
+    @test !ispath(sys_dir_no_write)
+end
+
 @testset "Test optimization debugging functions" begin
     c_sys5 = PSB.build_system(PSITestSystems, "c_sys5")
     template = get_thermal_standard_uc_template()

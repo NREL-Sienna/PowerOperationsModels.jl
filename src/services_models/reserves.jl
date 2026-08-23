@@ -12,7 +12,8 @@ end
 get_variable_lower_bound(::Type{ActivePowerReserveVariable}, ::PSY.AbstractReserve, ::PSY.Device, ::Type) = 0.0
 
 ############################### ServiceRequirementVariable (ORDC / StepwiseCostReserve) ################################
-# Only created on the StepwiseCostReserve construct path, so the formulation gates these to ORDC reserves.
+# Only created on the StepwiseCostReserve / GroupStepwiseCostReserve construct paths, so the
+# formulation gates these to curve-bearing reserves and groups.
 get_variable_binary(::Type{ServiceRequirementVariable}, ::Type{<:PSY.AbstractReserve}, ::Type{<:AbstractReservesFormulation}) = false
 get_variable_upper_bound(::Type{ServiceRequirementVariable}, ::PSY.AbstractReserve, d::PSY.Component, ::Type{<:AbstractReservesFormulation}) = PSY.get_max_active_power(d, PSY.SU)
 get_variable_lower_bound(::Type{ServiceRequirementVariable}, ::PSY.AbstractReserve, ::PSY.Component, ::Type{<:AbstractReservesFormulation}) = 0.0
@@ -46,6 +47,18 @@ _has_reserve_demand(
     service::PSY.AbstractReserve,
 ) = PSY.has_demand_curve(service)
 
+# Group formulations mirror the service ones: `GroupRangeReserve` is driven by the group's
+# scalar requirement, `GroupStepwiseCostReserve` by its demand curve (`requirement` ignored).
+_has_reserve_demand(
+    ::ServiceModel{<:PSY.GroupReserve, GroupRangeReserve},
+    group::PSY.GroupReserve,
+) = !iszero(_get_requirement(group))
+
+_has_reserve_demand(
+    ::ServiceModel{<:PSY.GroupReserve, GroupStepwiseCostReserve},
+    group::PSY.GroupReserve,
+) = PSY.has_demand_curve(group)
+
 "Services in `services` that impose a demand of their own under `model`'s formulation."
 _demand_services(model::ServiceModel, services::Vector{<:PSY.AbstractReserve}) =
     [s for s in services if _has_reserve_demand(model, s)]
@@ -69,8 +82,8 @@ function _log_skipped_reserve_demand(
     ::ServiceModel{<:PSY.AbstractReserve, F},
 ) where {F <: AbstractReservesFormulation}
     name = PSY.get_name(service)
-    reason = F === StepwiseCostReserve ? "it has no operating reserve demand curve" :
-             "its requirement is zero"
+    reason = F in (StepwiseCostReserve, GroupStepwiseCostReserve) ?
+             "it has no operating reserve demand curve" : "its requirement is zero"
     if _is_group_member(sys, service)
         @debug "Service $(name) of type $(typeof(service)) is a GroupReserve member and $(reason); \
                 skipping its own demand-side model. It still contributes supply to its group." _group =
@@ -90,7 +103,9 @@ get_parameter_multiplier(::Type{<:VariableValueParameter}, d::Type{<:PSY.Abstrac
 get_initial_parameter_value(::Type{<:VariableValueParameter}, d::Type{<:PSY.AbstractReserve}, ::Type{<:AbstractReservesFormulation}) = 0.0
 
 objective_function_multiplier(::Type{ServiceRequirementVariable}, ::Type{StepwiseCostReserve}) = -1.0
+objective_function_multiplier(::Type{ServiceRequirementVariable}, ::Type{GroupStepwiseCostReserve}) = -1.0
 uses_compact_power(::PSY.AbstractReserve, ::StepwiseCostReserve)=false
+uses_compact_power(::PSY.AbstractReserve, ::GroupStepwiseCostReserve)=false
 get_multiplier_value(::Type{<:AbstractPiecewiseLinearBreakpointParameter}, ::PSY.AbstractReserve, ::Type{<:AbstractReservesFormulation}) = 1.0
 get_multiplier_value(::Type{<:AbstractPiecewiseLinearSlopeParameter}, ::PSY.AbstractReserve, ::Type{<:AbstractReservesFormulation}) = 1.0
 # Operating reserve demand curves (ORDC) are willingness-to-pay (concave), i.e. a decremental
@@ -605,6 +620,23 @@ function add_to_objective_function!(
     return
 end
 
+# The group's demand: price its ServiceRequirementVariable by the group demand curve (a
+# benefit, multiplier -1). No offer costs on the group itself - offers live on the
+# contributing services, priced by their own service models.
+function add_to_objective_function!(
+    container::OptimizationContainer,
+    service::S,
+    ::ServiceModel{S, GroupStepwiseCostReserve},
+) where {S <: PSY.GroupReserve}
+    add_reserves_variable_cost!(
+        container,
+        ServiceRequirementVariable,
+        service,
+        GroupStepwiseCostReserve,
+    )
+    return
+end
+
 function add_reserves_variable_cost!(
     container::OptimizationContainer,
     ::Type{U},
@@ -613,7 +645,7 @@ function add_reserves_variable_cost!(
 ) where {
     T <: PSY.AbstractReserve,
     U <: VariableType,
-    V <: StepwiseCostReserve,
+    V <: Union{StepwiseCostReserve, GroupStepwiseCostReserve},
 }
     _add_reserves_variable_cost_to_objective!(container, U, service, V)
     return
@@ -624,7 +656,7 @@ function _add_reserves_variable_cost_to_objective!(
     ::Type{T},
     component::PSY.AbstractReserve,
     ::Type{U},
-) where {T <: VariableType, U <: StepwiseCostReserve}
+) where {T <: VariableType, U <: Union{StepwiseCostReserve, GroupStepwiseCostReserve}}
     component_name = PSY.get_name(component)
     @debug "PWL Variable Cost" _group = LOG_GROUP_COST_FUNCTIONS component_name
     # If array is full of tuples with zeros return 0.0
@@ -639,7 +671,7 @@ function _add_reserves_variable_cost_to_objective!(
         error(
             "Operating reserve demand curve $(component_name) has cost data of type \
             $(typeof(variable_cost)), \
-            but a `PSY.CostCurve` is required for the StepwiseCostReserve formulation.",
+            but a `PSY.CostCurve` is required for the $(U) formulation.",
         )
     end
 

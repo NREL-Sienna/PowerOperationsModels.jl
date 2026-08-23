@@ -106,14 +106,12 @@ function tweak_system!(sys::System, load_pow_mult, therm_pow_mult, therm_price_m
     for therm in get_components(ThermalStandard, sys)
         op_cost = get_operation_cost(therm)
         op_cost isa MarketBidCost && continue
-        with_units_base(sys, UnitSystem.DEVICE_BASE) do
-            old_limits = get_active_power_limits(therm, PSY.SU)
-            new_limits = (
-                min = old_limits.min * PSY.SU,
-                max = old_limits.max * therm_pow_mult * PSY.SU,
-            )
-            set_active_power_limits!(therm, new_limits)
-        end
+        old_limits = get_active_power_limits(therm, PSY.SU)
+        new_limits = (
+            min = old_limits.min * PSY.SU,
+            max = old_limits.max * therm_pow_mult * PSY.SU,
+        )
+        set_active_power_limits!(therm, new_limits)
         if get_variable(op_cost) isa CostCurve{LinearCurve} ||
            get_variable(op_cost) isa CostCurve{QuadraticCurve}
             prop = get_proportional_term(get_value_curve(get_variable(op_cost)))
@@ -198,12 +196,10 @@ function adjust_min_power!(sys)
         cost_curve = get_incremental_offer_curves(op_cost)::CostCurve
         baseline = get_value_curve(cost_curve)::PiecewiseIncrementalCurve
         x_coords = get_x_coords(get_function_data(baseline))
-        with_units_base(sys, UnitSystem.NATURAL_UNITS) do
-            set_active_power_limits!(
-                comp,
-                (min = first(x_coords) * PSY.SU, max = last(x_coords) * PSY.SU),
-            )
-        end
+        set_active_power_limits!(
+            comp,
+            (min = first(x_coords) * PSY.SU, max = last(x_coords) * PSY.SU),
+        )
     end
 end
 
@@ -273,7 +269,7 @@ function _promote_mbc_to_ts!(
 
     new_cost = MarketBidTimeSeriesCost(;
         no_load_cost = TimeSeriesLinearCurve(nl_key),
-        start_up = IS.TupleTimeSeries{PSY.StartUpStages}(su_key),
+        start_up = su_key,
         shut_down = TimeSeriesLinearCurve(sd_key),
         incremental_offer_curves = incr_curve,
         decremental_offer_curves = decr_curve,

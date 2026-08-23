@@ -921,6 +921,7 @@ export AbstractServiceFormulation
 export AbstractReservesFormulation
 export PIDSmoothACE
 export GroupRangeReserve
+export GroupStepwiseCostReserve
 export RangeReserve
 export StepwiseCostReserve
 export RampReserve

@@ -193,7 +193,7 @@ function _add_post_contingency_sparse_expression!(
     container::OptimizationContainer,
     ::Type{T},
     ::Type{V},
-    resolved::Vector{Pair{Base.UUID, Vector{RepresentativeBranch}}},
+    resolved::Vector{Pair{Int, Vector{RepresentativeBranch}}},
     time_steps::UnitRange{Int},
 ) where {T <: PostContingencyExpressions, V <: PSY.ACTransmission}
     contents = Dict{Tuple{String, String, Int}, JuMP.AffExpr}()
@@ -235,7 +235,7 @@ function _resolve_monitored_branches(
     device_model::DeviceModel,
     network_model::NetworkModel,
 )
-    resolved = Pair{Base.UUID, Vector{RepresentativeBranch}}[]
+    resolved = Pair{Int, Vector{RepresentativeBranch}}[]
     for (uuid, per_type) in get_outages(device_model)
         kept = RepresentativeBranch[]
         for (T, names) in per_type
@@ -700,14 +700,13 @@ function _copy_existing_post_contingency_expressions!(
     ::Type{T},
     ::Type{V},
     expression_container::SparseAxisArray,
-    resolved::Vector{Pair{Base.UUID, Vector{RepresentativeBranch}}},
+    resolved::Vector{Pair{Int, Vector{RepresentativeBranch}}},
     time_steps::UnitRange{Int},
 ) where {T <: PostContingencyExpressions, V <: PSY.ACTransmission}
     _has_other_v_container(IOM.get_expressions(container), T, V) || return resolved
-
-    fresh = Pair{Base.UUID, Vector{RepresentativeBranch}}[]
-    for (uuid, reps) in resolved
-        outage_id = string(uuid)
+    fresh = Pair{Int, Vector{RepresentativeBranch}}[]
+    for (id, reps) in resolved
+        outage_id = string(id)
         unresolved = RepresentativeBranch[]
         for rep in reps
             src_ec = _find_shared_post_contingency_expression_source(

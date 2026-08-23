@@ -220,7 +220,7 @@ end
 
 # Every PTDF-family matrix wraps one of these, so the tolerance and uuid are set once.
 _factor_core(ybus::PNM.Ybus, sys::PSY.System) =
-    PNM.VirtualFactorCore(ybus; tol = PTDF_ZERO_TOL, system_uuid = IS.get_uuid(sys))
+    PNM.VirtualFactorCore(ybus; tol = PTDF_ZERO_TOL, system_uuid = PSY.get_system_uuid(sys))
 
 #=
 The one source-aware Ybus resolution, dispatched on the source so every formulation
@@ -332,13 +332,13 @@ function _derive_contingency_matrix(
     registered = PNM.get_registered_contingencies(modf)
     for m in values(branch_models)
         IOM.supports_outages(get_formulation(m)) || continue
-        for outage_uuid in keys(get_outages(m))
+        for outage_id in keys(get_outages(m))
             # The same outage can be attached to several branch DeviceModels.
-            haskey(registered, outage_uuid) && continue
+            haskey(registered, outage_id) && continue
             PNM._register_outage!(
                 modf,
                 sys,
-                PSY.get_supplemental_attribute(sys, outage_uuid),
+                PSY.get_supplemental_attribute(sys, outage_id),
             )
         end
     end

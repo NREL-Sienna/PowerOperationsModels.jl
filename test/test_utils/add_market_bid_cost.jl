@@ -117,9 +117,7 @@ function extend_mbc!(
         op_cost = get_operation_cost(comp)
         @assert op_cost isa MarketBidCost
         if do_override_min_x && :active_power_limits in fieldnames(typeof(comp))
-            min_power = with_units_base(sys, UnitSystem.NATURAL_UNITS) do
-                get_active_power_limits(comp, PSY.SU).min
-            end
+            min_power = get_active_power_limits(comp, PSY.SU).min
         else
             min_power = nothing
         end
@@ -189,7 +187,7 @@ function extend_mbc!(
 
         new_cost = MarketBidTimeSeriesCost(;
             no_load_cost = TimeSeriesLinearCurve(nl_key),
-            start_up = IS.TupleTimeSeries{PSY.StartUpStages}(su_key),
+            start_up = su_key,
             shut_down = TimeSeriesLinearCurve(sd_key),
             incremental_offer_curves = ts_curves["incremental"],
             decremental_offer_curves = ts_curves["decremental"],

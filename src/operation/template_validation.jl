@@ -496,12 +496,12 @@ function _build_device_model_outages!(
 
     modeled_types = Set{DataType}(get_component_types(template))
     selection = _take_outage_selection!(sc_models)
-    uncovered_types = Dict{DataType, Set{Base.UUID}}()
+    uncovered_types = Dict{DataType, Set{Int}}()
 
     for outage in PSY.get_supplemental_attributes(PSY.Outage, sys)
-        outage_uuid = IS.get_uuid(outage)
+        outage_id = IS.get_id(outage)
         if isempty(PSY.get_monitored_components(outage))
-            @warn "Outage $(outage_uuid) ($(typeof(outage))) has empty \
+            @warn "Outage $(outage_id) ($(typeof(outage))) has empty \
                    monitored_components; no post-contingency variables or \
                    constraints will be created for this outage." _group =
                 IOM.LOG_GROUP_MODELS_VALIDATION
@@ -509,9 +509,9 @@ function _build_device_model_outages!(
         end
 
         per_type, uncovered =
-            _monitored_components_by_modeled_type(outage, outage_uuid, sys, modeled_types)
+            _monitored_components_by_modeled_type(outage, outage_id, sys, modeled_types)
         for comp_type in uncovered
-            push!(get!(Set{Base.UUID}, uncovered_types, comp_type), outage_uuid)
+            push!(get!(Set{Int}, uncovered_types, comp_type), outage_id)
         end
         isempty(per_type) && continue
 
@@ -520,12 +520,12 @@ function _build_device_model_outages!(
             sc_models,
             selection,
             outage,
-            outage_uuid,
+            outage_id,
             per_type,
             attached_types,
         )
         if !covered
-            @warn "Outage $(outage_uuid) is attached to component(s) of \
+            @warn "Outage $(outage_id) is attached to component(s) of \
                    type $(collect(attached_types)), but no DeviceModel with \
                    an AbstractSecurityConstrainedStaticBranch formulation \
                    covers those types; it will not contribute any \
@@ -552,9 +552,9 @@ end
 # UUIDs; an empty set means auto-discover all. Clears `m.outages` so the main
 # pass can repopulate it; the cleared UUIDs survive in the returned map.
 function _take_outage_selection!(sc_models::Vector{<:IOM.DeviceModelForBranches})
-    selection = Dict{Symbol, Set{Base.UUID}}()
+    selection = Dict{Symbol, Set{Int}}()
     for m in sc_models
-        selection[nameof(get_component_type(m))] = Set{Base.UUID}(keys(get_outages(m)))
+        selection[nameof(get_component_type(m))] = Set{Int}(keys(get_outages(m)))
         empty!(get_outages(m))
     end
     return selection
@@ -565,7 +565,7 @@ end
 # types the template does not model.
 function _monitored_components_by_modeled_type(
     outage::PSY.Outage,
-    outage_uuid::Base.UUID,
+    outage_id::Int,
     sys::PSY.System,
     modeled_types::Set{DataType},
 )
@@ -574,7 +574,7 @@ function _monitored_components_by_modeled_type(
     for uuid in PSY.get_monitored_components(outage)
         component = IS.get_component(sys, uuid)
         if isnothing(component)
-            @warn "Outage $(outage_uuid) references monitored component \
+            @warn "Outage $(outage_id) references monitored component \
                    UUID $(uuid) that is not present in the system; \
                    skipping." _group = IOM.LOG_GROUP_MODELS_VALIDATION
             continue
@@ -602,10 +602,10 @@ end
 function _sc_model_claims_outage(
     m::IOM.DeviceModelForBranches,
     outage::PSY.Outage,
-    outage_uuid::Base.UUID,
-    sel::Set{Base.UUID},
+    outage_id::Int,
+    sel::Set{Int},
 )
-    isempty(sel) || return outage_uuid in sel
+    isempty(sel) || return outage_id in sel
     if outage isa PSY.PlannedOutage
         return get_attribute(m, "include_planned_outages") === true
     end
@@ -617,9 +617,9 @@ end
 # covered an attached type.
 function _assign_outage_to_sc_models!(
     sc_models::Vector{<:IOM.DeviceModelForBranches},
-    selection::Dict{Symbol, Set{Base.UUID}},
+    selection::Dict{Symbol, Set{Int}},
     outage::PSY.Outage,
-    outage_uuid::Base.UUID,
+    outage_id::Int,
     per_type::Dict{DataType, Set{String}},
     attached_types::Set{DataType},
 )
@@ -628,15 +628,15 @@ function _assign_outage_to_sc_models!(
         D = get_component_type(m)
         D in attached_types || continue
         covered = true
-        if _sc_model_claims_outage(m, outage, outage_uuid, selection[nameof(D)])
-            get_outages(m)[outage_uuid] = per_type
+        if _sc_model_claims_outage(m, outage, outage_id, selection[nameof(D)])
+            get_outages(m)[outage_id] = per_type
         end
     end
     return covered
 end
 
 function _warn_uncovered_monitored_types(
-    uncovered_types::Dict{DataType, Set{Base.UUID}},
+    uncovered_types::Dict{DataType, Set{Int}},
 )
     for (comp_type, offending) in uncovered_types
         @warn "Monitored components of type $(comp_type) appear in outages \
@@ -649,7 +649,7 @@ end
 
 function _warn_unmatched_user_outages(
     sc_models::Vector{<:IOM.DeviceModelForBranches},
-    selection::Dict{Symbol, Set{Base.UUID}},
+    selection::Dict{Symbol, Set{Int}},
 )
     for m in sc_models
         D = get_component_type(m)

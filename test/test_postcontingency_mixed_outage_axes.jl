@@ -89,8 +89,8 @@
 
         expr_ax, cons_ax = _axes(model)
         @test expr_ax == cons_ax
-        @test expr_ax == Set([string(IS.get_uuid(unplanned))])
-        @test !(string(IS.get_uuid(planned)) in expr_ax)
+        @test expr_ax == Set([string(IS.get_id(unplanned))])
+        @test !(string(IS.get_id(planned)) in expr_ax)
     end
 
     @testset "include_planned_outages=true: both outages appear in axes" begin
@@ -102,8 +102,8 @@
         expr_ax, cons_ax = _axes(model)
         @test expr_ax == cons_ax
         @test expr_ax == Set([
-            string(IS.get_uuid(unplanned)),
-            string(IS.get_uuid(planned)),
+            string(IS.get_id(unplanned)),
+            string(IS.get_id(planned)),
         ])
 
         # Different-size monitored sets: unplanned monitors all `ACTransmission`
@@ -113,8 +113,8 @@
         # differ between the two outages.
         container = IOM.get_optimization_container(model)
         expr = IOM.get_expression(container, POM.PostContingencyBranchFlow, PSY.Line)
-        unplanned_id = string(IS.get_uuid(unplanned))
-        planned_id = string(IS.get_uuid(planned))
+        unplanned_id = string(IS.get_id(unplanned))
+        planned_id = string(IS.get_id(planned))
         unplanned_branches =
             Set(k[2] for k in keys(expr.data) if k[1] == unplanned_id)
         planned_branches =
@@ -148,7 +148,7 @@ end
         monitored_components = [monitored_only_line],
     )
     PSY.add_supplemental_attribute!(sys, outaged_line, transition)
-    outage_uuid = IS.get_uuid(transition)
+    outage_uuid = IS.get_id(transition)
 
     # The outage only pins buses when it is registered on an SC-formulated
     # branch DeviceModel. The constructor `outages` kwarg cannot accept the
@@ -195,7 +195,7 @@ end
         monitored_components = [lines[2]],
     )
     PSY.add_supplemental_attribute!(sys, outaged_line, transition)
-    outage_uuid = IS.get_uuid(transition)
+    outage_uuid = IS.get_id(transition)
 
     branch_models = IOM.BranchModelContainer()
     dm = DeviceModel(PSY.Line, POM.StaticBranch)

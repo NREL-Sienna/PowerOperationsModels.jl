@@ -121,7 +121,7 @@ function add_constraints!(
 }
     time_steps = get_time_steps(container)
     resolution = get_resolution(container)
-    resolution_in_hours = Dates.Hour(resolution).value
+    resolution_in_hours = Dates.value(resolution) / MILLISECONDS_IN_HOUR
     hours_in_horizon = length(time_steps) * resolution_in_hours
     p_out = get_variable(container, ActivePowerOutVariable, U)
     p_in = get_variable(container, ActivePowerInVariable, U)

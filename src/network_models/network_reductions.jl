@@ -223,9 +223,10 @@ function get_branch_argument_parameter_axes(
     is_interval = IOM._to_is_interval(interval)
     is_resolution = IOM._to_is_resolution(resolution)
     name_axis = Vector{String}()
-    ts_uuid_axis = Vector{String}()
+    ts_hash_axis = Vector{String}()
     arc_map = get(PNM.get_name_to_arc_maps(net_reduction_data), T, nothing)
-    isnothing(arc_map) && return name_axis, ts_uuid_axis
+    isnothing(arc_map) && return name_axis, ts_hash_axis
+    devices_with_time_series = IS.InfrastructureSystemsComponent[]
     for (name, (arc, reduction)) in arc_map
         reduction_entry =
             PNM.get_all_branch_maps_by_type(net_reduction_data)[reduction][T][arc]
@@ -233,21 +234,24 @@ function get_branch_argument_parameter_axes(
             get_branch_with_time_series(reduction_entry, V, ts_name)
         if !isnothing(device_with_time_series)
             push!(name_axis, name)
-            push!(
-                ts_uuid_axis,
-                string(
-                    IS.get_time_series_uuid(
-                        V,
-                        device_with_time_series,
-                        ts_name;
-                        resolution = is_resolution,
-                        interval = is_interval,
-                    ),
-                ),
-            )
+            push!(devices_with_time_series, device_with_time_series)
         end
     end
-    return name_axis, ts_uuid_axis
+    # One catalog query resolves the content hash of every branch's stored array;
+    # branches sharing an array share a hash, which is what keys the parameter rows.
+    hashes = IS.get_time_series_hashes(devices_with_time_series, V, ts_name;
+        interval = is_interval, resolution = is_resolution)
+    for (name, device) in zip(name_axis, devices_with_time_series)
+        ts_hash = get(hashes, IS.get_id(device), nothing)
+        if ts_hash === nothing
+            error(
+                "Time series $V:$ts_name for branch $name does not match " *
+                "interval=$interval, resolution=$resolution.",
+            )
+        end
+        push!(ts_hash_axis, ts_hash)
+    end
+    return name_axis, ts_hash_axis
 end
 
 function get_branch_argument_variable_axis(

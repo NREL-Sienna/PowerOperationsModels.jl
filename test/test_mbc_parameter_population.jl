@@ -75,7 +75,7 @@ function _build_mbtsc_thermal_system(;
 
     new_cost = PSY.MarketBidTimeSeriesCost(;
         no_load_cost = PSY.TimeSeriesLinearCurve(nl_key),
-        start_up = IS.TupleTimeSeries{PSY.StartUpStages}(su_key),
+        start_up = su_key,
         shut_down = PSY.TimeSeriesLinearCurve(sd_key),
         incremental_offer_curves = PSY.make_market_bid_ts_curve(pwl_incr_key, ii_incr_key),
         decremental_offer_curves = PSY.make_market_bid_ts_curve(pwl_decr_key, ii_decr_key),
@@ -97,7 +97,7 @@ function _pp_build_container(sys::PSY.System, time_steps::UnitRange{Int})
     return container
 end
 
-@testset "StartupCostParameter populated from TupleTimeSeries" begin
+@testset "StartupCostParameter populated from tuple-valued time series" begin
     # Drift by 10 per hour so each timestep is distinct: (100,150,200), (110,160,210), ...
     sys, gen = _build_mbtsc_thermal_system(;
         name = _PP_THERMAL_NAME,

@@ -480,8 +480,12 @@ There is exactly one concrete storage formulation and one concrete hybrid formul
 
 ### [`StorageDispatchWithReserves`](@id storage_math_model)
 
-Attributes: `"reservation"` (default `true`), `"cycling_limits"`, `"energy_target"`,
-`"complete_coverage"`, `"regularization"` (all default `false`).
+Attributes: `"reservation"`, `"reserve_coverage"` (default `true`; `reserve_coverage = false`
+DECOUPLES energy and AS for day-ahead-style clearing: no SOC deployment-coverage constraints,
+reserve bands bounded by capability instead of the reservation binary's dispatch side, and
+`complete_coverage` ignored with a warning - the binary still governs energy exclusivity),
+`"cycling_limits"`, `"energy_target"`, `"complete_coverage"`, `"regularization"`
+(all default `false`).
 
 | Stage    | Emits                                                                                                                                                                                                                                                                                                                                               |
 |:-------- |:--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -543,31 +547,35 @@ no-op.
 
 ## [Service Formulations](@id service_formulations)
 
-| Formulation                                            | Service type                | Argument stage                                                                                 | Model stage                                                |
-|:------------------------------------------------------ |:--------------------------- |:---------------------------------------------------------------------------------------------- |:---------------------------------------------------------- |
-| `RangeReserve`                                         | `PSY.Reserve`               | `RequirementTimeSeriesParameter` (omitted for `ConstantReserve`), `ActivePowerReserveVariable` | `RequirementConstraint`, `ParticipationFractionConstraint` |
-| `RampReserve`                                          | `PSY.Reserve`               | as above                                                                                       | as above **+ `RampConstraint`**                            |
-| `NonSpinningReserve`                                   | `PSY.OfflineReserve`        | as above, but **no** device-range expression wiring                                            | as above **+ `ReservePowerConstraint`**                    |
-| `StepwiseCostReserve` (operating reserve demand curve) | `PSY.Reserve`               | `ServiceRequirementVariable` + demand-curve slope/breakpoint parameters                        | `RequirementConstraint` only — no participation constraint |
-| `GroupRangeReserve`                                    | `PSY.GroupReserve`          | no variables                                                                                   | `RequirementConstraint` across contributing services       |
-| `ConstantMaxInterfaceFlow`                             | `PSY.TransmissionInterface` | optional slacks, `InterfaceTotalFlow` expression                                               | `InterfaceFlowLimit` (`"ub"`/`"lb"`)                       |
-| `VariableMaxInterfaceFlow`                             | `PSY.TransmissionInterface` | as above **+ min/max flow-limit parameters**                                                   | as above, with parameterized limits                        |
+| Formulation                                            | Service type                | Argument stage                                                                                           | Model stage                                                |
+|:------------------------------------------------------ |:--------------------------- |:-------------------------------------------------------------------------------------------------------- |:---------------------------------------------------------- |
+| `RangeReserve`                                         | `PSY.Reserve`               | `RequirementTimeSeriesParameter` (omitted for static-requirement reserves), `ActivePowerReserveVariable` | `RequirementConstraint`, `ParticipationFractionConstraint` |
+| `RampReserve`                                          | `PSY.Reserve`               | as above                                                                                                 | as above **+ `RampConstraint`**                            |
+| `NonSpinningReserve`                                   | `PSY.OfflineReserve`        | as above, but **no** device-range expression wiring                                                      | as above **+ `ReservePowerConstraint`**                    |
+| `StepwiseCostReserve` (operating reserve demand curve) | `PSY.Reserve`               | `ServiceRequirementVariable` + demand-curve slope/breakpoint parameters                                  | `RequirementConstraint` only — no participation constraint |
+| `GroupRangeReserve`                                    | `PSY.GroupReserve`          | no variables                                                                                             | `RequirementConstraint` across contributing services       |
+| `GroupStepwiseCostReserve` (elastic group)             | `PSY.GroupReserve`          | `ServiceRequirementVariable` + group demand-curve slope/breakpoint parameters                            | `RequirementConstraint`: member awards ≥ the group demand  |
+| `ConstantMaxInterfaceFlow`                             | `PSY.TransmissionInterface` | optional slacks, `InterfaceTotalFlow` expression                                                         | `InterfaceFlowLimit` (`"ub"`/`"lb"`)                       |
+| `VariableMaxInterfaceFlow`                             | `PSY.TransmissionInterface` | as above **+ min/max flow-limit parameters**                                                             | as above, with parameterized limits                        |
 
-`GroupRangeReserve` is deliberately constructed **last** in both stages, because it aggregates the other
-services' variables.
+The group formulations are deliberately constructed **last** in both stages, because they aggregate
+the other services' award variables. A `PSY.GroupReserve` accepts only the group formulations (and
+vice versa); a mis-paired `ServiceModel` fails at declaration. A service whose demand driver is
+degenerate (zero requirement under the requirement formulations, no demand curve under the stepwise
+ones) is skipped as demand and built as supply only, so it can serve a group.
 
-!!! warning "GroupRangeReserve does not support slacks"
+!!! warning "Group formulations do not support slacks"
     
-    `GroupRangeReserve`'s requirement-constraint builder reads a `slack_vars` binding that is never
-    created, so a `ServiceModel` with `use_slacks = true` raises `UndefVarError`. A group reserve
-    also cannot currently be built end to end: a `PSY.GroupReserve` aggregates services rather
-    than devices, so its contributing-device list is empty and construction errors out before the
-    requirement constraint is reached.
+    `use_slacks = true` on a group `ServiceModel` is ignored: reserve slacks attach to the
+    requirement rows of the device-backed formulations, and no slack is added to a group's
+    clearing constraint.
 
 Reserve contributions reach a device through `get_expression_type_for_reserve`: for thermal,
 renewable and hydro an up-reserve enters `ActivePowerRangeExpressionUB` (+1) and a down-reserve
-`ActivePowerRangeExpressionLB` (−1); storage and hybrid instead route everything into
-`TotalReserveOffering`. Any other device type hits an error — loads, sources, condensers and shunts
+`ActivePowerRangeExpressionLB` (−1); a controllable load is the inverse (an up-reserve is committed
+shed, entering `ActivePowerRangeExpressionLB` with −1, and a down-reserve is committed extra
+consumption, entering `ActivePowerRangeExpressionUB` with +1); storage and hybrid instead route
+everything into `TotalReserveOffering`. Any other device type hits an error — sources, condensers and shunts
 cannot contribute to a reserve.
 
 Service `meta` strings are **per-instance**, not a fixed vocabulary: every reserve container is
