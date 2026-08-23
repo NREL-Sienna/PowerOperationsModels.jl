@@ -4,8 +4,7 @@ const TAP_CONTROLS = (VOLTAGE_CONTROL, Q_FLOW_CONTROL)
 
 const AC_NETWORKS =
     (ACPNetworkModel, ACRNetworkModel, LPACCNetworkModel, IVRNetworkModel)
-const DC_NETWORKS = (DCPNetworkModel, DCPLLNetworkModel)
-const ALL_NETWORKS = (AC_NETWORKS..., DC_NETWORKS...)
+const DC_NETWORKS = (DCPNetworkModel, DCPLLNetworkModel, PTDFNetworkModel)
 
 const CONTROL_FORMULATIONS = (StaticBranch, StaticBranchBounds)
 
