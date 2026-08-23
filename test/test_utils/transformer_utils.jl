@@ -2,8 +2,8 @@ const VOLTAGE_CONTROL = PSY.TransformerControlObjective.VOLTAGE
 const Q_FLOW_CONTROL = PSY.TransformerControlObjective.REACTIVE_POWER_FLOW
 const TAP_CONTROLS = (VOLTAGE_CONTROL, Q_FLOW_CONTROL)
 
-const VOLTAGE_NETWORKS = (ACPNetworkModel, ACRNetworkModel, LPACCNetworkModel)
-const AC_NETWORKS = (VOLTAGE_NETWORKS..., IVRNetworkModel)
+const AC_NETWORKS =
+    (ACPNetworkModel, ACRNetworkModel, LPACCNetworkModel, IVRNetworkModel)
 const DC_NETWORKS = (DCPNetworkModel, DCPLLNetworkModel)
 const ALL_NETWORKS = (AC_NETWORKS..., DC_NETWORKS...)
 

@@ -148,7 +148,7 @@ end
     for case in TRANSFORMER_CASES, branch_formulation in CONTROL_FORMULATIONS
         rawsys = case.plain()
         numbers = case.voltage_bus_numbers(rawsys)
-        for network_formulation in VOLTAGE_NETWORKS, number in numbers
+        for network_formulation in AC_NETWORKS, number in numbers
             bus_name = PSY.get_name(PSY.get_bus(rawsys, number))
             free_vm = _uncontrolled_voltage(
                 case,
