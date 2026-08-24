@@ -63,7 +63,7 @@ struct ShuntSusceptanceVariable <: VariableType end
 
 """
 Continuous off-nominal turns ratio ``t \\in [t_{\\min}, t_{\\max}]`` (pu) for a
-the disabled `VoltageControlTap` formulation. The variable enters the AC π-model
+transformer circuit whose control objective is modeled. The variable enters the AC π-model
 Ohm's law nonlinearly: self terms scale as ``1/t^2``, coupling terms scale as ``1/t``,
 so the formulation reduces to `StaticBranch` when ``t = t_m`` (the nominal tap).
 Warm-started at the transformer's current tap position. Both bounds must be finite and

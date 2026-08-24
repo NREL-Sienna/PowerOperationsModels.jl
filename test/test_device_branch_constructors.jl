@@ -1,5 +1,8 @@
 const DC_NETWORK_MODELS_FOR_TESTING = [PTDFNetworkModel, DCPNetworkModel]
 
+_rating(d::PSY.TwoWindingTransformer) = PSY.get_rating(PSY.get_circuit(d), PSY.SU)
+_rating(d) = PSY.get_rating(d, PSY.SU)
+
 @testset "DC Power Flow Models Monitored Line Flow Constraints and Static Unbounded" begin
     system = PSB.build_system(PSITestSystems, "c_sys5_ml")
     limits = PSY.get_flow_limits(PSY.get_component(MonitoredLine, system, "1"), PSY.SU)
@@ -116,10 +119,10 @@ end
     limits_max = min(limits_from.max, limits_to.max)
 
     tap_transformer = PSY.get_component(TwoWindingTransformer, system, "Trans3")
-    rate_limit = POM._branch_rating(tap_transformer)
+    rate_limit = _rating(tap_transformer)
 
     transformer = PSY.get_component(TwoWindingTransformer, system, "Trans4")
-    rate_limit2w = POM._branch_rating(transformer)
+    rate_limit2w = _rating(transformer)
 
     for model in DC_NETWORK_MODELS_FOR_TESTING
         template = get_template_dispatch_with_network(
@@ -171,10 +174,10 @@ end
     limits_max = min(limits_from.max, limits_to.max)
 
     tap_transformer = PSY.get_component(TwoWindingTransformer, system, "Trans3")
-    rate_limit = POM._branch_rating(tap_transformer)
+    rate_limit = _rating(tap_transformer)
 
     transformer = PSY.get_component(TwoWindingTransformer, system, "Trans4")
-    rate_limit2w = POM._branch_rating(transformer)
+    rate_limit2w = _rating(transformer)
 
     for model in DC_NETWORK_MODELS_FOR_TESTING
         template = get_template_dispatch_with_network(
@@ -482,10 +485,10 @@ end
     limits_max = min(limits_from.max, limits_to.max)
 
     tap_transformer = PSY.get_component(TwoWindingTransformer, system, "Trans3")
-    rate_limit = POM._branch_rating(tap_transformer)
+    rate_limit = _rating(tap_transformer)
 
     transformer = PSY.get_component(TwoWindingTransformer, system, "Trans4")
-    rate_limit2w = POM._branch_rating(transformer)
+    rate_limit2w = _rating(transformer)
 
     template = get_template_dispatch_with_network(
         NetworkModel(PTDFNetworkModel),
@@ -600,10 +603,10 @@ end
     limits_max = min(limits_from.max, limits_to.max)
 
     tap_transformer = PSY.get_component(TwoWindingTransformer, system, "Trans3")
-    rate_limit = POM._branch_rating(tap_transformer)
+    rate_limit = _rating(tap_transformer)
 
     transformer = PSY.get_component(TwoWindingTransformer, system, "Trans4")
-    rate_limit2w = POM._branch_rating(transformer)
+    rate_limit2w = _rating(transformer)
 
     template = get_template_dispatch_with_network(ACPNetworkModel)
     set_device_model!(template, TwoWindingTransformer, StaticBranchBounds)
@@ -1020,7 +1023,7 @@ end
     for sysname in ("c_sys5", "c_sys14")
         system = PSB.build_system(PSITestSystems, sysname)
         for branch in PSY.get_components(PSY.ACTransmission, system)
-            @test PNM.get_equivalent_rating(branch) == POM._branch_rating(branch)
+            @test PNM.get_equivalent_rating(branch) == _rating(branch)
         end
     end
 end
