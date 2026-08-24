@@ -83,7 +83,7 @@ function _prune_fully_reduced_branch_models!(
         union!(merged_buses, removed)
     end
     isempty(merged_buses) && return
-    name_to_arc_maps = PNM.get_name_to_arc_maps(get_network_reduction(network_model))
+    name_to_arc_maps = PNM.get_name_to_arc_maps(get_branch_catalog(network_model))
     pruned = DataType[]
     for branch_type in network_model.modeled_branch_types
         branch_type <: PSY.ACTransmission || continue
@@ -346,16 +346,29 @@ function _derive_contingency_matrix(
     return modf
 end
 
+"""
+This build's branch index. The template's branch filters restrict which branches get flow
+variables -- an optimization concern, so it lives in the build's catalog rather than in the
+reduction, which stays exactly as the matrix produced it.
+
+An unfiltered template reuses the matrix's own catalog; there is nothing to restrict.
+"""
+function _build_catalog(matrix, branch_models::BranchModelContainer)
+    base = PNM.get_branch_catalog(matrix)
+    filters = IOM._get_filters(branch_models)
+    isempty(filters) && return base
+    return PNM.BranchCatalog(
+        PNM.get_network_reduction_data(base),
+        (T, component) -> haskey(filters, T) ? filters[T](component) : true,
+    )
+end
+
 function _finalize_network_reduction!(
     model::NetworkModel,
     branch_models::BranchModelContainer,
     number_of_steps::Int,
 )
-    PNM.populate_branch_maps_by_type!(
-        get_network_reduction(model),
-        IOM._get_filters(branch_models),
-    )
-    # After the reduction is known and the branch maps populated, before the
+    # After the network data is set, before the
     # device constructors run: drop branch types fully merged away (else their
     # flow vars/constraints would fail to build) and warn about partial drops.
     _prune_fully_reduced_branch_models!(model, branch_models)
@@ -379,7 +392,7 @@ function IOM.instantiate_network_model!(
     ybus = _reduced_ybus!(model, sys, exceptions)
     IOM.set_network_data!(
         model,
-        YbusNetworkData(ybus, _owned_reduction(ybus)),
+        YbusNetworkData(ybus, _build_catalog(ybus, branch_models)),
     )
     _finalize_network_reduction!(model, branch_models, number_of_steps)
     return
@@ -398,7 +411,7 @@ function IOM.instantiate_network_model!(
     _validate_network_and_branches(model, branch_models, sys)
     exceptions = _collect_reduction_exceptions(sys, model, branch_models)
     ybus = _reduced_ybus!(model, sys, exceptions)
-    reduction = _owned_reduction(ybus)
+    catalog = _build_catalog(ybus, branch_models)
     if IOM._template_has_outage_aware_branch(branch_models)
         core = _factor_core(ybus, sys)
         IOM.set_network_data!(
@@ -406,11 +419,11 @@ function IOM.instantiate_network_model!(
             DCPNetworkData(
                 ybus,
                 _derive_contingency_matrix(core, sys, branch_models),
-                reduction,
+                catalog,
             ),
         )
     else
-        IOM.set_network_data!(model, DCPNetworkData(ybus, reduction))
+        IOM.set_network_data!(model, DCPNetworkData(ybus, catalog))
     end
     _finalize_network_reduction!(model, branch_models, number_of_steps)
     return
@@ -498,13 +511,13 @@ function _assemble_ptdf_data(
     sys::PSY.System,
     branch_models::BranchModelContainer,
 )
-    reduction = _owned_reduction(core)
+    catalog = _build_catalog(core, branch_models)
     if IOM._template_has_outage_aware_branch(branch_models)
         return PTDFNetworkData(
             ptdf,
             _derive_contingency_matrix(core, sys, branch_models),
-            reduction,
+            catalog,
         )
     end
-    return PTDFNetworkData(ptdf, reduction)
+    return PTDFNetworkData(ptdf, catalog)
 end

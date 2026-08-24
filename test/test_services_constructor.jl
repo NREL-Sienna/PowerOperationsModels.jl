@@ -1276,18 +1276,17 @@ _reduced_entry_kind(::PNM.BranchesParallel) = :parallel
     # can no longer fire — is what keeps the requirement covered.
     push!(PSY.get_services(double_circuit_1), interface_double_circuit)
     pop!(PSY.get_services(series_chain_1))
-    partial_reduction = PNM.get_network_reduction_data(
+    partial_catalog = PNM.get_branch_catalog(
         PNM.Ybus(
             sys_rts_da;
             network_reductions = PNM.NetworkReduction[PNM.DegreeTwoReduction()],
         ),
     )
-    PNM.populate_branch_maps_by_type!(partial_reduction)
-    partial_name_to_arc = PNM.get_name_to_arc_maps(partial_reduction)[Line]
-    partial_maps = PNM.get_all_branch_maps_by_type(partial_reduction)
+    partial_name_to_arc = PNM.get_name_to_arc_maps(partial_catalog)[Line]
+    partial_maps = PNM.get_all_branch_maps_by_type(partial_catalog)
     for name in ("CA-1", "C35")
         arc, bucket = partial_name_to_arc[name]
-        @test bucket == "direct_branch_map"
+        @test bucket === :direct_branch_map
         @test _reduced_entry_kind(partial_maps[bucket][Line][arc]) == :single
     end
 end

@@ -180,7 +180,7 @@ function add_constraints!(
     )
 
     area_ex_var = get_variable(container, FlowActivePowerVariable, PSY.AreaInterchange)
-    net_reduction_data = get_network_reduction(network_model)
+    branch_catalog = get_branch_catalog(network_model)
     # Memoize the PTDF orientation sign per (type, name): a degree-two series
     # member whose native from→to is `:ToFrom` relative to the merged arc
     # contributes with a flipped sign to the area sum.
@@ -219,7 +219,7 @@ function add_constraints!(
                         type,
                         names,
                         mult,
-                        net_reduction_data,
+                        branch_catalog,
                         orientation_sign_cache,
                         t,
                     )
@@ -240,14 +240,14 @@ function _add_ptdf_area_tie_flows!(
     ::Type{V},
     names::Vector{String},
     mult::Float64,
-    net_reduction_data::PNM.NetworkReductionData,
+    branch_catalog::PNM.BranchCatalog,
     orientation_sign_cache::Dict{Tuple{DataType, String}, Float64},
     t::Int,
 ) where {V <: PSY.ACTransmission}
     flow_expr = get_expression(container, PTDFBranchFlow, V)
     for name in names
         orientation_sign = get!(orientation_sign_cache, (V, name)) do
-            get_ptdf_orientation_sign(net_reduction_data, V, name)
+            get_ptdf_orientation_sign(branch_catalog, V, name)
         end
         JuMP.add_to_expression!(
             sum_of_flows,
@@ -267,7 +267,7 @@ function _add_ptdf_area_tie_flows!(
     ::Type{V},
     names::Vector{String},
     mult::Float64,
-    net_reduction_data::PNM.NetworkReductionData,
+    branch_catalog::PNM.BranchCatalog,
     orientation_sign_cache::Dict{Tuple{DataType, String}, Float64},
     t::Int,
 ) where {V <: PSY.TwoTerminalHVDC}
@@ -282,7 +282,7 @@ function _add_ptdf_area_tie_flows!(
         measured_variable_type,
         V,
         names,
-        net_reduction_data,
+        branch_catalog,
         orientation_sign_cache,
         t,
     )
@@ -327,7 +327,7 @@ function add_constraints!(
     )
 
     area_ex_var = get_variable(container, FlowActivePowerVariable, PSY.AreaInterchange)
-    net_reduction_data = get_network_reduction(network_model)
+    branch_catalog = get_branch_catalog(network_model)
     orientation_sign_cache = Dict{Tuple{DataType, String}, Float64}()
     jm = get_jump_model(container)
     for area_interchange in devices
@@ -361,7 +361,7 @@ function add_constraints!(
                         measured_variable_type,
                         type,
                         names,
-                        net_reduction_data,
+                        branch_catalog,
                         orientation_sign_cache,
                         t,
                     )
@@ -382,7 +382,7 @@ function _add_measured_tie_line_flows!(
     ::Type{U},
     ::Type{V},
     names::Vector{String},
-    net_reduction_data::PNM.NetworkReductionData,
+    branch_catalog::PNM.BranchCatalog,
     orientation_sign_cache::Dict{Tuple{DataType, String}, Float64},
     t::Int,
 ) where {
@@ -392,7 +392,7 @@ function _add_measured_tie_line_flows!(
     flow_variable, measured_direction_mult = _resolve_measured_flow(container, U, V)
     for name in names
         orientation_sign = get!(orientation_sign_cache, (V, name)) do
-            _tie_line_orientation_sign(net_reduction_data, V, name)
+            _tie_line_orientation_sign(branch_catalog, V, name)
         end
         JuMP.add_to_expression!(
             sum_of_flows,
@@ -457,16 +457,16 @@ _measured_direction_mult(::Type{FlowActivePowerFromToVariable}) = 1.0
 _measured_direction_mult(::Type{FlowActivePowerToFromVariable}) = -1.0
 
 function _tie_line_orientation_sign(
-    net_reduction_data::PNM.NetworkReductionData,
+    branch_catalog::PNM.BranchCatalog,
     ::Type{T},
     name::AbstractString,
 ) where {T <: PSY.ACTransmission}
-    return get_ptdf_orientation_sign(net_reduction_data, T, name)
+    return get_ptdf_orientation_sign(branch_catalog, T, name)
 end
 
 # HVDC tie lines are never network-reduced, so their native orientation always matches.
 function _tie_line_orientation_sign(
-    ::PNM.NetworkReductionData,
+    ::PNM.BranchCatalog,
     ::Type{T},
     ::AbstractString,
 ) where {T <: PSY.TwoTerminalHVDC}

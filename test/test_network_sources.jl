@@ -54,7 +54,7 @@ end
     nd = POM.PTDFNetworkData(
         ptdf,
         modf,
-        deepcopy(POM.PNM.get_network_reduction_data(core)),
+        POM.PNM.get_branch_catalog(core),
     )
     @test POM.has_contingency_matrix(nd)
     @test POM.PNM.get_bus_reduction_map(
@@ -65,7 +65,7 @@ end
 
     without = POM.PTDFNetworkData(
         ptdf,
-        deepcopy(POM.PNM.get_network_reduction_data(core)),
+        POM.PNM.get_branch_catalog(core),
     )
     @test !POM.has_contingency_matrix(without)
     @test_throws ErrorException POM.get_network_data_contingency_matrix(without)
@@ -77,7 +77,7 @@ end
 
     dcp_without = POM.DCPNetworkData(
         ybus,
-        deepcopy(POM.PNM.get_network_reduction_data(ybus)),
+        POM.PNM.get_branch_catalog(ybus),
     )
     @test !POM.has_contingency_matrix(dcp_without)
     @test_throws ErrorException POM.get_network_data_contingency_matrix(dcp_without)
@@ -89,7 +89,7 @@ end
     )
     ptdf_without = POM.PTDFNetworkData(
         POM.PNM.VirtualPTDF(core),
-        deepcopy(POM.PNM.get_network_reduction_data(core)),
+        POM.PNM.get_branch_catalog(core),
     )
     @test !POM.has_contingency_matrix(ptdf_without)
     @test_throws ErrorException POM.get_network_data_contingency_matrix(ptdf_without)

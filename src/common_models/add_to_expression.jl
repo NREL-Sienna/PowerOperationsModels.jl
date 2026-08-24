@@ -405,7 +405,8 @@ function _add_terminal_flow_to_nodal!(
     nodal_expr = get_expression(container, T, PSY.ACBus)
     tracker = get_reduced_branch_tracker(network_model)
     time_steps = get_time_steps(container)
-    for (name, (arc_tuple, _)) in get_name_to_arc_map_entries(network_reduction, V)
+    for (name, (arc_tuple, _)) in
+        PNM.get_name_to_arc_map(get_branch_catalog(network_model), V)
         if search_for_reduced_branch_expression!(tracker, arc_tuple, T, U)
             continue
         end
@@ -482,7 +483,8 @@ function _add_both_terminals_to_nodal!(
     expression = get_expression(container, T, PSY.ACBus)
     tracker = get_reduced_branch_tracker(network_model)
     time_steps = get_time_steps(container)
-    for (name, (arc_tuple, _)) in get_name_to_arc_map_entries(network_reduction, V)
+    for (name, (arc_tuple, _)) in
+        PNM.get_name_to_arc_map(get_branch_catalog(network_model), V)
         if search_for_reduced_branch_expression!(tracker, arc_tuple, T, U)
             continue
         end
@@ -2035,7 +2037,7 @@ end
 
 function _handle_nodal_or_zonal_interfaces(
     br_type::Type{V},
-    net_reduction_data::PNM.NetworkReductionData,
+    branch_catalog::PNM.BranchCatalog,
     direction_map::Dict{String, Int},
     contributing_devices::Vector{V},
     # A `JuMPVariableArray` (StaticBranchBounds) or an `AffExpr` container (DCP StaticBranch's
@@ -2043,9 +2045,10 @@ function _handle_nodal_or_zonal_interfaces(
     variable::DenseAxisArray,
     expression::DenseAxisArray, # There is no good type for a DenseAxisArray slice
 ) where {V <: PSY.ACTransmission}
-    all_branch_maps_by_type = PNM.get_all_branch_maps_by_type(net_reduction_data)
+    all_branch_maps_by_type = PNM.get_all_branch_maps_by_type(branch_catalog)
+    net_reduction_data = PNM.get_network_reduction_data(branch_catalog)
     for (name, (arc, reduction)) in
-        PNM.get_name_to_arc_map(net_reduction_data, br_type)
+        PNM.get_name_to_arc_map(branch_catalog, br_type)
         reduction_entry = all_branch_maps_by_type[reduction][br_type][arc]
         if _reduced_entry_in_interface(reduction_entry, contributing_devices)
             if isempty(direction_map)
@@ -2072,7 +2075,7 @@ end
 
 function _handle_nodal_or_zonal_interfaces(
     ::Type{PSY.AreaInterchange},
-    net_reduction_data::PNM.NetworkReductionData,
+    branch_catalog::PNM.BranchCatalog,
     direction_map::Dict{String, Int},
     contributing_devices::Vector{PSY.AreaInterchange},
     variable::JuMPVariableArray,
@@ -2113,7 +2116,7 @@ function add_to_expression!(
         variable = get_variable(container, FlowActivePowerVariable, br_type)
         _handle_nodal_or_zonal_interfaces(
             br_type,
-            net_reduction_data,
+            get_branch_catalog(network_model),
             direction_map,
             contributing_devices,
             variable,
@@ -2147,7 +2150,7 @@ function add_to_expression!(
         end
         _handle_nodal_or_zonal_interfaces(
             br_type,
-            net_reduction_data,
+            get_branch_catalog(network_model),
             direction_map,
             contributing_devices,
             flow,
@@ -2187,7 +2190,7 @@ function add_to_expression!(
     variable = get_variable(container, FlowActivePowerVariable, PSY.AreaInterchange)
     _handle_nodal_or_zonal_interfaces(
         PSY.AreaInterchange,
-        net_reduction_data,
+        get_branch_catalog(network_model),
         direction_map,
         contributing_devices_map[PSY.AreaInterchange],
         variable,
@@ -2218,8 +2221,9 @@ function add_to_expression!(
         flow_expression = get_expression(container, PTDFBranchFlow, br_type)
         # nearly identical to _handle_nodal_or_zonal_interfaces: differences are
         # expression[service_name, t] vs expression[t], flow_expression[name, t] vs variable[name, t]
-        all_branch_maps_by_type = PNM.get_all_branch_maps_by_type(net_reduction_data)
-        for (name, (arc, reduction)) in PNM.get_name_to_arc_map(net_reduction_data, br_type)
+        catalog = get_branch_catalog(network_model)
+        all_branch_maps_by_type = PNM.get_all_branch_maps_by_type(catalog)
+        for (name, (arc, reduction)) in PNM.get_name_to_arc_map(catalog, br_type)
             reduction_entry = all_branch_maps_by_type[reduction][br_type][arc]
             if _reduced_entry_in_interface(reduction_entry, contributing_devices)
                 if isempty(direction_map)
@@ -2252,17 +2256,15 @@ orientation is `:ToFrom` relative to the merged path; `+1.0` otherwise. Errors
 on an unknown reduction kind rather than returning a silently wrong sign.
 """
 function get_ptdf_orientation_sign(
-    net_reduction_data::PNM.NetworkReductionData,
+    branch_catalog::PNM.BranchCatalog,
     ::Type{T},
     name::AbstractString,
 ) where {T <: PSY.ACTransmission}
-    arc, reduction = PNM.get_name_to_arc_maps(net_reduction_data)[T][name]
-    if reduction == "direct_branch_map" ||
-       reduction == "parallel_branch_map" ||
-       reduction == "transformer3W_map"
+    arc, reduction = PNM.get_name_to_arc_maps(branch_catalog)[T][name]
+    if reduction === :direct_branch_map || reduction === :parallel_branch_map
         return 1.0
-    elseif reduction == "series_branch_map"
-        series = PNM.get_all_branch_maps_by_type(net_reduction_data)[reduction][T][arc]
+    elseif reduction === :series_branch_map
+        series = PNM.get_all_branch_maps_by_type(branch_catalog)[reduction][T][arc]
         for (i, segment) in enumerate(series)
             if PNM.get_name(segment) == name
                 return series.segment_orientations[i] == :FromTo ? 1.0 : -1.0

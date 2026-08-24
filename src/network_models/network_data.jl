@@ -4,39 +4,35 @@ formulation family, so "does this build have a contingency matrix" is answered b
 dispatch instead of an isnothing check, and a family cannot accidentally read a
 matrix it never derived.
 
-The reduction data is a deepcopy: POM extends it with `populate_branch_maps_by_type!`
-and must never write into a core that the caller may have supplied or shared. That
-function only ever accumulates — it never clears — so sharing it would leak one
-template's branch maps into the next build off the same core. The copy may only ever be
-EXTENDED: its bus and arc mapping must stay identical to the core's, because the MODF is
-indexed with arcs resolved through this copy.
+The reduction is the matrix's own object, reached through this build's branch catalog, and
+POM never mutates it. `get_reduction` resolves through `branch_catalog`, so the reduction a
+consumer reads is by construction the one its index describes.
 
-Consequence: `PNM.get_network_reduction_data(matrix)` and `get_reduction(network_data)`
-are the same reduction but not the same object, and only the latter carries the branch
-maps. Read the reduction off the container, never off the matrix.
+`branch_catalog` is this build's *filtered* catalog: the template's branch filters restrict
+which branches get flow variables, which is an optimization concern rather than a property of
+the reduction. The matrix carries the complete catalog, reachable with
+`PNM.get_branch_catalog(matrix)` -- that is what a consumer wanting every branch (a power flow,
+which solves the whole network regardless of what the optimization monitors) should read.
 =#
-
-# The one place the copy above is taken, so a new family cannot forget it.
-_owned_reduction(matrix) = deepcopy(PNM.get_network_reduction_data(matrix))
 
 """Ybus-only families: no factorization, no sensitivity matrices."""
 struct YbusNetworkData <: IOM.AbstractNetworkData
     ybus::PNM.Ybus
-    reduction::PNM.NetworkReductionData
+    branch_catalog::PNM.BranchCatalog
 end
 
 """DCP: a Ybus, plus a MODF derived from that same Ybus when the template is security constrained."""
 struct DCPNetworkData{M} <: IOM.AbstractNetworkData
     ybus::PNM.Ybus
     contingency_matrix::M
-    reduction::PNM.NetworkReductionData
+    branch_catalog::PNM.BranchCatalog
 end
 
 """PTDF families: a PTDF, plus an optional MODF, both wrapping one factorization core."""
 struct PTDFNetworkData{P, M} <: IOM.AbstractNetworkData
     matrix::P
     contingency_matrix::M
-    reduction::PNM.NetworkReductionData
+    branch_catalog::PNM.BranchCatalog
 end
 
 # The no-contingency constructors omit the argument, storing this singleton in
@@ -45,15 +41,19 @@ end
 # `nothing` already means "not instantiated yet" on IOM's `network_data` field.
 struct NoContingencyMatrix end
 
-DCPNetworkData(ybus::PNM.Ybus, reduction::PNM.NetworkReductionData) =
-    DCPNetworkData(ybus, NoContingencyMatrix(), reduction)
+DCPNetworkData(ybus::PNM.Ybus, catalog::PNM.BranchCatalog) =
+    DCPNetworkData(ybus, NoContingencyMatrix(), catalog)
 
-PTDFNetworkData(matrix, reduction::PNM.NetworkReductionData) =
-    PTDFNetworkData(matrix, NoContingencyMatrix(), reduction)
+PTDFNetworkData(matrix, catalog::PNM.BranchCatalog) =
+    PTDFNetworkData(matrix, NoContingencyMatrix(), catalog)
 
-get_reduction(nd::YbusNetworkData) = nd.reduction
-get_reduction(nd::DCPNetworkData) = nd.reduction
-get_reduction(nd::PTDFNetworkData) = nd.reduction
+get_branch_catalog(nd::YbusNetworkData) = nd.branch_catalog
+get_branch_catalog(nd::DCPNetworkData) = nd.branch_catalog
+get_branch_catalog(nd::PTDFNetworkData) = nd.branch_catalog
+
+# By construction the reduction a consumer reads is the one its own catalog indexes.
+get_reduction(nd::IOM.AbstractNetworkData) =
+    PNM.get_network_reduction_data(get_branch_catalog(nd))
 
 # Ybus-only and DCP families have no sensitivity matrix, so the Ybus is the meaningful
 # answer for get_network_matrix. Kept so the public IOM getter doesn't throw for these
@@ -92,3 +92,4 @@ IOM.get_network_matrix(m::NetworkModel) = get_matrix(get_network_data(m))
 IOM.get_contingency_matrix(m::NetworkModel) =
     get_network_data_contingency_matrix(get_network_data(m))
 IOM.get_network_reduction(m::NetworkModel) = get_reduction(get_network_data(m))
+get_branch_catalog(m::NetworkModel) = get_branch_catalog(get_network_data(m))

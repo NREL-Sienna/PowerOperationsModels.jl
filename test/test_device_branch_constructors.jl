@@ -946,7 +946,7 @@ _bus_merged_away(nrd, b) = any(b in s for s in values(PNM.get_bus_reduction_map(
     from_bus = PSY.get_number(PSY.get_from(arc))
     to_bus = PSY.get_number(PSY.get_to(arc))
     nm = IOM.get_network_model(IOM.get_template(model))
-    nrd = IOM.get_network_matrix(nm).network_reduction_data
+    nrd = PNM.get_network_reduction_data(IOM.get_network_matrix(nm))
     @test !_bus_merged_away(nrd, from_bus)
     @test !_bus_merged_away(nrd, to_bus)
     @test haskey(IOM.get_branch_models(IOM.get_template(model)), :MonitoredLine)
@@ -958,7 +958,7 @@ _bus_merged_away(nrd, b) = any(b in s for s in values(PNM.get_bus_reduction_map(
     model_default, ml_default, status_default = _build_zib_monitored_line(false)
     @test status_default == IOM.ModelBuildStatus.BUILT
     nm_d = IOM.get_network_model(IOM.get_template(model_default))
-    nrd_d = IOM.get_network_matrix(nm_d).network_reduction_data
+    nrd_d = PNM.get_network_reduction_data(IOM.get_network_matrix(nm_d))
     @test _bus_merged_away(nrd_d, PSY.get_number(PSY.get_to(PSY.get_arc(ml_default))))
     @test !haskey(IOM.get_branch_models(IOM.get_template(model_default)), :MonitoredLine)
     container_default = IOM.get_optimization_container(model_default)

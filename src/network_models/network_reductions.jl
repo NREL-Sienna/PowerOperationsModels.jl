@@ -24,7 +24,7 @@ mutable struct BranchReductionOptimizationTracker <: IOM.AbstractBranchReduction
         Type{<:ConstraintType},
         Dict{
             Type{<:IS.InfrastructureSystemsComponent},
-            IOM.SortedDict{String, Tuple{Tuple{Int, Int}, String}},
+            IOM.SortedDict{String, Tuple{Tuple{Int, Int}, Symbol}},
         },
     }
     number_of_steps::Int
@@ -182,7 +182,7 @@ function search_for_reduced_branch_argument!(
 end
 
 function get_branch_argument_parameter_axes(
-    net_reduction_data::PNM.NetworkReductionData,
+    branch_catalog::PNM.BranchCatalog,
     ::Union{Vector{T}, IS.FlattenIteratorWrapper{T}},
     ::Type{V},
     ts_name::String;
@@ -190,7 +190,7 @@ function get_branch_argument_parameter_axes(
     resolution::Dates.Millisecond = IOM.UNSET_RESOLUTION,
 ) where {T <: IS.InfrastructureSystemsComponent, V <: IS.TimeSeriesData}
     return get_branch_argument_parameter_axes(
-        net_reduction_data,
+        branch_catalog,
         T,
         V,
         ts_name;
@@ -213,7 +213,7 @@ function get_branch_with_time_series(
 end
 
 function get_branch_argument_parameter_axes(
-    net_reduction_data::PNM.NetworkReductionData,
+    branch_catalog::PNM.BranchCatalog,
     ::Type{T},
     ::Type{V},
     ts_name::String;
@@ -224,12 +224,12 @@ function get_branch_argument_parameter_axes(
     is_resolution = IOM._to_is_resolution(resolution)
     name_axis = Vector{String}()
     ts_hash_axis = Vector{String}()
-    arc_map = get(PNM.get_name_to_arc_maps(net_reduction_data), T, nothing)
+    arc_map = get(PNM.get_name_to_arc_maps(branch_catalog), T, nothing)
     isnothing(arc_map) && return name_axis, ts_hash_axis
     devices_with_time_series = IS.InfrastructureSystemsComponent[]
     for (name, (arc, reduction)) in arc_map
         reduction_entry =
-            PNM.get_all_branch_maps_by_type(net_reduction_data)[reduction][T][arc]
+            PNM.get_all_branch_maps_by_type(branch_catalog)[reduction][T][arc]
         device_with_time_series =
             get_branch_with_time_series(reduction_entry, V, ts_name)
         if !isnothing(device_with_time_series)
@@ -255,36 +255,20 @@ function get_branch_argument_parameter_axes(
 end
 
 function get_branch_argument_variable_axis(
-    net_reduction_data::PNM.NetworkReductionData,
+    branch_catalog::PNM.BranchCatalog,
     ::IS.FlattenIteratorWrapper{T},
 ) where {T <: IS.InfrastructureSystemsComponent}
-    return get_branch_argument_variable_axis(net_reduction_data, T)
+    return get_branch_argument_variable_axis(branch_catalog, T)
 end
 
 function get_branch_argument_variable_axis(
-    net_reduction_data::PNM.NetworkReductionData,
+    branch_catalog::PNM.BranchCatalog,
     ::Type{T},
 ) where {T <: IS.InfrastructureSystemsComponent}
-    name_axis = get_name_to_arc_map_entries(net_reduction_data, T)
+    name_axis = PNM.get_name_to_arc_map(branch_catalog, T)
     return collect(keys(name_axis))
 end
 
-"""
-Reduction entries (`entry name => ((from_no, to_no), reduction map name)`) for branch type
-`T`. Unlike `PNM.get_name_to_arc_map`, absence of `T` yields an empty map instead of a
-`KeyError`: a type can be missing from the maps when every branch of that type was
-absorbed by a radial reduction (absorbed branches carry no reduction entry at all).
-"""
-function get_name_to_arc_map_entries(
-    net_reduction_data::PNM.NetworkReductionData,
-    ::Type{T},
-) where {T <: IS.InfrastructureSystemsComponent}
-    maps = PNM.get_name_to_arc_maps(net_reduction_data)
-    if haskey(maps, T)
-        return maps[T]
-    end
-    return IOM.SortedDict{String, Tuple{Tuple{Int, Int}, String}}()
-end
 
 """
 Representative branch-name axis for a constraint family `U` over components of type `T`
@@ -297,13 +281,13 @@ the claim in `reduced_branch_tracker` so the guarantee holds across separate
 `construct_device!` calls. Constraint containers must be sized with the returned names.
 """
 function get_branch_argument_constraint_axis(
-    net_reduction_data::PNM.NetworkReductionData,
+    branch_catalog::PNM.BranchCatalog,
     reduced_branch_tracker::BranchReductionOptimizationTracker,
     ::IS.FlattenIteratorWrapper{T},
     ::Type{U},
 ) where {T <: IS.InfrastructureSystemsComponent, U <: ConstraintType}
     return get_branch_argument_constraint_axis(
-        net_reduction_data,
+        branch_catalog,
         reduced_branch_tracker,
         T,
         U,
@@ -311,26 +295,26 @@ function get_branch_argument_constraint_axis(
 end
 
 function get_branch_argument_constraint_axis(
-    net_reduction_data::PNM.NetworkReductionData,
+    branch_catalog::PNM.BranchCatalog,
     reduced_branch_tracker::BranchReductionOptimizationTracker,
     ::Type{T},
     ::Type{U},
 ) where {T <: IS.InfrastructureSystemsComponent, U <: ConstraintType}
     constraint_tracker = get_constraint_dict(reduced_branch_tracker)
     constraint_map_by_type = get_constraint_map_by_type(reduced_branch_tracker)
-    name_axis = get_name_to_arc_map_entries(net_reduction_data, T)
+    name_axis = PNM.get_name_to_arc_map(branch_catalog, T)
     arc_tuples_with_constraints =
         get!(Set{Tuple{Int, Int}}, constraint_tracker, U)
     constraint_map = get!(
         Dict{
             Type{<:IS.InfrastructureSystemsComponent},
-            IOM.SortedDict{String, Tuple{Tuple{Int, Int}, String}},
+            IOM.SortedDict{String, Tuple{Tuple{Int, Int}, Symbol}},
         },
         constraint_map_by_type,
         U,
     )
     constraint_submap =
-        get!(IOM.SortedDict{String, Tuple{Tuple{Int, Int}, String}}, constraint_map, T)
+        get!(IOM.SortedDict{String, Tuple{Tuple{Int, Int}, Symbol}}, constraint_map, T)
     for (branch_name, name_axis_tuple) in name_axis
         arc_tuple = name_axis_tuple[1]
         if !(arc_tuple in arc_tuples_with_constraints)

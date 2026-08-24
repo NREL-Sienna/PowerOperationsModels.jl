@@ -707,10 +707,11 @@ function add_expressions!(
 ) where {B <: PSY.ACTransmission}
     time_steps = get_time_steps(container)
     ptdf = get_network_matrix(network_model)
-    net_reduction_data = get_network_reduction(network_model)
-    branch_names = get_branch_argument_variable_axis(net_reduction_data, devices)
+    catalog = get_branch_catalog(network_model)
+    net_reduction_data = PNM.get_network_reduction_data(catalog)
+    branch_names = get_branch_argument_variable_axis(catalog, devices)
     # `collect` to a Vector so the spawn loop below can index it for multi-threading.
-    name_to_arc_map = collect(PNM.get_name_to_arc_map(net_reduction_data, B))
+    name_to_arc_map = collect(PNM.get_name_to_arc_map(catalog, B))
     nodal_balance_expressions = get_expression(container, ActivePowerBalance,
         PSY.ACBus,
     )
@@ -763,10 +764,9 @@ function add_constraints!(
     time_steps = get_time_steps(container)
     branch_flow_expr = get_expression(container, PTDFBranchFlow, T)
     flow_variables = get_variable(container, FlowActivePowerVariable, T)
-    net_reduction_data = get_network_reduction(network_model)
     reduced_branch_tracker = get_reduced_branch_tracker(network_model)
     branches = get_branch_argument_constraint_axis(
-        net_reduction_data,
+        get_branch_catalog(network_model),
         reduced_branch_tracker,
         devices,
         cons_type,
