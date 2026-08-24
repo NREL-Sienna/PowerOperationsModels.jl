@@ -2561,14 +2561,14 @@ function _get_area_from_to(reduction_entry::PNM.ThreeWindingTransformerCircuit)
     tfw = PNM.get_transformer(reduction_entry)
     winding_int = PNM.get_winding_number(reduction_entry)
     if winding_int == 1
-        area_from = PSY.get_area(PSY.get_primary_star_arc(tfw).from)
-        area_to = PSY.get_area(PSY.get_primary_star_arc(tfw).to)
+        area_from = PSY.get_area(PSY.get_arc(PSY.get_primary_circuit(tfw)).from)
+        area_to = PSY.get_area(PSY.get_arc(PSY.get_primary_circuit(tfw)).to)
     elseif winding_int == 2
-        area_from = PSY.get_area(PSY.get_secondary_star_arc(tfw).from)
-        area_to = PSY.get_area(PSY.get_secondary_star_arc(tfw).to)
+        area_from = PSY.get_area(PSY.get_arc(PSY.get_secondary_circuit(tfw)).from)
+        area_to = PSY.get_area(PSY.get_arc(PSY.get_secondary_circuit(tfw)).to)
     elseif winding_int == 3
-        area_from = PSY.get_area(PSY.get_tertiary_star_arc(tfw).from)
-        area_to = PSY.get_area(PSY.get_tertiary_star_arc(tfw).to)
+        area_from = PSY.get_area(PSY.get_arc(PSY.get_tertiary_circuit(tfw)).from)
+        area_to = PSY.get_area(PSY.get_arc(PSY.get_tertiary_circuit(tfw)).to)
     else
         @assert false "Winding number $winding_int is not valid for three-winding transformer"
     end
