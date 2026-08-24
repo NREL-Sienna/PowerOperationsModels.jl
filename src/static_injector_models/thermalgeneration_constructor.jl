@@ -197,6 +197,16 @@ function construct_device!(
         device_model,
         network_model,
     )
+    if _has_offline_reserve_service(device_model)
+        # p + online + offline <= pmax preserves an OFF unit's offline capability.
+        add_constraints!(
+            container,
+            OfflineReserveBandConstraint,
+            devices,
+            device_model,
+            network_model,
+        )
+    end
     add_constraints!(
         container,
         ReactivePowerVariableLimitsConstraint,
@@ -344,6 +354,16 @@ function construct_device!(
         device_model,
         network_model,
     )
+    if _has_offline_reserve_service(device_model)
+        # p + online + offline <= pmax preserves an OFF unit's offline capability.
+        add_constraints!(
+            container,
+            OfflineReserveBandConstraint,
+            devices,
+            device_model,
+            network_model,
+        )
+    end
 
     add_constraints!(container, CommitmentConstraint, devices, device_model, network_model)
     add_constraints!(container, RampConstraint, devices, device_model, network_model)
@@ -490,6 +510,16 @@ function construct_device!(
         device_model,
         network_model,
     )
+    if _has_offline_reserve_service(device_model)
+        # p + online + offline <= pmax preserves an OFF unit's offline capability.
+        add_constraints!(
+            container,
+            OfflineReserveBandConstraint,
+            devices,
+            device_model,
+            network_model,
+        )
+    end
 
     add_constraints!(
         container,
@@ -634,6 +664,16 @@ function construct_device!(
         device_model,
         network_model,
     )
+    if _has_offline_reserve_service(device_model)
+        # p + online + offline <= pmax preserves an OFF unit's offline capability.
+        add_constraints!(
+            container,
+            OfflineReserveBandConstraint,
+            devices,
+            device_model,
+            network_model,
+        )
+    end
 
     add_constraints!(container, CommitmentConstraint, devices, device_model, network_model)
     if haskey(get_time_series_names(device_model), ActivePowerTimeSeriesParameter)
@@ -1132,6 +1172,11 @@ function construct_device!(
     network_model::NetworkModel{<:AbstractNetworkModel},
 )
     devices = get_available_components(device_model, sys)
+    _has_offline_reserve_service(device_model) && error(
+        "OfflineReserve services on ThermalMultiStartUnitCommitment (compact UC) are not " *
+        "supported: the offline-capability band anchors to total pmax while compact " *
+        "power is a delta above pmin. Use a standard UC formulation.",
+    )
 
     add_variables!(
         container,

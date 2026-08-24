@@ -2561,6 +2561,12 @@ function add_to_expression!(
         # silently skipping the whole service-device wiring on a key miss.
         device_model = get(devices_template, nameof(device_type), nothing)
         device_model === nothing && continue
+        # Offline awards stay out of the commitment-gated range expression for formulations
+        # providing offline capability through OfflineReserveBandConstraint.
+        if _is_offline_reserve(V) &&
+           !offline_reserve_in_range_ub(get_formulation(device_model))
+            continue
+        end
         expression_type = get_expression_type_for_reserve(U, device_type, V)
         add_to_expression!(container, expression_type, U, service, devices, model)
     end

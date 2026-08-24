@@ -1197,3 +1197,18 @@ e^{st}_{T} - e^{st+} + e^{st-} = E^{st}_{T}.
 ```
 """
 struct HybridEnergyTargetConstraint <: ConstraintType end
+
+"""
+Offline-capability band row for commitment formulations whose
+[`offline_reserve_in_range_ub`](@ref) trait is `false`: their commitment-gated range
+expression stays `p + online`, and this row adds the offline awards back against the
+static capability (`q_limit = pmax`):
+
+`p + online + offline <= pmax * u + q_limit * (1 - u) = pmax`
+
+Committed: offline competes with the online products for the HSL band. Off: the
+semi-continuous range row zeroes `p` and the online awards, leaving `offline <= q_limit`.
+Single award variable per (device, service): the device's merged offer curve prices both
+provision states (documented approximation).
+"""
+struct OfflineReserveBandConstraint <: ConstraintType end
