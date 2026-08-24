@@ -1524,8 +1524,8 @@ end
 # thermal contributors, so neither path below is otherwise covered):
 #   (a) `StorageDispatchWithReserves` reserve bounds must accept a time-series ORDC and give it
 #       the full-range bound.
-#   (b) `get_max_tranches` must handle the `DeterministicSingleTimeSeries` produced by transform
-#       (which has no `get_data`).
+#   (b) `get_max_tranches` must read the transform product (the store materializes it as a
+#       full `Deterministic` on read; the `get_data`-less wrapper no longer surfaces).
 
 @testset "StorageDispatchWithReserves reserve bound accepts a time-series ORDC" begin
     sys = PSB.build_system(PSITestSystems, "c_sys5_bat")
@@ -1546,11 +1546,17 @@ end
 end
 
 @testset "get_max_tranches handles the transform product (DeterministicSingleTimeSeries)" begin
-    sys = PSB.build_system(PSITestSystems, "c_sys5_bat"; add_reserves = true)
-    it = first(PSY.get_forecast_initial_times(sys))
+    # Uniform-STS paradigm (users do not mix time-series types): one STS grid, one
+    # transform, and the post-transform forecast params describe the ORDC's own product.
+    sys = PSB.build_system(PSITestSystems, "c_sys5_bat";
+        add_forecasts = false, add_single_time_series = true, add_reserves = true)
     res = first(PSY.get_time_series_resolutions(sys))
-    n = IS.get_horizon_count(PSY.get_forecast_horizon(sys), res)
-    times = collect(range(it; step = res, length = n))
+    grid = first(
+        k for k in IS.get_time_series_keys(first(get_components(PowerLoad, sys))) if
+        k isa IS.StaticTimeSeriesKey
+    )
+    n = grid.length
+    times = collect(range(grid.initial_timestamp; step = res, length = n))
 
     # Per-hour demand curves with alternating tranche counts (2 and 3); max tranches = 3.
     two = IS.PiecewiseStepData([0.0, 100.0, 200.0], [50.0, 30.0])
@@ -1566,8 +1572,12 @@ end
             name = "variable_cost",
             data = IS.TimeSeries.TimeArray(times, curves),
         ))
+    # STS-only systems have no forecast params until the transform defines them, so
+    # transform first and mint the key from the resulting params.
+    transform_single_time_series!(sys, Hour(24), Hour(24); delete_existing = false)
     key = IS.ForecastKey(; time_series_type = IS.Deterministic, name = "variable_cost",
-        initial_timestamp = it, resolution = res,
+        initial_timestamp = first(PSY.get_forecast_initial_times(sys)),
+        resolution = res,
         horizon = PSY.get_forecast_horizon(sys),
         interval = PSY.get_forecast_interval(sys),
         count = PSY.get_forecast_window_count(sys),
@@ -1575,12 +1585,11 @@ end
     PSY.set_variable!(ordc_ts,
         PSY.make_market_bid_ts_curve(key, nothing, IS.NaturalUnit()))
 
-    transform_single_time_series!(sys, PSY.get_forecast_horizon(sys),
-        PSY.get_forecast_interval(sys); delete_existing = false)
-
     resolved =
         PSY.get_time_series(ordc_ts, IS.get_time_series_key(PSY.get_variable(ordc_ts)))
-    @test resolved isa IS.DeterministicSingleTimeSeries      # the case that broke get_data
+    # The store MATERIALIZES the transform product on read: a full Deterministic comes
+    # back, never the get_data-less DeterministicSingleTimeSeries wrapper.
+    @test resolved isa IS.Deterministic
     @test POM.get_max_tranches(
         ordc_ts,
         IS.get_time_series_key(PSY.get_variable(ordc_ts)),
