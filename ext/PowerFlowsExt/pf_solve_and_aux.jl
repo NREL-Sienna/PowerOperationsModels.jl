@@ -149,9 +149,7 @@ function IOM.calculate_aux_variable_value!(
     # Skip the aux vars that the current power flow isn't meant to update
     pf_e_data = latest_solved_power_flow_evaluation_data(container)
     pf_data = IOM.get_inner_data(pf_e_data)
-    key_type = IOM.get_entry_type(key)
-    (key_type in branch_aux_vars(pf_data) || key_type in bus_aux_vars(pf_data)) ||
-        return
+    _pf_provides_aux_var(IOM.get_entry_type(key), pf_data) || return
     IOM.calculate_aux_variable_value!(container, key, system, pf_e_data)
     return
 end
