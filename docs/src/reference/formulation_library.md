@@ -201,8 +201,8 @@ Rating enforcement per network model, `StaticBranch` vs `StaticBranchBounds` sid
 Which pairs have slack machinery is declared once, per (formulation, network) pair, by the
 `slack_spec` trait (`core/branch_slack_specs.jl`); the `supports_flow_slacks` gate derives
 from it, so any pair whose constructors build no slack containers (`StaticBranchBounds` ×
-NFA, `StaticBranchUnbounded` × anything, the control formulations such as
-`VoltageControlTap`) is rejected at template validation with `IS.ConflictingInputsError`
+NFA, `StaticBranchUnbounded` × anything) is rejected at template validation with
+`IS.ConflictingInputsError`
 rather than left to silently ignore the request; a construct-time backstop
 (`_check_flow_slack_support`) throws `ArgumentError` for any direct-construct path that
 bypasses template validation. On `CopperPlateNetworkModel`/`AreaBalanceNetworkModel` the
@@ -257,18 +257,47 @@ N-1 security constraints are built with Modified Outage Distribution Factors (PN
 | `ACPNetworkModel`, `ACRNetworkModel`, `IVRNetworkModel`, `LPACCNetworkModel`, `DCPLLNetworkModel` | **Blocked** at template validation with an `IS.ConflictingInputsError`: the MODF post-contingency formulation is a lossless linear DC construct and is not available on AC or lossy network models                                                                                                                                      |
 | `NFANetworkModel`, `CopperPlateNetworkModel`, `AreaBalanceNetworkModel`                           | Deliberate no-op — a `@warn` states the security constraints are inert                                                                                                                                                                                                                                                                  |
 
-#### Tap and phase-angle control
+#### Transformer tap control
 
-| Formulation         | Supported on                                                                                                                                                                                                                                                    |
-|:------------------- |:--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `VoltageControlTap` | `ACPNetworkModel`, `ACRNetworkModel`, `IVRNetworkModel`. Gated by `models_reactive_power`, so it is dropped from active-power (DC) templates with an `@info` message rather than being built; explicitly rejected on `LPACCNetworkModel` by template validation |
-| `TapControl`        | `DCPNetworkModel` only                                                                                                                                                                                                                                          |
-| `PhaseAngleControl` | `DCPNetworkModel` and the PTDF models only                                                                                                                                                                                                                      |
+Tap control is **not** a separate formulation. It is an opt-in attribute on the ordinary
+`StaticBranch` / `StaticBranchBounds` transformer models, driven by the component data:
 
-Under `ACRNetworkModel` and `IVRNetworkModel`, `VoltageControlTap` additionally creates a
-`RegulatedVoltageMagnitude` variable and a `RegulatedVoltageMagnitudeConstraint` (both with
-`meta = "1"`), because those formulations have no scalar voltage-magnitude primitive to fix. Under
-`ACPNetworkModel` the network's own `VoltageMagnitude` variable is fixed directly instead.
+```julia
+DeviceModel(
+    PSY.TwoWindingTransformer,
+    StaticBranch;
+    attributes = Dict(POM.ENABLE_CONTROLS_KEY => true),   # "enable_controls"
+)
+```
+
+With the attribute set, each `PSY.TransformerCircuit` whose `control_objective` POM models
+gets a continuous [`TapRatioVariable`](@ref) bounded by the circuit's `control_limits`,
+which enters the AC flow equations in place of the fixed `tap`. Control is per circuit, so
+each winding of a `ThreeWindingTransformer` is controlled independently.
+
+| `control_objective`   | Constraint added                             | Regulated quantity                                                                                         |
+|:--------------------- |:-------------------------------------------- |:---------------------------------------------------------------------------------------------------------- |
+| `VOLTAGE`             | [`VoltageControlConstraint`](@ref)           | voltage magnitude at `regulated_bus_number`, banded by `controlled_quantity_limits`                        |
+| `REACTIVE_POWER_FLOW` | [`ReactivePowerFlowControlConstraint`](@ref) | `FlowReactivePowerFromToVariable` at the circuit's winding-one bus, banded by `controlled_quantity_limits` |
+
+Every other `TransformerControlObjective` is inert. `UNDEFINED` (the field default),
+`FIXED` and the `*_DISABLED` codes are treated as "no control block" and pass silently; the
+positive objectives POM does not yet model (`ACTIVE_POWER_FLOW`, `CONTROL_OF_DC_LINE`,
+`ASYMMETRIC_ACTIVE_POWER_FLOW`) emit a `@warn` and are ignored.
+
+`regulated_bus_number` must name a bus that exists in the system; a VOLTAGE-controlled
+circuit whose regulated bus cannot be resolved is rejected at template validation.
+
+| Network                                                 | Support                                                                                                                      |
+|:------------------------------------------------------- |:---------------------------------------------------------------------------------------------------------------------------- |
+| `ACPNetworkModel`, `ACRNetworkModel`, `IVRNetworkModel` | Full support on both `StaticBranch` and `StaticBranchBounds`                                                                 |
+| `LPACCNetworkModel`                                     | Supported, but a variable tap makes the model non-convex — a `@warn` says so; use a nonlinear solver                         |
+| `DCPNetworkModel`, `DCPLLNetworkModel`                  | Both objectives are AC quantities, so no tap variable or constraint is built; a `@warn` states the control is ignored        |
+| all others                                              | The attribute is not offered (`get_default_attributes` adds it only for the two control formulations) and is inert if forced |
+
+A controlled circuit and its regulated bus are pinned irreducible, so a network reduction
+cannot absorb them. A controlled circuit that would be merged into a parallel-branch
+equivalent is a hard error rather than a silent demotion.
 
 ### HVDC formulations
 

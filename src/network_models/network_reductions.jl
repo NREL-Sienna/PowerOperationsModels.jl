@@ -183,7 +183,7 @@ end
 
 function get_branch_argument_parameter_axes(
     net_reduction_data::PNM.NetworkReductionData,
-    ::IS.FlattenIteratorWrapper{T},
+    ::Union{Vector{T}, IS.FlattenIteratorWrapper{T}},
     ::Type{V},
     ts_name::String;
     interval::Dates.Millisecond = IOM.UNSET_INTERVAL,

@@ -116,17 +116,6 @@ function _add_static_branch_btheta_expression!(
     return
 end
 
-# psy6: disabled pending transformer refactor
-# ThreeWindingTransformer has three star arcs per device, so it can't use the single-arc expression
-# above; it keeps its own FlowActivePowerVariable-per-winding decomposition in
-# branch_constructor.jl (`DeviceModel{PSY.ThreeWindingTransformer, StaticBranch}`).
-# _add_static_branch_btheta_expression!(
-#     ::OptimizationContainer,
-#     ::PSY.System,
-#     ::DeviceModel{PSY.ThreeWindingTransformer, StaticBranch},
-#     ::NetworkModel{DCPNetworkModel},
-# ) = nothing
-
 function construct_network!(
     container::OptimizationContainer,
     sys::PSY.System,

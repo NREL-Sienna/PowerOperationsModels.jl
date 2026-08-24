@@ -1,7 +1,6 @@
 #=
 Buses that must survive PNM network reductions because something the template models
-is pinned to them. One rule per method, dispatched on the DeviceModel, so a new rule
-is a new method rather than another branch in a growing loop.
+is pinned to them. One rule per method.
 
 This set is the sole authority on reduction exceptions: the buses the caller pinned on the
 `NetworkModel` plus the buses these rules derive. PNM's own `_collect_protected_buses`
@@ -9,22 +8,13 @@ protects every system Outage; this protects only what the template actually mode
 contingency the model never enforces cannot block a reduction.
 =#
 
-function _push_component_buses!(buses::Set{Int}, branch::PSY.Branch)
+function _push_component_buses!(
+    buses::Set{Int},
+    branch::Union{PSY.Branch, PSY.TransformerCircuit},
+)
     arc = PSY.get_arc(branch)
     push!(buses, PSY.get_number(PSY.get_from(arc)))
     push!(buses, PSY.get_number(PSY.get_to(arc)))
-    return
-end
-
-function _push_component_buses!(buses::Set{Int}, branch::PSY.ThreeWindingTransformer)
-    for arc in (
-        PSY.get_primary_star_arc(branch),
-        PSY.get_secondary_star_arc(branch),
-        PSY.get_tertiary_star_arc(branch),
-    )
-        push!(buses, PSY.get_number(PSY.get_from(arc)))
-        push!(buses, PSY.get_number(PSY.get_to(arc)))
-    end
     return
 end
 
@@ -57,21 +47,24 @@ end
 
 function _collect_reduction_exceptions(
     sys::PSY.System,
-    model::NetworkModel,
+    network_model::NetworkModel,
     branch_models::BranchModelContainer,
 )
     @debug "Collecting reduction exceptions" _group =
         IOM.LOG_GROUP_NETWORK_CONSTRUCTION
     # Seeded with the caller's own exceptions; the template's rules add to them.
-    buses = Set{Int}(get_reduction_exceptions(model))
+    buses = Set{Int}(get_reduction_exceptions(network_model))
     _pin_dc_converter_buses!(buses, sys)
     for m in values(branch_models)
-        _pin_irreducible_buses!(buses, m, sys)
+        _pin_time_series_branch_buses!(buses, m, sys)
+        _pin_outage_buses!(buses, m, sys)
+        _pin_model_all_branches!(buses, m)
+        _pin_transformer_controls!(buses, m, sys, network_model)
     end
     return collect(buses)
 end
 
-# Rule 0: a converter's AC terminal must survive the reduction. Merging one away drops the
+# A converter's AC terminal must survive the reduction. Merging one away drops the
 # converter from the model without a word, so this is keyed on the system rather than on a
 # DeviceModel — the exposure exists whether or not the template happens to model the
 # converter's type. Unconditional, unlike PowerFlows' matching set, which skips `g == 0`
@@ -87,30 +80,7 @@ function _pin_dc_converter_buses!(buses::Set{Int}, sys::PSY.System)
     return
 end
 
-_pin_irreducible_buses!(::Set{Int}, ::DeviceModel, ::PSY.System) = nothing
-
-function _pin_irreducible_buses!(
-    buses::Set{Int},
-    m::DeviceModel{T},
-    sys::PSY.System,
-) where {T <: PSY.ACTransmission}
-    _pin_time_series_branch_buses!(buses, m, sys)
-    _pin_outage_buses!(buses, m, sys)
-    return
-end
-
-function _pin_irreducible_buses!(
-    buses::Set{Int},
-    m::DeviceModel{PSY.MonitoredLine},
-    sys::PSY.System,
-)
-    _pin_time_series_branch_buses!(buses, m, sys)
-    _pin_outage_buses!(buses, m, sys)
-    _pin_model_all_branches!(buses, m)
-    return
-end
-
-# Rule 1: a branch carrying a rating time series pins both its endpoints, so the
+# A branch carrying a rating time series pins both its endpoints, so the
 # reduction cannot merge away the bus a time-varying limit is applied at.
 function _pin_time_series_branch_buses!(
     ::Set{Int},
@@ -119,7 +89,7 @@ function _pin_time_series_branch_buses!(
 )
     haskey(get_time_series_names(m), BranchRatingTimeSeriesParameter) ||
         return
-    _warn_three_winding_rating_unsupported()
+    @warn "Dynamic branch ratings for ThreeWindingTransformers are not implemented yet. Its windings may be reduced from the network."
     return
 end
 
@@ -140,12 +110,13 @@ function _pin_time_series_branch_buses!(
     return
 end
 
-function _warn_three_winding_rating_unsupported()
-    @warn "Dynamic branch ratings for ThreeWindingTransformers are not implemented yet. Skipping it."
-    return
-end
+_pin_time_series_branch_buses!(
+    ::Set{Int},
+    ::DeviceModel,
+    ::PSY.System,
+) = nothing
 
-# Rule 2: an outage registered on an outage-aware branch model pins both its
+# An outage registered on an outage-aware branch model pins both its
 # monitored and its outaged endpoints. The MODF column for a contingency is keyed by
 # the outaged arc's endpoints, and post-contingency flow constraints reference the
 # monitored components' real bus numbers.
@@ -171,7 +142,7 @@ function _pin_outage_buses!(buses::Set{Int}, m::DeviceModel, sys::PSY.System)
     return
 end
 
-# Rule 3: a `model_all_branches` MonitoredLine model pins its lines so zero-impedance
+# A `model_all_branches` MonitoredLine model pins its lines so zero-impedance
 # ones survive the reduction instead of being merged away.
 function _pin_model_all_branches!(
     buses::Set{Int},
@@ -183,3 +154,59 @@ function _pin_model_all_branches!(
     end
     return
 end
+
+_pin_model_all_branches!(::Set{Int}, ::DeviceModel) = nothing
+
+_warn_circuit(o, m) =
+    @warn "Circuit has control $o enabled but $m. This control will be ignored, and the \
+           circuit and its regulated bus may be reduced." maxlog = 5
+_supports_tap(::NetworkModel{<:NativeACNetworkModel}) = true
+_supports_tap(::NetworkModel) = false
+
+const _IMPLEMENTED_CONTROLS = _TAP_CONTROLS
+
+# A transformer circuit with a bus-based control objective on a transformer
+# with controls enabled must not be reduced away, nor can its regulated bus.
+function _pin_transformer_controls!(
+    buses::Set{Int},
+    m::DeviceModel{<:_TRANSFORMERS},
+    sys::PSY.System,
+    network_model::NetworkModel,
+)
+    _control_enabled(m) || return
+    for transformer in get_device_cache(m)
+        for circuit in PSY.get_circuits(transformer)
+            obj = PSY.get_control_objective(circuit)
+            if obj.value > 0 && !PSY.get_available(circuit)
+                _warn_circuit(obj, "the circuit is unavailable")
+                continue
+            end
+            if obj in _TAP_CONTROLS && !_supports_tap(network_model)
+                _warn_circuit(obj, "DC networks do not support variable-tap")
+                continue
+            end
+            # `obj.value <= 0` is absent (`UNDEFINED`), manual (`FIXED`) or explicitly
+            # disabled control data, not an unimplemented feature: skip it silently.
+            # `enable_controls` is a per-DeviceModel switch, so most circuits under it
+            # legitimately carry no control block at all.
+            if obj.value <= 0
+                continue
+            end
+            if !(obj in _IMPLEMENTED_CONTROLS)
+                _warn_circuit(
+                    obj,
+                    "this control is not yet implemented for this DeviceModel/NetworkModel pair",
+                )
+                continue
+            end
+            _push_component_buses!(buses, circuit)
+            if PSY.get_control_objective(circuit) === _VOLTAGE_CONTROL
+                push!(buses, PSY.get_regulated_bus_number(circuit))
+            end
+        end
+    end
+    return
+end
+
+_pin_transformer_controls!(::Set{Int}, ::DeviceModel, ::PSY.System, ::NetworkModel) =
+    nothing
