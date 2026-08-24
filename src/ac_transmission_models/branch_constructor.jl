@@ -1,8 +1,4 @@
 ################################# Generic AC Branch  Models ################################
-# Kept as concrete-formulation no-op pairs (StaticBranch, StaticBranchBounds) rather than one
-# {<:AbstractBranchFormulation} method: widening to that bound is ambiguous with the real
-# StaticBranchUnbounded (NetworkModel{<:AbstractNetworkModel}), VoltageControlTap and
-# AbstractSecurityConstrainedStaticBranch methods that also match CopperPlate/AreaBalance.
 function construct_device!(
     ::OptimizationContainer,
     ::PSY.System,
@@ -89,7 +85,7 @@ function construct_device!(
 ) where {T <: PSY.ACTransmission}
     devices = get_available_components(device_model, sys)
     if get_use_slacks(device_model)
-        _add_flow_slacks!(container, devices, network_model, StaticBranch)
+        _add_flow_slacks!(container, devices, device_model, network_model)
     end
     add_feedforward_arguments!(container, device_model, devices)
     return
@@ -115,30 +111,25 @@ end
 
 ################################## ACPNetworkModel branch constructors #################
 
-# Shared directional flow-variable block for the StaticBranch family: the dominant
-# add_variables! form across the raw call sites passes network_model (reduction-aware
-# dispatch), so it is threaded through rather than dropped.
+# Shared directional flow-variable block for the StaticBranch family.
 function _add_static_branch_flow_variables!(
     container::OptimizationContainer,
     devices,
-    network_model::NetworkModel,
-    ::Type{F},
-) where {F <: AbstractBranchFormulation}
-    add_variables!(container, FlowActivePowerFromToVariable, network_model, devices, F)
-    add_variables!(container, FlowActivePowerToFromVariable, network_model, devices, F)
-    add_variables!(container, FlowReactivePowerFromToVariable, network_model, devices, F)
-    add_variables!(container, FlowReactivePowerToFromVariable, network_model, devices, F)
-    return
-end
-
-# Shared StaticBranch ArgumentConstructStage steps for the AC network models
-# (ACP/ACR/LPACC). LPACC inserts its CosineApproximation variable between the two calls.
-function _add_static_branch_flow_variables!(
-    container::OptimizationContainer,
-    devices,
+    device_model::DeviceModel,
     network_model::NetworkModel,
 )
-    _add_static_branch_flow_variables!(container, devices, network_model, StaticBranch)
+    add_variables!(
+        container, FlowActivePowerFromToVariable, devices, device_model, network_model,
+    )
+    add_variables!(
+        container, FlowActivePowerToFromVariable, devices, device_model, network_model,
+    )
+    add_variables!(
+        container, FlowReactivePowerFromToVariable, devices, device_model, network_model,
+    )
+    add_variables!(
+        container, FlowReactivePowerToFromVariable, devices, device_model, network_model,
+    )
     return
 end
 
@@ -169,16 +160,19 @@ function _wire_static_branch_flow_to_balance!(
     return
 end
 
-# Shared paired flow-slack block: upper then lower, both via the network_model-aware
-# add_variables! form used at every paired call site.
+# Shared paired flow-slack block: upper then lower.
 function _add_flow_slacks!(
     container::OptimizationContainer,
     devices,
+    device_model::DeviceModel,
     network_model::NetworkModel,
-    ::Type{F},
-) where {F}
-    add_variables!(container, FlowActivePowerSlackUpperBound, network_model, devices, F)
-    add_variables!(container, FlowActivePowerSlackLowerBound, network_model, devices, F)
+)
+    add_variables!(
+        container, FlowActivePowerSlackUpperBound, devices, device_model, network_model,
+    )
+    add_variables!(
+        container, FlowActivePowerSlackLowerBound, devices, device_model, network_model,
+    )
     return
 end
 
@@ -256,7 +250,7 @@ function _add_static_branch_balance_arguments!(
 ) where {T <: PSY.ACTransmission}
     if get_use_slacks(device_model)
         add_variables!(
-            container, FlowActivePowerSlackUpperBound, network_model, devices, StaticBranch,
+            container, FlowActivePowerSlackUpperBound, devices, device_model, network_model,
         )
     end
     _wire_static_branch_flow_to_balance!(container, devices, device_model, network_model)
@@ -286,8 +280,9 @@ function construct_device!(
     @debug "construct_device ACP StaticBranch (ArgumentConstructStage)" _group =
         LOG_GROUP_BRANCH_CONSTRUCTIONS
     devices = get_available_components(device_model, sys)
-    _add_static_branch_flow_variables!(container, devices, network_model)
+    _add_static_branch_flow_variables!(container, devices, device_model, network_model)
     _add_static_branch_balance_arguments!(container, device_model, devices, network_model)
+    add_variables!(container, TapRatioVariable, devices, device_model, network_model)
     return
 end
 
@@ -319,6 +314,9 @@ function construct_device!(
     add_constraints!(
         container, sys, AngleDifferenceConstraint, devices, device_model, network_model,
     )
+    _add_transformer_control_constraints!(
+        container, sys, devices, device_model, network_model,
+    )
     add_feedforward_constraints!(container, device_model, devices)
     add_to_objective_function!(container, devices, device_model, ACPNetworkModel)
     add_constraint_dual!(container, sys, device_model)
@@ -342,17 +340,13 @@ function construct_device!(
     @debug "construct_device $U StaticBranchBounds (ArgumentConstructStage)" _group =
         LOG_GROUP_BRANCH_CONSTRUCTIONS
     devices = get_available_components(device_model, sys)
-    _add_static_branch_flow_variables!(
-        container,
-        devices,
-        network_model,
-        StaticBranchBounds,
-    )
+    _add_static_branch_flow_variables!(container, devices, device_model, network_model)
     _add_flow_definition_slacks!(
         container, device_model, devices, network_model,
         get_pair_metas(slack_spec(StaticBranchBounds, U)),
     )
     _wire_static_branch_flow_to_balance!(container, devices, device_model, network_model)
+    add_variables!(container, TapRatioVariable, devices, device_model, network_model)
     add_feedforward_arguments!(container, device_model, devices)
     return
 end
@@ -373,7 +367,6 @@ function construct_device!(
     @debug "construct_device $U StaticBranchBounds (ModelConstructStage)" _group =
         LOG_GROUP_BRANCH_CONSTRUCTIONS
     devices = get_available_components(device_model, sys)
-    branch_rate_bounds!(container, device_model, network_model)
     add_constraints!(
         container, FlowRateConstraintFromTo, devices, device_model, network_model,
     )
@@ -385,6 +378,9 @@ function construct_device!(
     )
     add_constraints!(
         container, sys, AngleDifferenceConstraint, devices, device_model, network_model,
+    )
+    _add_transformer_control_constraints!(
+        container, sys, devices, device_model, network_model,
     )
     add_feedforward_constraints!(container, device_model, devices)
     add_to_objective_function!(container, devices, device_model, U)
@@ -411,8 +407,9 @@ function construct_device!(
     @debug "construct_device ACR StaticBranch (ArgumentConstructStage)" _group =
         LOG_GROUP_BRANCH_CONSTRUCTIONS
     devices = get_available_components(device_model, sys)
-    _add_static_branch_flow_variables!(container, devices, network_model)
+    _add_static_branch_flow_variables!(container, devices, device_model, network_model)
     _add_static_branch_balance_arguments!(container, device_model, devices, network_model)
+    add_variables!(container, TapRatioVariable, devices, device_model, network_model)
     return
 end
 
@@ -444,6 +441,9 @@ function construct_device!(
     )
     add_constraints!(
         container, sys, AngleDifferenceConstraint, devices, device_model, network_model,
+    )
+    _add_transformer_control_constraints!(
+        container, sys, devices, device_model, network_model,
     )
     add_feedforward_constraints!(container, device_model, devices)
     add_to_objective_function!(container, devices, device_model, ACRNetworkModel)
@@ -518,9 +518,10 @@ function construct_device!(
     @debug "construct_device LPACC StaticBranch (ArgumentConstructStage)" _group =
         LOG_GROUP_BRANCH_CONSTRUCTIONS
     devices = get_available_components(device_model, sys)
-    _add_static_branch_flow_variables!(container, devices, network_model)
-    add_variables!(container, CosineApproximation, devices, network_model)
+    _add_static_branch_flow_variables!(container, devices, device_model, network_model)
+    add_variables!(container, CosineApproximation, devices, device_model, network_model)
     _add_static_branch_balance_arguments!(container, device_model, devices, network_model)
+    add_variables!(container, TapRatioVariable, devices, device_model, network_model)
     return
 end
 
@@ -555,6 +556,9 @@ function construct_device!(
     add_constraints!(
         container, sys, AngleDifferenceConstraint, devices, device_model, network_model,
     )
+    _add_transformer_control_constraints!(
+        container, sys, devices, device_model, network_model,
+    )
     add_feedforward_constraints!(container, device_model, devices)
     add_to_objective_function!(container, devices, device_model, LPACCNetworkModel)
     add_constraint_dual!(container, sys, device_model)
@@ -577,17 +581,13 @@ function construct_device!(
     @debug "construct_device LPACC StaticBranchBounds (ArgumentConstructStage)" _group =
         LOG_GROUP_BRANCH_CONSTRUCTIONS
     devices = get_available_components(device_model, sys)
-    _add_static_branch_flow_variables!(
-        container,
-        devices,
-        network_model,
-        StaticBranchBounds,
-    )
+    _add_static_branch_flow_variables!(container, devices, device_model, network_model)
     _add_flow_definition_slacks!(
         container, device_model, devices, network_model,
         get_pair_metas(slack_spec(StaticBranchBounds, LPACCNetworkModel)),
     )
-    add_variables!(container, CosineApproximation, devices, network_model)
+    add_variables!(container, CosineApproximation, devices, device_model, network_model)
+    add_variables!(container, TapRatioVariable, devices, device_model, network_model)
     _wire_static_branch_flow_to_balance!(container, devices, device_model, network_model)
     add_feedforward_arguments!(container, device_model, devices)
     return
@@ -609,7 +609,6 @@ function construct_device!(
     @debug "construct_device LPACC StaticBranchBounds (ModelConstructStage)" _group =
         LOG_GROUP_BRANCH_CONSTRUCTIONS
     devices = get_available_components(device_model, sys)
-    branch_rate_bounds!(container, device_model, network_model)
     add_constraints!(
         container, FlowRateConstraintFromTo, devices, device_model, network_model,
     )
@@ -624,6 +623,9 @@ function construct_device!(
     )
     add_constraints!(
         container, sys, AngleDifferenceConstraint, devices, device_model, network_model,
+    )
+    _add_transformer_control_constraints!(
+        container, sys, devices, device_model, network_model,
     )
     add_feedforward_constraints!(container, device_model, devices)
     add_to_objective_function!(container, devices, device_model, LPACCNetworkModel)
@@ -650,7 +652,7 @@ function construct_device!(
     @debug "construct_device IVR StaticBranch (ArgumentConstructStage)" _group =
         LOG_GROUP_BRANCH_CONSTRUCTIONS
     devices = get_available_components(device_model, sys)
-    _add_static_branch_flow_variables!(container, devices, network_model, StaticBranch)
+    _add_static_branch_flow_variables!(container, devices, device_model, network_model)
     add_variables!(container, BranchCurrentFromToReal, devices, device_model, network_model)
     add_variables!(
         container,
@@ -677,11 +679,7 @@ function construct_device!(
     )
     if get_use_slacks(device_model)
         add_variables!(
-            container,
-            FlowActivePowerSlackUpperBound,
-            network_model,
-            devices,
-            StaticBranch,
+            container, FlowActivePowerSlackUpperBound, devices, device_model, network_model,
         )
         _add_current_magnitude_slacks!(container, devices, network_model)
     end
@@ -695,6 +693,7 @@ function construct_device!(
             network_model,
         )
     end
+    add_variables!(container, TapRatioVariable, devices, device_model, network_model)
     add_feedforward_arguments!(container, device_model, devices)
     return
 end
@@ -732,6 +731,9 @@ function construct_device!(
     add_constraints!(
         container, sys, AngleDifferenceConstraint, devices, device_model, network_model,
     )
+    _add_transformer_control_constraints!(
+        container, sys, devices, device_model, network_model,
+    )
     add_feedforward_constraints!(container, device_model, devices)
     add_to_objective_function!(container, devices, device_model, IVRNetworkModel)
     add_constraint_dual!(container, sys, device_model)
@@ -755,18 +757,7 @@ function construct_device!(
     @debug "construct_device IVR StaticBranchBounds (ArgumentConstructStage)" _group =
         LOG_GROUP_BRANCH_CONSTRUCTIONS
     devices = get_available_components(device_model, sys)
-    add_variables!(
-        container, FlowActivePowerFromToVariable, devices, StaticBranchBounds,
-    )
-    add_variables!(
-        container, FlowActivePowerToFromVariable, devices, StaticBranchBounds,
-    )
-    add_variables!(
-        container, FlowReactivePowerFromToVariable, devices, StaticBranchBounds,
-    )
-    add_variables!(
-        container, FlowReactivePowerToFromVariable, devices, StaticBranchBounds,
-    )
+    _add_static_branch_flow_variables!(container, devices, device_model, network_model)
     _add_flow_definition_slacks!(
         container, device_model, devices, network_model,
         get_pair_metas(slack_spec(StaticBranchBounds, IVRNetworkModel)),
@@ -795,6 +786,7 @@ function construct_device!(
         device_model,
         network_model,
     )
+    add_variables!(container, TapRatioVariable, devices, device_model, network_model)
     _wire_static_branch_flow_to_balance!(container, devices, device_model, network_model)
     add_feedforward_arguments!(container, device_model, devices)
     return
@@ -813,7 +805,6 @@ function construct_device!(
     @debug "construct_device IVR StaticBranchBounds (ModelConstructStage)" _group =
         LOG_GROUP_BRANCH_CONSTRUCTIONS
     devices = get_available_components(device_model, sys)
-    branch_rate_bounds!(container, device_model, network_model)
     add_constraints!(
         container, FlowRateConstraintFromTo, devices, device_model, network_model,
     )
@@ -825,6 +816,9 @@ function construct_device!(
     )
     add_constraints!(
         container, sys, CurrentLimitConstraint, devices, device_model, network_model,
+    )
+    _add_transformer_control_constraints!(
+        container, sys, devices, device_model, network_model,
     )
     add_feedforward_constraints!(container, device_model, devices)
     add_to_objective_function!(container, devices, device_model, IVRNetworkModel)
@@ -848,7 +842,7 @@ function construct_device!(
         LOG_GROUP_BRANCH_CONSTRUCTIONS
     devices = get_available_components(device_model, sys)
     if get_use_slacks(device_model)
-        _add_flow_slacks!(container, devices, network_model, StaticBranch)
+        _add_flow_slacks!(container, devices, device_model, network_model)
     end
     if haskey(get_time_series_names(device_model), BranchRatingTimeSeriesParameter)
         add_branch_parameters!(
@@ -910,9 +904,11 @@ function construct_device!(
     @debug "construct_device NFA (ArgumentConstructStage)" _group =
         LOG_GROUP_BRANCH_CONSTRUCTIONS
     devices = get_available_components(device_model, sys)
-    add_variables!(container, FlowActivePowerVariable, network_model, devices, StaticBranch)
+    add_variables!(
+        container, FlowActivePowerVariable, devices, device_model, network_model,
+    )
     if get_use_slacks(device_model)
-        _add_flow_slacks!(container, devices, network_model, StaticBranch)
+        _add_flow_slacks!(container, devices, device_model, network_model)
     end
     add_to_expression!(
         container,
@@ -962,8 +958,8 @@ end
 ArgumentConstructStage for StaticBranchBounds under NFANetworkModel.
 
 Creates the FlowActivePowerVariable and registers its contribution to the per-bus
-ActivePowerBalance expression. The rating is enforced as variable bounds by the
-`AbstractActivePowerModel` ModelConstructStage, so slacks cannot be priced and are rejected.
+ActivePowerBalance expression. The rating is enforced as variable bounds at creation
+(`_branch_variable_bounds`), so slacks cannot be priced and are rejected.
 """
 function construct_device!(
     container::OptimizationContainer,
@@ -976,13 +972,7 @@ function construct_device!(
         LOG_GROUP_BRANCH_CONSTRUCTIONS
     _check_flow_slack_support(device_model, network_model)
     devices = get_available_components(device_model, sys)
-    add_variables!(
-        container,
-        FlowActivePowerVariable,
-        network_model,
-        devices,
-        StaticBranchBounds,
-    )
+    add_variables!(container, FlowActivePowerVariable, devices, device_model, network_model)
     add_to_expression!(
         container,
         ActivePowerBalance,
@@ -1017,22 +1007,22 @@ function construct_device!(
     add_variables!(
         container,
         FlowActivePowerFromToVariable,
-        network_model,
         devices,
-        StaticBranch,
+        device_model,
+        network_model,
     )
     add_variables!(
         container,
         FlowActivePowerToFromVariable,
-        network_model,
         devices,
-        StaticBranch,
+        device_model,
+        network_model,
     )
     # Slacks turn the rating into a soft limit, so the two enforcement styles are
     # mutually exclusive: hard variable bounds without slacks (tighter QCP), slacked
     # FlowRateConstraint pairs (ModelConstructStage) with them.
     if get_use_slacks(device_model)
-        _add_flow_slacks!(container, devices, network_model, StaticBranch)
+        _add_flow_slacks!(container, devices, device_model, network_model)
     else
         _set_dcpll_flow_bounds!(container, sys, devices, device_model, network_model)
     end
@@ -1099,19 +1089,19 @@ function construct_device!(
     add_variables!(
         container,
         FlowActivePowerFromToVariable,
-        network_model,
         devices,
-        StaticBranchBounds,
+        device_model,
+        network_model,
     )
     add_variables!(
         container,
         FlowActivePowerToFromVariable,
-        network_model,
         devices,
-        StaticBranchBounds,
+        device_model,
+        network_model,
     )
     if get_use_slacks(device_model)
-        _add_flow_slacks!(container, devices, network_model, StaticBranchBounds)
+        _add_flow_slacks!(container, devices, device_model, network_model)
     else
         _set_dcpll_flow_bounds!(container, sys, devices, device_model, network_model)
     end
@@ -1131,9 +1121,9 @@ end
 ModelConstructStage for StaticBranchBounds under DCPLLNetworkModel.
 
 Applies the DC Ohm's law on p_fr (NetworkFlowConstraint), the quadratic line-loss
-coupling (NetworkLossConstraint), and angle-difference limits. A DCPLL-specific method is
-required: the AbstractActivePowerModel fallback bounds a FlowActivePowerVariable that DCPLL
-never creates.
+coupling (NetworkLossConstraint), and angle-difference limits. The rating is a
+FlowRateConstraint row here rather than a variable bound, so `_branch_variable_bounds`
+opts DCPLL out of the StaticBranchBounds rating.
 """
 function construct_device!(
     container::OptimizationContainer,
@@ -1177,15 +1167,9 @@ function construct_device!(
     @debug "construct_device DCP StaticBranchBounds (ArgumentConstructStage)" _group =
         LOG_GROUP_BRANCH_CONSTRUCTIONS
     devices = get_available_components(device_model, sys)
-    add_variables!(
-        container,
-        FlowActivePowerVariable,
-        network_model,
-        devices,
-        StaticBranchBounds,
-    )
+    add_variables!(container, FlowActivePowerVariable, devices, device_model, network_model)
     if get_use_slacks(device_model)
-        _add_flow_slacks!(container, devices, network_model, StaticBranchBounds)
+        _add_flow_slacks!(container, devices, device_model, network_model)
     end
     add_to_expression!(
         container,
@@ -1212,19 +1196,6 @@ function construct_device!(
     @debug "construct_device DCP StaticBranchBounds (ModelConstructStage)" _group =
         LOG_GROUP_BRANCH_CONSTRUCTIONS
     devices = get_available_components(device_model, sys)
-    # SBB rates the flow with variable bounds, not inequality rows. A time-varying (DLR)
-    # rating cannot be a static bound, so only that case adds FlowRateConstraint rows.
-    if has_container_key(container, BranchRatingTimeSeriesParameter, T)
-        add_constraints!(
-            container,
-            FlowRateConstraint,
-            devices,
-            device_model,
-            network_model,
-        )
-    else
-        branch_rate_bounds!(container, device_model, network_model)
-    end
     # The Ohm's-law equality defines the flow, and any slack enters here: the flow
     # variable is bounded to the rating, so the slack lets the angle-implied flow exceed it.
     add_constraints!(
@@ -1249,7 +1220,7 @@ function construct_device!(
 ) where {T <: PSY.ACTransmission}
     devices = get_available_components(device_model, sys)
     if get_use_slacks(device_model)
-        _add_flow_slacks!(container, devices, network_model, StaticBranch)
+        _add_flow_slacks!(container, devices, device_model, network_model)
     end
 
     if haskey(get_time_series_names(device_model), BranchRatingTimeSeriesParameter)
@@ -1329,16 +1300,10 @@ function construct_device!(
 ) where {T <: PSY.ACTransmission}
     devices = get_available_components(device_model, sys)
 
-    add_variables!(
-        container,
-        FlowActivePowerVariable,
-        network_model,
-        devices,
-        StaticBranchBounds,
-    )
+    add_variables!(container, FlowActivePowerVariable, devices, device_model, network_model)
 
     if get_use_slacks(device_model)
-        _add_flow_slacks!(container, devices, network_model, StaticBranchBounds)
+        _add_flow_slacks!(container, devices, device_model, network_model)
     end
 
     add_feedforward_arguments!(container, device_model, devices)
@@ -1362,7 +1327,6 @@ function construct_device!(
         network_model,
     )
 
-    branch_rate_bounds!(container, device_model, network_model)
     add_constraints!(container, NetworkFlowConstraint, devices, device_model, network_model)
     add_feedforward_constraints!(container, device_model, devices)
     add_to_objective_function!(container, devices, device_model, PTDFNetworkModel)
@@ -1462,7 +1426,6 @@ function construct_device!(
     network_model::NetworkModel{<:AbstractActivePowerModel},
 ) where {T <: PSY.ACTransmission}
     devices = get_available_components(device_model, sys)
-    branch_rate_bounds!(container, device_model, network_model)
     add_constraint_dual!(container, sys, device_model)
     add_feedforward_constraints!(container, device_model, devices)
     return
@@ -2488,7 +2451,7 @@ function construct_device!(
     devices = get_available_components(device_model, sys)
     has_ts = PSY.has_time_series.(devices)
     if get_use_slacks(device_model)
-        _add_flow_slacks!(container, devices, network_model, T)
+        _add_flow_slacks!(container, devices, device_model, network_model)
     end
     if any(has_ts) && !all(has_ts)
         error(

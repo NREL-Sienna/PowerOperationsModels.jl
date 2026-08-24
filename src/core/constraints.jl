@@ -200,6 +200,16 @@ struct ReferenceBusConstraint <: ConstraintType end
 """Rectangular-coordinate voltage magnitude bounds: vmin² ≤ vr² + vi² ≤ vmax²."""
 struct VoltageMagnitudeConstraint <: ConstraintType end
 """
+Imposed by transformer circuits with VOLTAGE control on a branch formulation
+with controls enabled.
+"""
+struct VoltageControlConstraint <: ConstraintType end
+"""
+Imposed by transformer circuits with REACTIVE_POWER_FLOW control on a branch
+formulation with controls enabled.
+"""
+struct ReactivePowerFlowControlConstraint <: ConstraintType end
+"""
 Ties a component-owned [`RegulatedVoltageMagnitude`](@ref) auxiliary variable to the
 rectangular voltage components at its regulated bus under ACR/IVR formulations. One
 entry per regulating device per time step:
