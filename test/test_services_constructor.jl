@@ -884,7 +884,7 @@ end
     for P in (POM.MinInterfaceFlowLimitParameter, POM.MaxInterfaceFlowLimitParameter)
         # 3-arg fetch (no meta) succeeds only for a single container per type.
         param = IOM.get_parameter(container, P, TransmissionInterface)
-        @test param !== nothing
+        @test !isnothing(param)
     end
     # The flow-limit constraint (which reads those params) built for the interface.
     @test size(
