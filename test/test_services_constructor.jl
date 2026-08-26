@@ -1574,7 +1574,9 @@ end
     # STS-only systems have no forecast params until the transform defines them, so
     # transform first and mint the key from the resulting params.
     transform_single_time_series!(sys, Hour(24), Hour(24); delete_existing = false)
-    key = IS.ForecastKey(; time_series_type = IS.Deterministic, name = "variable_cost",
+    key = IS.ForecastKey(; owner_id = 1, owner_category = IS.InfraStore.Component,
+        association_id = 1,
+        time_series_type = IS.Deterministic, name = "variable_cost",
         initial_timestamp = first(PSY.get_forecast_initial_times(sys)),
         resolution = res,
         horizon = PSY.get_forecast_horizon(sys),
@@ -1795,6 +1797,9 @@ end
         Deterministic("variable_cost", data, Hour(1)),
     )
     key = IS.ForecastKey(;
+        owner_id = 1,
+        owner_category = IS.InfraStore.Component,
+        association_id = 1,
         time_series_type = IS.Deterministic,
         name = "variable_cost",
         initial_timestamp = first(init_times),

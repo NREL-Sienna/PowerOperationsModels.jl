@@ -20,6 +20,9 @@ look at the value, not just the type parameters.
 """
 
 const _FORECAST_KEY = IS.ForecastKey(;
+    owner_id = 1,
+    owner_category = IS.InfraStore.Component,
+    association_id = 1,
     time_series_type = IS.Deterministic,
     name = "fuel_price",
     initial_timestamp = Dates.DateTime("2020-01-01"),

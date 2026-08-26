@@ -341,7 +341,14 @@ end
 # from the time-series store. Mirrors IOM's pattern in test/test_ts_value_curve_objective.
 #################################################################################
 
+# The owner and association id are stubs like everything else here: these keys are
+# never resolved against a store, so they only have to be well-formed. A single
+# owner and a fixed association id keep two stubs distinguishable by `name` alone,
+# which is what the callers below vary.
 _stub_forecast_key(name::String) = IS.ForecastKey(;
+    owner_id = 1,
+    owner_category = IS.InfraStore.Component,
+    association_id = 1,
     time_series_type = IS.Deterministic,
     name = name,
     initial_timestamp = Dates.DateTime("2020-01-01"),
