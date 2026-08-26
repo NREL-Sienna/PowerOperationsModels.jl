@@ -241,8 +241,10 @@ end
     output_dir = mktempdir(; cleanup = true)
     @test build!(model; output_dir = output_dir) == IOM.ModelBuildStatus.FAILED
     # The build wraps its logging, so assert on the log rather than at the call site.
+    # The rejection is POM's add_parameters guard; the key-addressed store no longer errors first.
     log_contents = read(joinpath(output_dir, "operation_problem.log"), String)
-    @test occursin("No matching metadata", log_contents)
+    @test occursin("Deterministic:requirement", log_contents)
+    @test occursin("does not match interval=", log_contents)
 end
 
 @testset "Per-type populate errors when one service of the type has no contributing devices" begin
@@ -882,7 +884,7 @@ end
     for P in (POM.MinInterfaceFlowLimitParameter, POM.MaxInterfaceFlowLimitParameter)
         # 3-arg fetch (no meta) succeeds only for a single container per type.
         param = IOM.get_parameter(container, P, TransmissionInterface)
-        @test param !== nothing
+        @test !isnothing(param)
     end
     # The flow-limit constraint (which reads those params) built for the interface.
     @test size(
@@ -1522,8 +1524,8 @@ end
 # thermal contributors, so neither path below is otherwise covered):
 #   (a) `StorageDispatchWithReserves` reserve bounds must accept a time-series ORDC and give it
 #       the full-range bound.
-#   (b) `get_max_tranches` must handle the `DeterministicSingleTimeSeries` produced by transform
-#       (which has no `get_data`).
+#   (b) `get_max_tranches` must read the transform product (the store materializes it as a
+#       full `Deterministic` on read; the `get_data`-less wrapper no longer surfaces).
 
 @testset "StorageDispatchWithReserves reserve bound accepts a time-series ORDC" begin
     sys = PSB.build_system(PSITestSystems, "c_sys5_bat")
@@ -1544,11 +1546,17 @@ end
 end
 
 @testset "get_max_tranches handles the transform product (DeterministicSingleTimeSeries)" begin
-    sys = PSB.build_system(PSITestSystems, "c_sys5_bat"; add_reserves = true)
-    it = first(PSY.get_forecast_initial_times(sys))
+    # Uniform-STS paradigm (users do not mix time-series types): one STS grid, one
+    # transform, and the post-transform forecast params describe the ORDC's own product.
+    sys = PSB.build_system(PSITestSystems, "c_sys5_bat";
+        add_forecasts = false, add_single_time_series = true, add_reserves = true)
     res = first(PSY.get_time_series_resolutions(sys))
-    n = IS.get_horizon_count(PSY.get_forecast_horizon(sys), res)
-    times = collect(range(it; step = res, length = n))
+    grid = first(
+        k for k in IS.get_time_series_keys(first(get_components(PowerLoad, sys))) if
+        k isa IS.StaticTimeSeriesKey
+    )
+    n = grid.length
+    times = collect(range(grid.initial_timestamp; step = res, length = n))
 
     # Per-hour demand curves with alternating tranche counts (2 and 3); max tranches = 3.
     two = IS.PiecewiseStepData([0.0, 100.0, 200.0], [50.0, 30.0])
@@ -1564,8 +1572,12 @@ end
             name = "variable_cost",
             data = IS.TimeSeries.TimeArray(times, curves),
         ))
+    # STS-only systems have no forecast params until the transform defines them, so
+    # transform first and mint the key from the resulting params.
+    transform_single_time_series!(sys, Hour(24), Hour(24); delete_existing = false)
     key = IS.ForecastKey(; time_series_type = IS.Deterministic, name = "variable_cost",
-        initial_timestamp = it, resolution = res,
+        initial_timestamp = first(PSY.get_forecast_initial_times(sys)),
+        resolution = res,
         horizon = PSY.get_forecast_horizon(sys),
         interval = PSY.get_forecast_interval(sys),
         count = PSY.get_forecast_window_count(sys),
@@ -1573,12 +1585,11 @@ end
     PSY.set_variable!(ordc_ts,
         PSY.make_market_bid_ts_curve(key, nothing, IS.NaturalUnit()))
 
-    transform_single_time_series!(sys, PSY.get_forecast_horizon(sys),
-        PSY.get_forecast_interval(sys); delete_existing = false)
-
     resolved =
         PSY.get_time_series(ordc_ts, IS.get_time_series_key(PSY.get_variable(ordc_ts)))
-    @test resolved isa IS.DeterministicSingleTimeSeries      # the case that broke get_data
+    # The store MATERIALIZES the transform product on read: a full Deterministic comes
+    # back, never the get_data-less DeterministicSingleTimeSeries wrapper.
+    @test resolved isa IS.Deterministic
     @test POM.get_max_tranches(
         ordc_ts,
         IS.get_time_series_key(PSY.get_variable(ordc_ts)),
@@ -1763,6 +1774,47 @@ end
     @test sub_a_total > 1.0
     @test sub_b_total <= 1e-2
     @test sub_a_total > sub_b_total
+end
+
+@testset "GroupStepwiseCostReserve: time-series group demand curve clears per hour" begin
+    # The group ORDC can be time-series-backed (`CostCurve{TimeSeriesPiecewiseIncrementalCurve}`,
+    # same Union as the single reserves); the parameter machinery
+    # (`process_stepwise_cost_reserve_parameters!`) must feed hour-varying blocks into the
+    # clearing. Demand cap alternates 40/80 MW by hour at a price far above both the member
+    # offer and any commitment cost, so the cleared group demand must track the alternation
+    # exactly - a static curve cannot. (A moderate price lets commitment economics under-buy;
+    # the point here is the hourly caps, so make the value decisive.)
+    sys, group = build_group_reserve_system(; group_curve = false)
+    init_times = [DateTime("2024-01-01T00:00:00"), DateTime("2024-01-02T00:00:00")]
+    horizon = 24
+    curves =
+        [IS.PiecewiseStepData([0.0, isodd(h) ? 40.0 : 80.0], [9.0e4]) for h in 1:horizon]
+    data = Dict(it => copy(curves) for it in init_times)
+    PSY.add_time_series!(
+        sys,
+        group,
+        Deterministic("variable_cost", data, Hour(1)),
+    )
+    key = IS.ForecastKey(;
+        time_series_type = IS.Deterministic,
+        name = "variable_cost",
+        initial_timestamp = first(init_times),
+        resolution = Hour(1),
+        horizon = Hour(horizon),
+        interval = Hour(24),
+        count = 2,
+        features = Dict{String, Any}(),
+    )
+    PSY.set_variable!(group, PSY.make_market_bid_ts_curve(key, nothing, IS.NaturalUnit()))
+    @test PSY.has_demand_curve(group)
+
+    model = _solve_group_model(sys)
+    res = IOM.OptimizationProblemOutputs(model)
+    demand = read_variable(res, "ServiceRequirementVariable__GroupReserve__ReserveUp";
+        table_format = TableFormat.WIDE)
+    for t in 1:horizon
+        @test demand[t, "UP_GROUP"] ≈ (isodd(t) ? 40.0 : 80.0) atol = 1e-4
+    end
 end
 
 @testset "GroupStepwiseCostReserve: no group model -> no procurement" begin

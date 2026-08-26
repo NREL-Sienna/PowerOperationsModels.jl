@@ -81,18 +81,10 @@ function IOM.validate_occ_component(
 )
     startup = PSY.get_start_up(PSY.get_operation_cost(device))
     # A TS-backed startup is a bare time-series key referencing NTuple{3, Float64}
-    # stages; its element type is checked when the parameter is populated.
-    if startup isa IS.TimeSeriesKey
-        if eltype(typeof(startup)) != NTuple{3, Float64}
-            # TODO: should this be a helper in IOM?
-            throw(
-                ArgumentError(
-                    "Expected element type NTuple{3, Float64} but got $(typeof(startup))",
-                ),
-            )
-        end
-        return
-    end
+    # stages. Keys carry no element type (`eltype(typeof(key))` is `Any` for every key
+    # type, so any check against it is unsatisfiable); the referenced series' element
+    # type is validated when the parameter is populated (IOM `time_series_utils`).
+    startup isa IS.TimeSeriesKey && return
     _validate_eltype(
         Union{Float64, NTuple{3, Float64}, PSY.StartUpStages},
         device,

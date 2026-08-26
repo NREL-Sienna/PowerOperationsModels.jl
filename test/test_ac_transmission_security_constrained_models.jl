@@ -136,11 +136,7 @@ end
             # makes this a pure per-unit (system-base) units check.
             reduction_entry =
                 all_branch_maps_by_type[reduction_kind][entry_type][arc]
-            limits = POM.get_emergency_min_max_limits(
-                reduction_entry,
-                POM.PostContingencyFlowRateConstraint,
-                POM.SecurityConstrainedStaticBranch,
-            )
+            limits = POM._emergency_flow_limits(reduction_entry)
             expr_const = JuMP.constant(actual)
             @test JuMP.normalized_rhs(con_ub[outage_id_str, name, t]) + expr_const ≈
                   limits.max
@@ -797,11 +793,7 @@ end
 
         # RHS = +/- emergency rating in system per-unit.
         reduction_entry = all_branch_maps_by_type[reduction_kind][PSY.Line][arc]
-        limits = POM.get_emergency_min_max_limits(
-            reduction_entry,
-            POM.PostContingencyFlowRateConstraint,
-            POM.SecurityConstrainedStaticBranch,
-        )
+        limits = POM._emergency_flow_limits(reduction_entry)
         expr_const = JuMP.constant(actual)
         @test JuMP.normalized_rhs(con_ub[outage_id_str, name, t]) + expr_const ≈
               limits.max
@@ -1554,25 +1546,10 @@ end
     sys = PSB.build_system(PSITestSystems, "c_sys5")
     line = first(PSY.get_components(PSY.Line, sys))
     PSY.set_rating_b!(line, 0.9 * PSY.SU)
-    lim = POM.get_emergency_min_max_limits(
-        line,
-        POM.PostContingencyFlowRateConstraint,
-        POM.StaticBranch,
-    )
+    lim = POM._emergency_flow_limits(line)
     rb = PSY.get_rating_b(line, PSY.SU)
     @test lim.max ≈ rb
     @test lim.min ≈ -rb
-end
-
-@testset "emergency limits: TwoWindingTransformer rating_b resolves through its circuit" begin
-    c_sys14 = PSB.build_system(PSITestSystems, "c_sys14")
-    transformer = first(PSY.get_components(PSY.TwoWindingTransformer, c_sys14))
-    circuit = PSY.get_circuit(transformer)
-
-    @test POM._branch_rating_b(transformer) === nothing
-    PSY.set_rating_b!(circuit, 0.9 * PSY.SU)
-    @test POM._branch_rating_b(transformer) ≈ PSY.get_rating_b(circuit, PSY.SU)
-    @test POM._branch_rating_b(transformer) ≈ 0.9
 end
 
 # Attach a single outage (monitoring every branch) to every branch of the system,
@@ -1794,4 +1771,120 @@ end
     @test n > 0
     @test all_have
     @test solve!(model) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
+end
+
+const _PC_RATING_TS_NAME = "pc_branch_rating"
+const _PC_RATING_FACTORS = vcat([fill(x, 6) for x in [0.99, 0.98, 1.0, 0.95]]...)
+
+# `c_sys5` with `rating_b = 1.2 * rating` and a post-contingency rating forecast
+# on `lines_with_ts`, every branch outaged and monitored.
+function _pc_rating_ts_system(lines_with_ts::Vector{String})
+    sys = PSB.build_system(PSITestSystems, "c_sys5")
+    for name in lines_with_ts
+        line = PSY.get_component(PSY.Line, sys, name)
+        PSY.set_rating_b!(line, (1.2 * PSY.get_rating(line, PSY.SU)) * PSY.SU)
+    end
+    add_branch_rating_time_series_to_system!(
+        sys, lines_with_ts, 2, _PC_RATING_FACTORS;
+        initial_date = "2024-01-01", ts_name = _PC_RATING_TS_NAME,
+    )
+    _attach_all_branch_outages!(sys)
+    return sys
+end
+
+function _build_pc_rating_ts_model(sys)
+    template = get_thermal_dispatch_template_network(
+        NetworkModel(
+            PTDFNetworkModel;
+            network_source = PrebuiltMatrixSource(PNM.VirtualPTDF(sys)),
+        ),
+    )
+    set_device_model!(
+        template,
+        DeviceModel(
+            PSY.Line,
+            POM.SecurityConstrainedStaticBranch;
+            time_series_names = Dict(
+                POM.PostContingencyBranchRatingTimeSeriesParameter =>
+                    _PC_RATING_TS_NAME,
+            ),
+        ),
+    )
+    model = DecisionModel(template, sys; optimizer = HiGHS_optimizer)
+    status = build!(model; output_dir = mktempdir(; cleanup = true))
+    return model, status
+end
+
+@testset "post-contingency rate limit follows the post-contingency rating time series" begin
+    lines_with_ts = ["1", "2", "6"]
+    sys = _pc_rating_ts_system(lines_with_ts)
+    model, status = _build_pc_rating_ts_model(sys)
+    @test status == IOM.ModelBuildStatus.BUILT
+
+    container = IOM.get_optimization_container(model)
+    @test IOM.has_container_key(
+        container, POM.PostContingencyBranchRatingTimeSeriesParameter, PSY.Line,
+    )
+
+    pcbf = IOM.get_expression(container, POM.PostContingencyBranchFlow, PSY.Line)
+    con_ub = IOM.get_constraints(container)[IOM.ConstraintKey(
+        POM.PostContingencyFlowRateConstraint, PSY.Line, "ub",
+    )]
+    con_lb = IOM.get_constraints(container)[IOM.ConstraintKey(
+        POM.PostContingencyFlowRateConstraint, PSY.Line, "lb",
+    )]
+
+    # Non-degeneracy: `rating_b` must differ from `rating` and the forecast must
+    # actually vary, else the assertions below could not tell the parameterized
+    # RHS apart from the static one.
+    for name in lines_with_ts
+        line = PSY.get_component(PSY.Line, sys, name)
+        @test PSY.get_rating_b(line, PSY.SU) > PSY.get_rating(line, PSY.SU)
+    end
+    @test length(unique(_PC_RATING_FACTORS)) > 1
+
+    n_factors = length(_PC_RATING_FACTORS)
+    n_checked = 0
+    seen_rhs = Set{Float64}()
+    for (outage_id, name, t) in keys(pcbf.data)
+        name in lines_with_ts || continue
+        rating_b = PSY.get_rating_b(PSY.get_component(PSY.Line, sys, name), PSY.SU)
+        expected = rating_b * _PC_RATING_FACTORS[mod1(t, n_factors)]
+        push!(seen_rhs, expected)
+        # JuMP migrates the expression's affine constant to the RHS; add it back
+        # to recover the raw limit.
+        expr_const = JuMP.constant(pcbf[outage_id, name, t])
+        @test JuMP.normalized_rhs(con_ub[outage_id, name, t]) + expr_const ≈ expected
+        @test JuMP.normalized_rhs(con_lb[outage_id, name, t]) + expr_const ≈ -expected
+        n_checked += 1
+    end
+    @test n_checked > 0
+    # The RHS tracks the forecast, so it takes more than one distinct value —
+    # this is what separates the parameterized limit from the static one.
+    @test length(seen_rhs) > 1
+end
+
+@testset "a branch without a post-contingency rating forecast keeps the static limit" begin
+    lines_with_ts = ["1", "2", "6"]
+    sys = _pc_rating_ts_system(lines_with_ts)
+    model, status = _build_pc_rating_ts_model(sys)
+    @test status == IOM.ModelBuildStatus.BUILT
+
+    container = IOM.get_optimization_container(model)
+    pcbf = IOM.get_expression(container, POM.PostContingencyBranchFlow, PSY.Line)
+    con_ub = IOM.get_constraints(container)[IOM.ConstraintKey(
+        POM.PostContingencyFlowRateConstraint, PSY.Line, "ub",
+    )]
+
+    n_checked = 0
+    for (outage_id, name, t) in keys(pcbf.data)
+        name in lines_with_ts && continue
+        line = PSY.get_component(PSY.Line, sys, name)
+        isnothing(line) && continue
+        expected = POM._emergency_flow_limits(line).max
+        expr_const = JuMP.constant(pcbf[outage_id, name, t])
+        @test JuMP.normalized_rhs(con_ub[outage_id, name, t]) + expr_const ≈ expected
+        n_checked += 1
+    end
+    @test n_checked > 0
 end

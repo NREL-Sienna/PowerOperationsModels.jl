@@ -541,6 +541,370 @@ end
     end
 end
 
+# `c_sys5_uc` promoted to MarketBidCost with an OfflineReserve ORDC ("NSPIN") and an
+# OnlineReserve ("SPIN"). The returned `offunit` is priced out of the energy stack -
+# prohibitive slope and startup - so the UC leaves it OFF while its cheap offline offer
+# still clears. Shared by the standard-UC and compact-UC offline-capability testsets.
+function _offline_ordc_uc_system()
+    sys = deepcopy(PSB.build_system(PSITestSystems, "c_sys5_uc"))
+    thermals = collect(get_components(ThermalStandard, sys))
+    # Make one unit uneconomical for energy so the UC leaves it OFF; its cheap offline
+    # offer must clear regardless.
+    offunit = first(sort(thermals; by = PSY.get_name))
+    # Service bids require an OfferCurveCost: convert every thermal to a MarketBidCost that
+    # keeps its energy slope; the off-unit gets a prohibitive slope + startup so the UC
+    # never commits it for energy.
+    for g in thermals
+        pmax_g = PSY.get_max_active_power(g, PSY.NU)
+        slope = if g === offunit
+            1.0e4
+        else
+            PSY.get_proportional_term(
+                PSY.get_value_curve(PSY.get_variable(get_operation_cost(g))),
+            )
+        end
+        PSY.set_operation_cost!(
+            g,
+            MarketBidCost(;
+                no_load_cost = LinearCurve(0.0),
+                start_up = (
+                    hot = g === offunit ? 1.0e5 : 0.0,
+                    warm = g === offunit ? 1.0e5 : 0.0,
+                    cold = g === offunit ? 1.0e5 : 0.0,
+                ),
+                shut_down = LinearCurve(0.0),
+                incremental_offer_curves = make_market_bid_curve(
+                    [0.0, pmax_g], [slope], 0.0; power_units = IS.NaturalUnit(),
+                ),
+            ),
+        )
+    end
+    nspin = OfflineReserve(;
+        name = "NSPIN",
+        available = true,
+        time_frame = 30.0,
+        variable = _mkt_curve([0.0, 100.0, 200.0], [65.0, 11.0]),
+    )
+    spin = OnlineReserve{ReserveUp}(;
+        name = "SPIN", available = true, time_frame = 10.0, requirement = 0.0,
+        variable = _mkt_curve([0.0, 50.0], [40.0]),
+    )
+    add_service!(sys, nspin, PSY.Device[thermals...])
+    add_service!(sys, spin, PSY.Device[thermals...])
+    for (i, g) in enumerate(thermals)
+        price = g === offunit ? 0.01 : 6.0 + i
+        PSY.set_service_bid!(
+            sys,
+            g,
+            nspin,
+            _mkt_offer_ts(nspin, 80.0, price),
+            IS.NaturalUnit(),
+        )
+        PSY.set_service_bid!(
+            sys,
+            g,
+            spin,
+            _mkt_offer_ts(spin, 30.0, price),
+            IS.NaturalUnit(),
+        )
+    end
+    return sys, offunit
+end
+
+"""
+Assert the offline band row exists for every contributing device and carries the
+formulation's gating. The row is built as
+`expression + Σ offline <= q_limit - (q_limit - gated) * u`; JuMP normalizes the `u`
+term onto the LHS, so the row reads `normalized_rhs == pmax` with coefficient
+`pmax - gated` on `u`. `expected_u_coefficient(limits)` is the independent
+reference: `0.0` for standard UC (RHS collapses to `pmax` regardless of `u`) and
+`limits.min` for compact UC (RHS becomes `pmax - pmin * u`). A must-run device has no
+`OnVariable`, so its row is the gated capacity outright.
+"""
+function _check_offline_band(
+    container, sys, device_type, expected_u_coefficient, service_name,
+)
+    con = IOM.get_constraint(container, POM.OfflineReserveBandConstraint, device_type)
+    varbin = IOM.get_variable(container, POM.OnVariable, device_type)
+    awards = IOM.get_variable(container, POM.ActivePowerReserveVariable, OfflineReserve)
+    checked = 0
+    for (idx, c) in con.data
+        name, t = idx
+        d = get_component(device_type, sys, name)
+        limits = PSY.get_active_power_limits(d, PSY.SU)
+        u_coefficient = expected_u_coefficient(limits)
+        if PSY.get_must_run(d)
+            @test JuMP.normalized_rhs(c) ≈ limits.max - u_coefficient
+        else
+            @test JuMP.normalized_rhs(c) ≈ limits.max
+            @test JuMP.normalized_coefficient(c, varbin[name, t]) ≈ u_coefficient
+        end
+        # The offline award enters the row with a +1 coefficient; without it the row
+        # would be the plain semicontinuous band and prove nothing.
+        @test JuMP.normalized_coefficient(c, awards[(service_name, name, t)]) ≈ 1.0
+        checked += 1
+    end
+    @test checked > 0
+    return
+end
+
+@testset "OfflineReserve as ORDC: OFF unit provides offline capability (UC)" begin
+    # Single-award-variable offline design: the UB expression keeps p + online
+    # commitment-gated (offline_reserve_in_range_ub = false for every thermal UC); the
+    # band row adds the offline awards back, against q_limit = pmax for standard UC, so
+    # an OFF unit's offline capability survives.
+    sys, offunit = _offline_ordc_uc_system()
+
+    template = get_thermal_standard_uc_template()
+    set_service_model!(template, ServiceModel(OfflineReserve, StepwiseCostReserve))
+    set_service_model!(
+        template,
+        ServiceModel(OnlineReserve{ReserveUp}, StepwiseCostReserve),
+    )
+    model = DecisionModel(
+        template, sys;
+        optimizer = HiGHS_optimizer, store_variable_names = true,
+    )
+    @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
+          IOM.ModelBuildStatus.BUILT
+    @test solve!(model) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
+
+    res = IOM.OptimizationProblemOutputs(model)
+    on = read_variable(res, OnVariable, ThermalStandard; table_format = TableFormat.WIDE)
+    nspin_awards = read_variable(
+        res, "ActivePowerReserveVariable__OfflineReserve";
+        table_format = TableFormat.WIDE,
+    )
+    spin_awards = read_variable(
+        res, "ActivePowerReserveVariable__OnlineReserve__ReserveUp";
+        table_format = TableFormat.WIDE,
+    )
+    # Standard UC: the band row is `p + online + offline <= pmax` for every t, so the
+    # coefficient on `u` is exactly zero. This gates the row's existence and its RHS -
+    # the surviving solve assertions below do not, since each award is separately capped
+    # by its own variable bound.
+    _check_offline_band(
+        IOM.get_optimization_container(model),
+        sys,
+        ThermalStandard,
+        limits -> 0.0,
+        "NSPIN",
+    )
+
+    off_name = PSY.get_name(offunit)
+    total_off_award = 0.0
+    for t in 1:24
+        @test on[t, off_name] < 0.5                        # stays uncommitted
+        @test spin_awards[t, "SPIN__$(off_name)"] <= 1e-3   # online award dead when OFF
+        total_off_award += nspin_awards[t, "NSPIN__$(off_name)"]
+    end
+    # The cheapest offline offer in the stack clears from the OFF unit: the trait exclusion
+    # kept the offline award out of the commitment-gated UB expression.
+    @test total_off_award > 1.0
+
+    # Zero-footprint: without an OfflineReserve service model, none of the offline
+    # machinery exists - no online-only expression, no band constraint.
+    template2 = get_thermal_standard_uc_template()
+    set_service_model!(
+        template2,
+        ServiceModel(OnlineReserve{ReserveUp}, StepwiseCostReserve),
+    )
+    model2 = DecisionModel(
+        template2, sys;
+        optimizer = HiGHS_optimizer, store_variable_names = true,
+    )
+    @test build!(model2; output_dir = mktempdir(; cleanup = true)) ==
+          IOM.ModelBuildStatus.BUILT
+    container2 = IOM.get_optimization_container(model2)
+    @test all(
+        k -> IOM.get_entry_type(k) != POM.OfflineReserveBandConstraint,
+        keys(IOM.get_constraints(container2)),
+    )
+end
+
+@testset "OfflineReserve as ORDC: compact UC gates the band on pmin" begin
+    # Compact UC dispatches PowerAboveMinimumVariable, a delta above pmin, so the band row
+    # must gate on the formulation's own capacity rather than on pmax:
+    # `p + online + offline <= (pmax - pmin) * u + pmax * (1 - u)`.
+    # Committed that is `pmax - pmin` - total output pmin + p + awards stays inside pmax.
+    # OFF, the semicontinuous row zeroes p and the online awards, leaving `offline <= pmax`,
+    # so the unit keeps its offline capability. Reusing standard UC's flat pmax RHS here
+    # would let a committed unit award pmin beyond its own capability.
+    for formulation in (ThermalCompactUnitCommitment, ThermalBasicCompactUnitCommitment)
+        sys, offunit = _offline_ordc_uc_system()
+        # The pmin gating term is only observable if some unit actually has a nonzero pmin.
+        @test any(
+            d -> PSY.get_active_power_limits(d, PSY.SU).min > 0.0,
+            get_components(ThermalStandard, sys),
+        )
+
+        template = get_thermal_standard_uc_template()
+        set_device_model!(template, ThermalStandard, formulation)
+        set_service_model!(template, ServiceModel(OfflineReserve, StepwiseCostReserve))
+        set_service_model!(
+            template,
+            ServiceModel(OnlineReserve{ReserveUp}, StepwiseCostReserve),
+        )
+        model = DecisionModel(
+            template, sys;
+            optimizer = HiGHS_optimizer, store_variable_names = true,
+        )
+        @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
+              IOM.ModelBuildStatus.BUILT
+        _check_offline_band(
+            IOM.get_optimization_container(model),
+            sys,
+            ThermalStandard,
+            limits -> limits.min,
+            "NSPIN",
+        )
+        @test solve!(model) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
+
+        res = IOM.OptimizationProblemOutputs(model)
+        on = read_variable(
+            res, OnVariable, ThermalStandard; table_format = TableFormat.WIDE,
+        )
+        # Compact UC dispatches the delta above pmin, not total power.
+        power = read_variable(
+            res, PowerAboveMinimumVariable, ThermalStandard;
+            table_format = TableFormat.WIDE,
+        )
+        nspin_awards = read_variable(
+            res, "ActivePowerReserveVariable__OfflineReserve";
+            table_format = TableFormat.WIDE,
+        )
+        spin_awards = read_variable(
+            res, "ActivePowerReserveVariable__OnlineReserve__ReserveUp";
+            table_format = TableFormat.WIDE,
+        )
+
+        off_name = PSY.get_name(offunit)
+        total_off_award = 0.0
+        for t in 1:24
+            @test on[t, off_name] < 0.5
+            total_off_award += nspin_awards[t, "NSPIN__$(off_name)"]
+        end
+        # The OFF unit's offline capability survives under compact UC as well.
+        @test total_off_award > 1.0
+
+        # Solved solution honours the compact band on every committed unit: the delta power
+        # plus all awards stay inside pmax - pmin.
+        committed = 0
+        for d in get_components(ThermalStandard, sys)
+            name = PSY.get_name(d)
+            name in names(on) || continue
+            limits = PSY.get_active_power_limits(d, PSY.NU)
+            for t in 1:24
+                on[t, name] > 0.5 || continue
+                committed += 1
+                @test power[t, name] +
+                      nspin_awards[t, "NSPIN__$(name)"] +
+                      spin_awards[t, "SPIN__$(name)"] <=
+                      limits.max - limits.min + 1e-3
+            end
+        end
+        @test committed > 0
+    end
+end
+
+@testset "OfflineReserve band: ThermalMultiStart under multistart UC" begin
+    # `ThermalMultiStartUnitCommitment` is an AbstractCompactUnitCommitment, so its band
+    # gates on pmin like the other compact formulations - but it reaches the row through
+    # its own construct_device! pair and its own device type, which nothing else covers.
+    #
+    # The offline service must use StepwiseCostReserve, not NonSpinningReserve: the latter
+    # routes awards through ReservePowerConstraint and deliberately does not register
+    # itself on device models (`_modify_device_model!` no-op), so it builds no band row.
+    #
+    # `c_sys5_pglib` carries the two ThermalMultiStart units and no services of its own,
+    # so the ORDC below is the only offline product in the model.
+    sys = deepcopy(PSB.build_system(PSITestSystems, "c_sys5_pglib"))
+    multistarts = collect(get_components(PSY.ThermalMultiStart, sys))
+    @test !isempty(multistarts)
+    # pmin must be nonzero for the compact gating term to be observable at all.
+    @test all(d -> PSY.get_active_power_limits(d, PSY.SU).min > 0.0, multistarts)
+
+    gens = vcat(collect(get_components(ThermalStandard, sys)), multistarts)
+    # Service bids require an OfferCurveCost on every contributor.
+    for g in gens
+        pmax = PSY.get_active_power_limits(g, PSY.NU).max
+        PSY.set_operation_cost!(
+            g,
+            MarketBidCost(;
+                no_load_cost = LinearCurve(0.0),
+                start_up = (hot = 0.0, warm = 0.0, cold = 0.0),
+                shut_down = LinearCurve(0.0),
+                incremental_offer_curves = _mkt_curve([0.0, pmax], [25.0]),
+            ),
+        )
+    end
+    nspin = OfflineReserve(;
+        name = "NSPIN",
+        available = true,
+        time_frame = 30.0,
+        variable = _mkt_curve([0.0, 100.0, 200.0], [65.0, 11.0]),
+    )
+    add_service!(sys, nspin, PSY.Device[gens...])
+    for (i, g) in enumerate(gens)
+        pmax = PSY.get_active_power_limits(g, PSY.NU).max
+        PSY.set_service_bid!(
+            sys, g, nspin, _mkt_offer_ts(nspin, pmax, 5.0 + i), IS.NaturalUnit(),
+        )
+    end
+
+    template = PowerOperationsProblemTemplate(CopperPlateNetworkModel)
+    set_device_model!(template, PowerLoad, StaticPowerLoad)
+    set_device_model!(template, ThermalStandard, ThermalStandardUnitCommitment)
+    set_device_model!(
+        template,
+        DeviceModel(PSY.ThermalMultiStart, ThermalMultiStartUnitCommitment),
+    )
+    set_service_model!(template, ServiceModel(OfflineReserve, StepwiseCostReserve))
+    model = DecisionModel(
+        template, sys;
+        optimizer = HiGHS_optimizer, store_variable_names = true,
+    )
+    @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
+          IOM.ModelBuildStatus.BUILT
+    # pmin is the compact gating term for the multistart device type too.
+    _check_offline_band(
+        IOM.get_optimization_container(model),
+        sys,
+        PSY.ThermalMultiStart,
+        limits -> limits.min,
+        "NSPIN",
+    )
+    @test solve!(model) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
+
+    res = IOM.OptimizationProblemOutputs(model)
+    on = read_variable(
+        res, OnVariable, PSY.ThermalMultiStart; table_format = TableFormat.WIDE,
+    )
+    power = read_variable(
+        res, PowerAboveMinimumVariable, PSY.ThermalMultiStart;
+        table_format = TableFormat.WIDE,
+    )
+    awards = read_variable(
+        res, "ActivePowerReserveVariable__OfflineReserve";
+        table_format = TableFormat.WIDE,
+    )
+    # Committed multistart units honour the compact band in the solved solution.
+    committed = 0
+    for d in multistarts
+        name = PSY.get_name(d)
+        name in names(on) || continue
+        col = "NSPIN__$(name)"
+        col in names(awards) || continue
+        limits = PSY.get_active_power_limits(d, PSY.NU)
+        for t in 1:24
+            on[t, name] > 0.5 || continue
+            committed += 1
+            @test power[t, name] + awards[t, col] <= limits.max - limits.min + 1e-3
+        end
+    end
+    @test committed > 0
+end
+
 #################################################################################
 # Load reserve provision (PowerLoadDispatch)
 #################################################################################

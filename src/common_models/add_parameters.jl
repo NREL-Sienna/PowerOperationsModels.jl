@@ -121,32 +121,6 @@ end
 # Helpers for _add_time_series_parameters!
 #################################################################################
 
-function _check_branch_rating_ts(
-    ts::AbstractArray,
-    ::Type{T},
-    device::PSY.Device,
-    model::DeviceModel{D, W},
-) where {D <: PSY.Component, T <: TimeSeriesParameter, W <: AbstractDeviceFormulation}
-    if !(T <: AbstractBranchRatingTimeSeriesParameter)
-        return
-    end
-
-    rating = _branch_rating(device)
-    if (T <: PostContingencyBranchRatingTimeSeriesParameter)
-        if !(_branch_rating_b(device) === nothing)
-            rating = _branch_rating_b(device)
-        else
-            @warn "Device $(typeof(device)) '$(PSY.get_name(device))' has Parameter $T but it has no static 'rating_b' defined."
-        end
-    end
-
-    multiplier = get_multiplier_value(T, device, W)
-    if !all(x -> x >= rating, multiplier * ts)
-        @warn "There are values of Parameter $T associated with $(typeof(device)) '$(PSY.get_name(device))' lower than the device static rating $(rating)."
-    end
-    return
-end
-
 # Extends `size` to tuples, treating them like scalars
 _size_wrapper(elem) = size(elem)
 _size_wrapper(::Tuple) = ()
@@ -222,7 +196,6 @@ function _add_time_series_parameters!(
                     interval = model_interval,
                     resolution = model_resolution,
                 )
-            _check_branch_rating_ts(initial_values[ts_hash], param, device, model)
         end
     end
 
@@ -587,6 +560,9 @@ end
 # product (`DeterministicSingleTimeSeries`) has no `get_data`, but its wrapped `SingleTimeSeries`
 # holds the same per-hour curves as a `TimeArray`, which `IOM.get_max_tranches` also accepts.
 _ordc_ts_data(ts) = PSY.get_data(ts)
+# FIXME: dead for now - the key-addressed store materializes the transform product as a full
+# `Deterministic` on read, so the `get_data`-less wrapper never reaches here and nothing covers
+# this method. Kept until that read path is settled; it might get removed.
 _ordc_ts_data(ts::IS.DeterministicSingleTimeSeries) =
     PSY.get_data(IS.get_single_time_series(ts))
 
