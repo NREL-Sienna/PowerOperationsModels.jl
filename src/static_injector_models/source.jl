@@ -140,14 +140,19 @@ function add_constraints!(
         meta = "import",
     )
 
+    # PSY stores these limits in MWh, while the power variables are on the model's
+    # system base, so the budgets convert to per-unit hours before they can bound
+    # a per-unit sum. Without this the constraint is loose by the base.
+    system_base = get_model_base_power(container)
+
     # Limits are named from the system's perspective: importing means the source injects
     # into the system (ActivePowerOutVariable); exporting means it absorbs
     # (ActivePowerInVariable).
     for d in devices
         name = PSY.get_name(d)
         op_cost = PSY.get_operation_cost(d)
-        week_import_limit = PSY.get_energy_import_weekly_limit(op_cost)
-        week_export_limit = PSY.get_energy_export_weekly_limit(op_cost)
+        week_import_limit = PSY.get_energy_import_weekly_limit(op_cost) / system_base
+        week_export_limit = PSY.get_energy_export_weekly_limit(op_cost) / system_base
         constraint_import[name, "horizon"] = JuMP.@constraint(
             get_jump_model(container),
             resolution_in_hours * sum(p_out[name, t] for t in time_steps) <=
