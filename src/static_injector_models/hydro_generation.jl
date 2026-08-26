@@ -1393,6 +1393,13 @@ This function define the budget constraint for the
 active power budget formulation.
 `` sum(f[t]) <= Budget ``
 """
+# Level limits ride on the component as either a fixed min/max or a time series key.
+# The time-varying form has no constraint formulation yet, so it is refused here rather
+# than reaching `.max`/`.min` on a key and failing with a field error.
+_fixed_level_limits(limits) = limits
+_fixed_level_limits(::IS.TimeSeriesKey) =
+    error("Level limits are not supported with timeseries yet")
+
 function add_constraints!(
     container::OptimizationContainer,
     sys::PSY.System,
@@ -1499,10 +1506,7 @@ function add_constraints!(
         else
             var = get_variable(container, HydroReservoirHeadVariable, V)
         end
-        level_limits = PSY.get_storage_level_limits(d)
-        if isa(level_limits, PSY.TimeSeriesKey)
-            error("Level limits are not supported with timeseries yet")
-        end
+        level_limits = _fixed_level_limits(PSY.get_storage_level_limits(d))
         for t in time_steps
             constraint_ub[name, t] = JuMP.@constraint(
                 container.JuMPmodel,
