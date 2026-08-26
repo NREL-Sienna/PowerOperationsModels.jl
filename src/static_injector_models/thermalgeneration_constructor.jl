@@ -197,6 +197,16 @@ function construct_device!(
         device_model,
         network_model,
     )
+    if _has_offline_reserve_service(device_model)
+        # p + online + offline <= pmax preserves an OFF unit's offline capability.
+        add_constraints!(
+            container,
+            OfflineReserveBandConstraint,
+            devices,
+            device_model,
+            network_model,
+        )
+    end
     add_constraints!(
         container,
         ReactivePowerVariableLimitsConstraint,
@@ -344,6 +354,16 @@ function construct_device!(
         device_model,
         network_model,
     )
+    if _has_offline_reserve_service(device_model)
+        # p + online + offline <= pmax preserves an OFF unit's offline capability.
+        add_constraints!(
+            container,
+            OfflineReserveBandConstraint,
+            devices,
+            device_model,
+            network_model,
+        )
+    end
 
     add_constraints!(container, CommitmentConstraint, devices, device_model, network_model)
     add_constraints!(container, RampConstraint, devices, device_model, network_model)
@@ -490,6 +510,16 @@ function construct_device!(
         device_model,
         network_model,
     )
+    if _has_offline_reserve_service(device_model)
+        # p + online + offline <= pmax preserves an OFF unit's offline capability.
+        add_constraints!(
+            container,
+            OfflineReserveBandConstraint,
+            devices,
+            device_model,
+            network_model,
+        )
+    end
 
     add_constraints!(
         container,
@@ -634,6 +664,16 @@ function construct_device!(
         device_model,
         network_model,
     )
+    if _has_offline_reserve_service(device_model)
+        # p + online + offline <= pmax preserves an OFF unit's offline capability.
+        add_constraints!(
+            container,
+            OfflineReserveBandConstraint,
+            devices,
+            device_model,
+            network_model,
+        )
+    end
 
     add_constraints!(container, CommitmentConstraint, devices, device_model, network_model)
     if haskey(get_time_series_names(device_model), ActivePowerTimeSeriesParameter)
@@ -1260,6 +1300,16 @@ function construct_device!(
         device_model,
         network_model,
     )
+    if _has_offline_reserve_service(device_model)
+        # Offline awards bound against static capability so an OFF unit keeps its capability.
+        add_constraints!(
+            container,
+            OfflineReserveBandConstraint,
+            devices,
+            device_model,
+            network_model,
+        )
+    end
 
     add_constraints!(
         container,
@@ -1441,6 +1491,16 @@ function construct_device!(
         device_model,
         network_model,
     )
+    if _has_offline_reserve_service(device_model)
+        # Offline awards bound against static capability so an OFF unit keeps its capability.
+        add_constraints!(
+            container,
+            OfflineReserveBandConstraint,
+            devices,
+            device_model,
+            network_model,
+        )
+    end
 
     add_constraints!(container, CommitmentConstraint, devices, device_model, network_model)
     add_constraints!(container, RampConstraint, devices, device_model, network_model)
@@ -1624,6 +1684,16 @@ function construct_device!(
         device_model,
         network_model,
     )
+    if _has_offline_reserve_service(device_model)
+        # Offline awards bound against static capability so an OFF unit keeps its capability.
+        add_constraints!(
+            container,
+            OfflineReserveBandConstraint,
+            devices,
+            device_model,
+            network_model,
+        )
+    end
 
     add_constraints!(
         container,
@@ -1778,6 +1848,16 @@ function construct_device!(
         device_model,
         network_model,
     )
+    if _has_offline_reserve_service(device_model)
+        # Offline awards bound against static capability so an OFF unit keeps its capability.
+        add_constraints!(
+            container,
+            OfflineReserveBandConstraint,
+            devices,
+            device_model,
+            network_model,
+        )
+    end
 
     add_constraints!(container, CommitmentConstraint, devices, device_model, network_model)
     add_constraints!(container, RampConstraint, devices, device_model, network_model)
@@ -1938,6 +2018,16 @@ function construct_device!(
         device_model,
         network_model,
     )
+    if _has_offline_reserve_service(device_model)
+        # Offline awards bound against static capability so an OFF unit keeps its capability.
+        add_constraints!(
+            container,
+            OfflineReserveBandConstraint,
+            devices,
+            device_model,
+            network_model,
+        )
+    end
 
     add_constraints!(
         container,
@@ -2088,6 +2178,16 @@ function construct_device!(
         device_model,
         network_model,
     )
+    if _has_offline_reserve_service(device_model)
+        # Offline awards bound against static capability so an OFF unit keeps its capability.
+        add_constraints!(
+            container,
+            OfflineReserveBandConstraint,
+            devices,
+            device_model,
+            network_model,
+        )
+    end
 
     add_constraints!(container, CommitmentConstraint, devices, device_model, network_model)
     if haskey(get_time_series_names(device_model), ActivePowerTimeSeriesParameter)

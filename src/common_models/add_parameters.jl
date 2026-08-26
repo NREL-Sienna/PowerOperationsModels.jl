@@ -560,6 +560,9 @@ end
 # product (`DeterministicSingleTimeSeries`) has no `get_data`, but its wrapped `SingleTimeSeries`
 # holds the same per-hour curves as a `TimeArray`, which `IOM.get_max_tranches` also accepts.
 _ordc_ts_data(ts) = PSY.get_data(ts)
+# FIXME: dead for now - the key-addressed store materializes the transform product as a full
+# `Deterministic` on read, so the `get_data`-less wrapper never reaches here and nothing covers
+# this method. Kept until that read path is settled; it might get removed.
 _ordc_ts_data(ts::IS.DeterministicSingleTimeSeries) =
     PSY.get_data(IS.get_single_time_series(ts))
 
