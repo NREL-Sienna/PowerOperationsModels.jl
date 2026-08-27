@@ -46,12 +46,8 @@ function _add_feedforward_arguments!(
     return
 end
 
-# NOTE (deviation from PowerSimulations): PSI creates these slack variables with a
-# lower bound of 0.0 and NO objective penalty on the device path (the service path
-# does penalize them). An unpenalized slack is free, so the relaxed bound never
-# binds and `add_slacks = true` silently disables the feedforward. POM penalizes
-# them with `BALANCE_SLACK_COST`, matching PSI's service-side behaviour and every
-# other slack in this package.
+# Penalized at `BALANCE_SLACK_COST`; PSI leaves the device-path slacks free, which makes
+# the relaxed bound never bind.
 function _add_feedforward_slack_variables!(
     container::OptimizationContainer,
     ::Type{T},

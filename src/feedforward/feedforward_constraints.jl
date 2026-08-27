@@ -34,7 +34,13 @@ function add_feedforward_constraints!(
     return
 end
 
-function _lower_bound_range_with_parameter!(
+# IOM's `upper_bound_range_with_parameter!` / `lower_bound_range_with_parameter!` read the
+# multiplier straight out of the parameter container. The semicontinuous feedforward supplies
+# its own -- zeros when the status already sits inside the range expressions, the variable's
+# own bounds otherwise -- and has to skip must-run units, so it keeps this loop. The per-entry
+# constraint is IOM's `add_range_bound_constraint!`, and the direction is IOM's `BoundDirection`.
+function _bound_range_with_parameter!(
+    dir::IOM.BoundDirection,
     jump_model::JuMP.Model,
     constraint_container::JuMPConstraintArray,
     lhs_array,
@@ -49,46 +55,25 @@ function _lower_bound_range_with_parameter!(
         end
         name = PSY.get_name(device)
         for t in time_steps
-            constraint_container[name, t] = JuMP.@constraint(
+            IOM.add_range_bound_constraint!(
+                dir,
                 jump_model,
-                lhs_array[name, t] >= param_multiplier[name, t] * param_array[name, t]
+                constraint_container,
+                name,
+                t,
+                lhs_array[name, t],
+                param_multiplier[name, t],
+                param_array[name, t],
             )
         end
     end
     return
 end
 
-function _upper_bound_range_with_parameter!(
-    jump_model::JuMP.Model,
-    constraint_container::JuMPConstraintArray,
-    lhs_array,
-    param_multiplier::JuMPFloatArray,
-    param_array::Union{JuMPVariableArray, JuMPFloatArray},
-    devices::Union{Vector{V}, IS.FlattenIteratorWrapper{V}},
-) where {V <: PSY.Component}
-    time_steps = axes(constraint_container)[2]
-    for device in devices
-        if hasmethod(PSY.get_must_run, Tuple{V})
-            PSY.get_must_run(device) && continue
-        end
-        name = PSY.get_name(device)
-        for t in time_steps
-            constraint_container[name, t] = JuMP.@constraint(
-                jump_model,
-                lhs_array[name, t] <= param_multiplier[name, t] * param_array[name, t]
-            )
-        end
-    end
-    return
-end
-
-# The commitment status enters through the range expressions (see
-# `_add_feedforward_arguments!`), so the parameter contributes to the LHS and the
-# multiplier arrays here are zero.
 function _add_sc_feedforward_constraints!(
     container::OptimizationContainer,
     ::Type{T},
-    ::P,
+    ::Type{P},
     ::VariableKey{U, V},
     devices::Union{Vector{V}, IS.FlattenIteratorWrapper{V}},
     ::DeviceModel{V, W},
@@ -101,39 +86,41 @@ function _add_sc_feedforward_constraints!(
 }
     time_steps = get_time_steps(container)
     names = PSY.get_name.(devices)
-    constraint_lb =
-        add_constraints_container!(container, T, V, names, time_steps; meta = "$(U)_lb")
-    constraint_ub =
-        add_constraints_container!(container, T, V, names, time_steps; meta = "$(U)_ub")
-    array_lb = get_expression(container, ActivePowerRangeExpressionLB, V)
-    array_ub = get_expression(container, ActivePowerRangeExpressionUB, V)
     parameter = get_parameter_array(container, P, V)
-    mult_ub = DenseAxisArray(zeros(length(names), time_steps[end]), names, time_steps)
-    mult_lb = DenseAxisArray(zeros(length(names), time_steps[end]), names, time_steps)
     jump_model = get_jump_model(container)
-    _upper_bound_range_with_parameter!(
-        jump_model,
-        constraint_ub,
-        array_ub,
-        mult_ub,
-        parameter,
-        devices,
+    # The commitment status already entered through the range expressions (see
+    # `_add_feedforward_arguments!`), so the parameter adds nothing on the right-hand side.
+    zero_multiplier =
+        DenseAxisArray(zeros(length(names), time_steps[end]), names, time_steps)
+    for (dir, expression_type) in (
+        (IOM.UpperBound(), ActivePowerRangeExpressionUB),
+        (IOM.LowerBound(), ActivePowerRangeExpressionLB),
     )
-    _lower_bound_range_with_parameter!(
-        jump_model,
-        constraint_lb,
-        array_lb,
-        mult_lb,
-        parameter,
-        devices,
-    )
+        constraint = add_constraints_container!(
+            container,
+            T,
+            V,
+            names,
+            time_steps;
+            meta = "$(U)_$(IOM.constraint_meta(dir))",
+        )
+        _bound_range_with_parameter!(
+            dir,
+            jump_model,
+            constraint,
+            get_expression(container, expression_type, V),
+            zero_multiplier,
+            parameter,
+            devices,
+        )
+    end
     return
 end
 
 function _add_sc_feedforward_constraints!(
     container::OptimizationContainer,
     ::Type{T},
-    ::P,
+    ::Type{P},
     ::VariableKey{U, V},
     devices::Union{Vector{V}, IS.FlattenIteratorWrapper{V}},
     ::DeviceModel{V, W},
@@ -146,10 +133,6 @@ function _add_sc_feedforward_constraints!(
 }
     time_steps = get_time_steps(container)
     names = PSY.get_name.(devices)
-    constraint_lb =
-        add_constraints_container!(container, T, V, names, time_steps; meta = "$(U)_lb")
-    constraint_ub =
-        add_constraints_container!(container, T, V, names, time_steps; meta = "$(U)_ub")
     variable = get_variable(container, U, V)
     parameter = get_parameter_array(container, P, V)
     upper_bounds = [get_variable_upper_bound(U, d, W) for d in devices]
@@ -157,25 +140,29 @@ function _add_sc_feedforward_constraints!(
     if any(isnothing.(upper_bounds)) || any(isnothing.(lower_bounds))
         throw(IS.InvalidValueError("Bounds for variable $U $V not defined correctly"))
     end
-    mult_ub = DenseAxisArray(repeat(upper_bounds, 1, time_steps[end]), names, time_steps)
-    mult_lb = DenseAxisArray(repeat(lower_bounds, 1, time_steps[end]), names, time_steps)
     jump_model = get_jump_model(container)
-    _upper_bound_range_with_parameter!(
-        jump_model,
-        constraint_ub,
-        variable,
-        mult_ub,
-        parameter,
-        devices,
-    )
-    _lower_bound_range_with_parameter!(
-        jump_model,
-        constraint_lb,
-        variable,
-        mult_lb,
-        parameter,
-        devices,
-    )
+    for (dir, bound_values) in
+        ((IOM.UpperBound(), upper_bounds), (IOM.LowerBound(), lower_bounds))
+        constraint = add_constraints_container!(
+            container,
+            T,
+            V,
+            names,
+            time_steps;
+            meta = "$(U)_$(IOM.constraint_meta(dir))",
+        )
+        multiplier =
+            DenseAxisArray(repeat(bound_values, 1, time_steps[end]), names, time_steps)
+        _bound_range_with_parameter!(
+            dir,
+            jump_model,
+            constraint,
+            variable,
+            multiplier,
+            parameter,
+            devices,
+        )
+    end
     return
 end
 
@@ -204,7 +191,7 @@ function add_feedforward_constraints!(
         _add_sc_feedforward_constraints!(
             container,
             FeedforwardSemiContinuousConstraint,
-            parameter_type(),
+            parameter_type,
             var,
             devices,
             model,
@@ -241,7 +228,7 @@ function add_feedforward_constraints!(
         _add_sc_feedforward_constraints!(
             container,
             FeedforwardSemiContinuousConstraint,
-            parameter_type(),
+            parameter_type,
             var,
             devices,
             model,
@@ -402,6 +389,16 @@ function add_feedforward_constraints!(
     multiplier = get_parameter_multiplier_array(container, parameter_type, T, "$var_type")
     jump_model = get_jump_model(container)
     for var in get_affected_values(ff)
+        # `FixValueFeedforward` accepts a `ParameterType` affected value so the service-side
+        # path can use one later, but there is no device-side parameter-target
+        # implementation; fail with something readable instead of a `get_variable` MethodError.
+        if !(var isa VariableKey)
+            error(
+                "FixValueFeedforward on a DeviceModel only supports VariableType affected \
+                 values; got $(get_entry_type(var)). Parameter targets are implemented \
+                 only on the service side, which POM does not support yet.",
+            )
+        end
         variable = get_variable(container, var)
         device_name_set, set_time = JuMP.axes(variable)
         @assert issetequal(device_name_set, PSY.get_name.(devices))

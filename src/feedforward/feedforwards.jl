@@ -78,7 +78,7 @@ Constructs a parameterized upper bound constraint to implement feedforward from 
 # Arguments:
 
   - `component_type::Type{<:PSY.Component}` : Specify the type of component on which the Feedforward will be applied
-  - `source::Type{T}` : Specify the VariableType, ParameterType or AuxVariableType as the source of values for the Feedforward
+  - `source::Type{T}` : Specify the VariableType or AuxVariableType as the source of values for the Feedforward
   - `affected_values::Vector{DataType}` : Specify the variable on which the upper bound will be applied using the source values
   - `add_slacks::Bool = false` : Add slacks variables to relax the upper bound constraint.
 """
@@ -130,7 +130,7 @@ Constructs a parameterized lower bound constraint to implement feedforward from 
 # Arguments:
 
   - `component_type::Type{<:PSY.Component}` : Specify the type of component on which the Feedforward will be applied
-  - `source::Type{T}` : Specify the VariableType, ParameterType or AuxVariableType as the source of values for the Feedforward
+  - `source::Type{T}` : Specify the VariableType or AuxVariableType as the source of values for the Feedforward
   - `affected_values::Vector{DataType}` : Specify the variable on which the lower bound will be applied using the source values
   - `add_slacks::Bool = false` : Add slacks variables to relax the lower bound constraint.
 """
@@ -183,7 +183,7 @@ an another problem (typically a Unit Commitment problem).
 # Arguments:
 
   - `component_type::Type{<:PSY.Component}` : Specify the type of component on which the Feedforward will be applied
-  - `source::Type{T}` : Specify the VariableType, ParameterType or AuxVariableType as the source of values for the Feedforward
+  - `source::Type{T}` : Specify the VariableType or AuxVariableType as the source of values for the Feedforward
   - `affected_values::Vector{DataType}` : Specify the variable on which the semicontinuous limit will be applied using the source values
 """
 struct SemiContinuousFeedforward <: AbstractAffectFeedforward
@@ -228,14 +228,13 @@ function has_semicontinuous_feedforward(
     if isempty(model.feedforwards)
         return false
     end
-    sc_feedforwards = [x for x in model.feedforwards if isa(x, SemiContinuousFeedforward)]
-    if isempty(sc_feedforwards)
-        return false
-    end
-
-    keys = get_affected_values(sc_feedforwards[1])
-
-    return T ∈ get_entry_type.(keys)
+    # Every semicontinuous feedforward has to be checked, not just the first: a device
+    # model can carry several with different source keys, and missing one re-introduces
+    # the double-constraining this gate exists to prevent.
+    return any(
+        T ∈ get_entry_type.(get_affected_values(ff)) for
+        ff in model.feedforwards if isa(ff, SemiContinuousFeedforward)
+    )
 end
 
 function has_semicontinuous_feedforward(
@@ -259,7 +258,7 @@ with a Parameter or a Variable as the affected value.
 # Arguments:
 
   - `component_type::Type{<:PSY.Component}` : Specify the type of component on which the Feedforward will be applied
-  - `source::Type{T}` : Specify the VariableType, ParameterType or AuxVariableType as the source of values for the Feedforward
+  - `source::Type{T}` : Specify the VariableType or AuxVariableType as the source of values for the Feedforward
   - `affected_values::Vector{DataType}` : Specify the variable on which the fix value will be applied using the source values
 """
 struct FixValueFeedforward <: AbstractAffectFeedforward

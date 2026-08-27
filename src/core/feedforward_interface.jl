@@ -6,9 +6,6 @@
 # add_event_arguments!, etc.) to compile and run correctly when no events are
 # configured. Once the event code is migrated, these stubs should be replaced by
 # the real implementations.
-#
-# The feedforward stubs that used to live here have been replaced by the real
-# device-side implementations in `src/feedforward/`.
 #################################################################################
 
 # ---- Event arguments (ArgumentConstructStage) ----

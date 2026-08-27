@@ -423,6 +423,52 @@ end
     @test_throws ErrorException attach_feedforward!(service_model, ff)
 end
 
+@testset "has_semicontinuous_feedforward checks every attached feedforward" begin
+    device_model = DeviceModel(PSY.ThermalStandard, ThermalCompactDispatch)
+    # Two semicontinuous feedforwards with distinct source keys, the one affecting
+    # PowerAboveMinimumVariable attached second.
+    attach_feedforward!(
+        device_model,
+        SemiContinuousFeedforward(;
+            component_type = PSY.ThermalStandard,
+            source = OnVariable,
+            affected_values = [ActivePowerVariable],
+            meta = "other",
+        ),
+    )
+    attach_feedforward!(
+        device_model,
+        SemiContinuousFeedforward(;
+            component_type = PSY.ThermalStandard,
+            source = OnVariable,
+            affected_values = [PowerAboveMinimumVariable],
+        ),
+    )
+    @test length(IOM.get_feedforwards(device_model)) == 2
+    # Inspecting only the first would miss this and double-constrain the unit.
+    @test POM.has_semicontinuous_feedforward(device_model, PowerAboveMinimumVariable)
+    @test POM.has_semicontinuous_feedforward(device_model, ActivePowerVariable)
+end
+
+@testset "FixValueFeedforward rejects a parameter target on a DeviceModel" begin
+    device_model = DeviceModel(PSY.ThermalStandard, ThermalStandardDispatch)
+    ff_fix = FixValueFeedforward(;
+        component_type = PSY.ThermalStandard,
+        source = ActivePowerVariable,
+        affected_values = [ActivePowerTimeSeriesParameter],
+    )
+    attach_feedforward!(device_model, ff_fix)
+
+    c_sys5 = PSB.build_system(PSITestSystems, "c_sys5")
+    model = DecisionModel(MockOperationProblem, DCPNetworkModel, c_sys5)
+    # Readable error rather than a `get_variable` MethodError.
+    @test_throws ErrorException mock_construct_device!(
+        model,
+        device_model;
+        built_for_recurrent_solves = true,
+    )
+end
+
 @testset "Feedforwards reject non-variable affected values" begin
     @test_throws ErrorException UpperBoundFeedforward(;
         component_type = PSY.ThermalStandard,

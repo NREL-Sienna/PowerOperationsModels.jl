@@ -128,8 +128,8 @@ function add_parameters!(
     return
 end
 
-# `FixValueFeedforward` is the only feedforward whose update step writes through to
-# JuMP variables (`JuMP.fix`), so the parameter has to remember which variables it fixes.
+# `FixValueFeedforward` is the only feedforward whose parameter has to remember which
+# variables it drives: PowerSimulations' update step reads `affected_keys` to re-fix them.
 function _set_affected_variables!(
     container::OptimizationContainer,
     ::Type{T},
