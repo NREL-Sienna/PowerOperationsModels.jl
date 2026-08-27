@@ -326,6 +326,29 @@ function get_min_max_limits(
 end
 
 """
+Range constraints for thermal compact dispatch.
+
+Compact dispatch schedules `PowerAboveMinimumVariable`, so the semicontinuous
+feedforward check has to be made against that variable rather than against `U`.
+The generic method below would resolve `U` (a range expression) to
+`ActivePowerVariable` and fail to suppress these constraints, leaving the unit
+constrained twice.
+"""
+function add_constraints!(
+    container::OptimizationContainer,
+    T::Type{<:PowerVariableLimitsConstraint},
+    U::Type{<:Union{PowerAboveMinimumVariable, ExpressionType}},
+    devices::IS.FlattenIteratorWrapper{V},
+    model::DeviceModel{V, W},
+    ::NetworkModel{X},
+) where {V <: PSY.ThermalGen, W <: ThermalCompactDispatch, X <: AbstractNetworkModel}
+    if !has_semicontinuous_feedforward(model, PowerAboveMinimumVariable)
+        add_range_constraints!(container, T, U, devices, model, X)
+    end
+    return
+end
+
+"""
 Semicontinuous range constraints for thermal dispatch formulations
 """
 function add_constraints!(

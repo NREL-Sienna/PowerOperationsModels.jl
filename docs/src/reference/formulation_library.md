@@ -590,18 +590,50 @@ keyed by the service's own name (`meta = get_service_name(model)`). The only fix
 
 ## [Feedforward Formulations](@id ff_formulations)
 
-!!! warning "Feedforwards are not implemented in PowerOperationsModels"
+A feedforward parameterizes a variable in one operation model using values produced by another.
+POM builds them in two stages: `add_feedforward_arguments!` (ArgumentConstructStage) allocates the
+`VariableValueParameter` container that carries the source model's values plus any slack variables,
+and `add_feedforward_constraints!` (ModelConstructStage) builds the constraints that read it.
+Populating those parameters between executions is PowerSimulations' job — it needs simulation
+state, which POM does not have.
+
+Attach one to a device model with `attach_feedforward!`:
+
+```julia
+device_model = DeviceModel(ThermalStandard, ThermalStandardDispatch)
+attach_feedforward!(
+    device_model,
+    SemiContinuousFeedforward(;
+        component_type = ThermalStandard,
+        source = OnVariable,
+        affected_values = [ActivePowerVariable],
+    ),
+)
+```
+
+| Feedforward                 | Parameter                  | Constraint                            | Effect                                                         |
+|:--------------------------- |:-------------------------- |:------------------------------------- |:-------------------------------------------------------------- |
+| `UpperBoundFeedforward`     | `UpperBoundValueParameter` | `FeedforwardUpperBoundConstraint`     | ``x_t \le \text{param}_t \cdot \text{mult}_t``                 |
+| `LowerBoundFeedforward`     | `LowerBoundValueParameter` | `FeedforwardLowerBoundConstraint`     | ``x_t \ge \text{param}_t \cdot \text{mult}_t``                 |
+| `SemiContinuousFeedforward` | `OnStatusParameter`        | `FeedforwardSemiContinuousConstraint` | commitment from another model bounds ``x_t`` to 0 or its range |
+| `FixValueFeedforward`       | `FixValueParameter`        | `FeedforwardFixValueConstraint`       | ``x_t = \text{param}_t \cdot \text{mult}_t``                   |
+
+`UpperBoundFeedforward` and `LowerBoundFeedforward` accept `add_slacks = true`, which relaxes the
+bound with a non-negative `UpperBoundFeedForwardSlack` / `LowerBoundFeedForwardSlack` penalized at
+`BALANCE_SLACK_COST`.
+
+`SemiContinuousFeedforward` suppresses the affected formulation's own range constraints —
+`has_semicontinuous_feedforward` gates them — because the commitment status arrives as a parameter
+in the `ActivePowerRangeExpressionUB` / `…LB` expressions instead. Must-run thermal units are
+excluded throughout: they are never turned off, so they carry no `OnStatusParameter` entry and get
+no semicontinuous constraints.
+
+!!! warning "Service feedforwards are not implemented"
     
-    POM defines **no concrete feedforward types**. `AbstractAffectFeedforward` is an IOM abstract
-    used as the type of the `DeviceModel.feedforwards` field, and the concrete feedforwards
-    (`UpperBoundFeedforward`, `SemiContinuousFeedforward`, `FixValueFeedforward`, and so on) live in
-    PowerSimulations.jl and have not yet been migrated.
-    
-    Every `add_feedforward_arguments!` / `add_feedforward_constraints!` call site in POM's
-    constructors resolves to a **stub that returns without emitting anything**, and
-    `has_semicontinuous_feedforward` always returns `false`. The `UpperBoundFeedForwardSlack` /
-    `LowerBoundFeedForwardSlack` variable types and the `FixValueParameter` plumbing exist, but
-    nothing in POM constructs them — the plumbing is present, the driver is absent.
+    Feedforwards can only be attached to a `DeviceModel`. `attach_feedforward!` on a `ServiceModel`
+    throws. Per-type service models key their reserve variables by `(service_name, device_name, time)`, while the feedforward parameter path is keyed `(device_name, time)`; the two are
+    dimensionally inconsistent until the service `VariableValueParameter` path is re-keyed by
+    `(service, device)`.
 
 ## [Piecewise-linear cost](@id pwl_cost)
 

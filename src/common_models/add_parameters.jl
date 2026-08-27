@@ -81,6 +81,73 @@ function add_parameters!(
     return
 end
 
+#################################################################################
+# Feedforward parameters
+#
+# A feedforward names its source through an `OptimizationContainerKey` rather than
+# a device attribute, so these unwrap the key and hand it to the `VariableValueParameter`
+# `_add_parameters!` methods below.
+#################################################################################
+
+function add_parameters!(
+    container::OptimizationContainer,
+    ::Type{T},
+    ff::AbstractAffectFeedforward,
+    model::DeviceModel{D, W},
+    devices::V,
+) where {
+    T <: VariableValueParameter,
+    V <: Union{Vector{D}, IS.FlattenIteratorWrapper{D}},
+    W <: AbstractDeviceFormulation,
+} where {D <: PSY.Component}
+    if get_rebuild_model(get_settings(container)) && has_container_key(container, T, D)
+        return
+    end
+    source_key = get_optimization_container_key(ff)
+    _add_parameters!(container, T, source_key, model, devices)
+    return
+end
+
+function add_parameters!(
+    container::OptimizationContainer,
+    ::Type{T},
+    ff::FixValueFeedforward,
+    model::DeviceModel{D, W},
+    devices::V,
+) where {
+    T <: VariableValueParameter,
+    V <: Union{Vector{D}, IS.FlattenIteratorWrapper{D}},
+    W <: AbstractDeviceFormulation,
+} where {D <: PSY.Component}
+    if get_rebuild_model(get_settings(container)) && has_container_key(container, T, D)
+        return
+    end
+    source_key = get_optimization_container_key(ff)
+    _add_parameters!(container, T, source_key, model, devices)
+    _set_affected_variables!(container, T, D, ff)
+    return
+end
+
+# `FixValueFeedforward` is the only feedforward whose update step writes through to
+# JuMP variables (`JuMP.fix`), so the parameter has to remember which variables it fixes.
+function _set_affected_variables!(
+    container::OptimizationContainer,
+    ::Type{T},
+    ::Type{U},
+    ff::FixValueFeedforward,
+) where {
+    T <: VariableValueParameter,
+    U <: PSY.Component,
+}
+    source_key = get_optimization_container_key(ff)
+    var_type = get_entry_type(source_key)
+    parameter_container = get_parameter(container, T, U, "$var_type")
+    param_attributes = get_attributes(parameter_container)
+    affected_variables = get_affected_values(ff)
+    push!(param_attributes.affected_keys, affected_variables...)
+    return
+end
+
 function add_branch_parameters!(
     container::OptimizationContainer,
     ::Type{T},

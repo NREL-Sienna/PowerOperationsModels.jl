@@ -137,6 +137,12 @@ The specified constraint is formulated as:
 struct FeedforwardLowerBoundConstraint <: ConstraintType end
 struct FeedforwardEnergyTargetConstraint <: ConstraintType end
 """
+Struct to create the equality constraint that pins a variable to a feedforward value.
+
+For more information check [Feedforward Formulations](@ref ff_formulations).
+"""
+struct FeedforwardFixValueConstraint <: ConstraintType end
+"""
 Struct to create the constraint that set the flow limits through a PhaseShiftingTransformer.
 
 For more information check [Branch Formulations](@ref PowerSystems.Branch-Formulations).
