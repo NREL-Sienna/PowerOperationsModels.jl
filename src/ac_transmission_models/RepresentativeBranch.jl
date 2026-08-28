@@ -182,12 +182,19 @@ _dc_shift_injection(rep::RepresentativeBranch) =
 
 ################################## Transformer control #####################################
 
+const _VOLTAGE_CONTROL = PSY.TransformerControlObjective.VOLTAGE
+const _REACTIVE_CONTROL = PSY.TransformerControlObjective.REACTIVE_POWER_FLOW
+const _TAP_CONTROLS = (_VOLTAGE_CONTROL, _REACTIVE_CONTROL)
+
+const _TAP_NETWORKS = NativeACNetworkModel
+const _PHASE_NETWORKS = AbstractDCPNetworkModel
+
 _get_circuit(t::PSY.TwoWindingTransformer) = PSY.get_circuit(t)
 _get_circuit(t::PNM.ThreeWindingTransformerCircuit) = t.circuit
 _get_circuit(::Union{PSY.ACTransmission, PNM.AbstractReductionAggregate}) = nothing
 
 _control_objective(::Nothing, ::DeviceModel) = PSY.TransformerControlObjective.UNDEFINED
-_control_objective(c::PSY.TransformerCircuit, d::DeviceModel) =
+_control_objective(c::PSY.TransformerCircuit, d::DeviceModel{<:PSY.ACTransmission, _CONTROL_FORMULATIONS}) =
     if PSY.get_available(c) && _control_enabled(d)
         PSY.get_control_objective(c)
     else
@@ -195,10 +202,6 @@ _control_objective(c::PSY.TransformerCircuit, d::DeviceModel) =
     end
 _control_objective(rep::RepresentativeBranch, d::DeviceModel) =
     _control_objective(_get_circuit(rep.branch), d)
-
-const _VOLTAGE_CONTROL = PSY.TransformerControlObjective.VOLTAGE
-const _REACTIVE_CONTROL = PSY.TransformerControlObjective.REACTIVE_POWER_FLOW
-const _TAP_CONTROLS = (_VOLTAGE_CONTROL, _REACTIVE_CONTROL)
 
 _voltage_controlled(rep::RepresentativeBranch, d::DeviceModel) =
     _control_objective(rep, d) === _VOLTAGE_CONTROL

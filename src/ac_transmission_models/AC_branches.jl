@@ -122,19 +122,19 @@ const _CONTROL_VARS = Union{Type{TapRatioVariable}, Type{PhaseShifterAngle}}
 _control_var_enabled(::_CONTROL_VARS, d::DeviceModel) = _control_enabled(d)
 _control_var_enabled(::Type{<:VariableType}, ::DeviceModel) = true
 
-# Does this branch use this control variable?
+# Does this branch use this control variable or constraint?
 _branch_uses_control(
-    ::Type{TapRatioVariable},
+    ::Type{TapRatioVariable, VoltageControlConstraint, ReactivePowerFlowControlConstraint},
     branch,
     device_model::DeviceModel,
     network_model::NetworkModel,
 ) = _tap_controlled(branch, device_model, network_model)
-# _branch_uses_control(
-#     ::Type{PhaseShifterAngle},
-#     branch,
-#     device_model::DeviceModel,
-#     network_model::NetworkModel,
-# ) = _phase_controlled(branch, device_model, network_model)
+_branch_uses_control(
+    ::Type{PhaseShifterAngle, ActivePowerFlowControlConstraint},
+    branch,
+    device_model::DeviceModel,
+    network_model::NetworkModel,
+) = _phase_controlled(branch, device_model, network_model)
 
 _warn_tap_nonconvex(::Type{TapRatioVariable}, ::NetworkModel{LPACCNetworkModel}, branches) =
     isempty(branches) ||
@@ -158,7 +158,7 @@ function _branches_for_var(
                  branch or disable control for this circuit.",
             )
         end
-        !_branch_uses_control(V, branch, device_model, network_model) && return
+        _branch_uses_control(V, branch, device_model, network_model) || return
         push!(members, branch)
     end
     _warn_tap_nonconvex(V, network_model, members)
@@ -198,7 +198,7 @@ function _branch_variable_bounds(
 end
 
 _branch_variable_bounds(
-    ::Type{TapRatioVariable},
+    _CONTROL_VARS,
     rep::RepresentativeBranch,
     ::DeviceModel{<:PSY.ACTransmission, <:AbstractBranchFormulation},
     ::NetworkModel,
@@ -267,6 +267,7 @@ _branch_variable_bounds(
 
 _branch_variable_start(::Type{CosineApproximation}) = 1.0
 _branch_variable_start(::Type{TapRatioVariable}) = 1.0
+_branch_variable_start(::Type{PhaseShifterAngle}) = 0.0
 _branch_variable_start(::Type{<:VariableType}) = nothing
 
 """
@@ -322,6 +323,27 @@ function add_variables!(
     end
     return
 end
+
+_add_transformer_control_variables!(
+    container::OptimizationContainer,
+    devices::IS.FlattenIteratorWrapper{T},
+    device_model::DeviceModel{T, <:_CONTROL_FORMULATIONS},
+    network_model::NetworkModel{<:_TAP_NETWORKS}
+) where {T <: _TRANSFORMERS} = add_variables!(container, TapRatioVariable, devices, device_model, network_model)
+
+_add_transformer_control_variables!(
+    container::OptimizationContainer,
+    devices::IS.FlattenIteratorWrapper{T},
+    device_model::DeviceModel{T, <:_CONTROL_FORMULATIONS},
+    network_model::NetworkModel{<:_PHASE_NETWORKS}
+) where {T <: _TRANSFORMERS} = add_variables!(container, PhaseShifterAngle, device_model, device_model, network_model)
+
+_add_transformer_control_variables!(
+    ::OptimizationContainer,
+    ::IS.FlattenIteratorWrapper,
+    ::DeviceModel,
+    ::NetworkModel,
+) = nothing
 
 function _add_meta_flow_slack!(
     container::OptimizationContainer,
@@ -1410,6 +1432,23 @@ function add_constraints!(
     return
 end
 
+function _branches_for_cons(
+    C::Union{
+        Type{VoltageControlConstraint},
+        Type{ReactivePowerFlowControlConstraint},
+        Type{ActivePowerFlowControlConstraint},
+    },
+    device_model::DeviceModel{T},
+    network_model::NetworkModel,
+) where {T}
+    members = RepresentativeBranch[]
+    _foreach_branch(_representative_branches(network_model, T, C)) do branch
+        _branch_uses_control(C, branch, device_model, network_model) &&
+            push!(members, branch)
+    end
+    return members
+end
+
 _voltage_magnitude(container, name, ::NetworkModel{ACPNetworkModel}) =
     get_variable(container, VoltageMagnitude, PSY.ACBus)[name, :]
 _voltage_magnitude(
@@ -1436,26 +1475,24 @@ function _add_voltage_control_constraints!(
     container::OptimizationContainer,
     sys::PSY.System,
     devices::IS.FlattenIteratorWrapper{T},
-    device_model::DeviceModel{T},
+    device_model::DeviceModel{T, <:_CONTROL_FORMULATIONS},
     network_model::NetworkModel{<:NativeACNetworkModel},
 ) where {T <: _TRANSFORMERS}
     _control_enabled(device_model) || return
 
+    branches = _branches_for_cons(VoltageControlConstraint, device_model, network_model)
+    time_steps = get_time_steps(container)
     cons = add_constraints_container!(
         container,
         VoltageControlConstraint,
         T,
-        String[],
-        Int[],
-        Int[];
-        sparse = true,
+        _branch_names(branches),
+        1:2,
+        time_steps,
     )
 
-    time_steps = get_time_steps(container)
     jump_model = get_jump_model(container)
-    _foreach_branch(
-        _representative_branches(network_model, T, VoltageControlConstraint),
-    ) do rep
+    _foreach_branch(branches) do rep
         _voltage_controlled(rep, device_model) || return
 
         cont_lims = _quantity_limits(rep)
@@ -1484,32 +1521,74 @@ _add_voltage_control_constraints!(
     ::NetworkModel,
 ) where {T <: PSY.ACTransmission} = nothing
 
-function _add_reactive_control_constraints!(
+_flow_array(
     container::OptimizationContainer,
+    ::Type{ReactivePowerFlowControlConstraint},
+    ::DeviceModel{T, _CONTROL_FORMULATIONS},
+    ::NetworkModel{<:NativeACNetworkModel}
+) where {T <: _TRANSFORMERS} = get_variable(container, FlowReactivePowerFromToVariable, T)
+_flow_array(
+    container::OptimizationContainer,
+    ::Type{ActivePowerFlowControlConstraint},
+    ::DeviceModel{T, StaticBranch},
+    ::NetworkModel{DCPNetworkModel},
+) where {T <: _TRANSFORMERS} = get_expression(container, BThetaBranchFlow, T)
+_flow_array(
+    container::OptimizationContainer,
+    ::Type{ActivePowerFlowControlConstraint},
+    ::DeviceModel{T, StaticBranchBounds},
+    ::NetworkModel{DCPNetworkModel},
+) where {T <: _TRANSFORMERS} = get_variable(container, FlowActivePowerVariable, T)
+_flow_array(
+    container::OptimizationContainer,
+    ::Type{ActivePowerFlowControlConstraint},
+    ::DeviceModel{T, <:Union{StaticBranch, StaticBranchBounds}},
+    ::NetworkModel{DCPLLNetworkModel},
+) where {T <: _TRANSFORMERS} =
+    get_variable(container, FlowActivePowerFromToVariable, T)
+_flow_array(
+    container::OptimizationContainer,
+    ::Type{ActivePowerFlowControlConstraint},
+    ::DeviceModel{T, StaticBranch},
+    ::NetworkModel{<:AbstractPTDFNetworkModel},
+) where {T <: _TRANSFORMERS} = get_expression(container, PTDFBranchFlow, T)
+_flow_array(
+    container::OptimizationContainer,
+    ::Type{ActivePowerFlowControlConstraint},
+    ::DeviceModel{T, StaticBranchBounds},
+    ::NetworkModel{<:AbstractPTDFNetworkModel},
+) where {T <: _TRANSFORMERS} = get_variable(container, FlowActivePowerVariable, T)
+
+_flow_controlled(::Type{ReactivePowerFlowControlConstraint}, rep::RepresentativeBranch, d::DeviceModel) =
+    _reactive_controlled(rep, d)
+_flow_controlled(::Type{ActivePowerFlowControlConstraint}, rep::RepresentativeBranch, d::DeviceModel) =
+    _active_controlled(rep, d)
+
+function _add_flow_control_constraints!(
+    container::OptimizationContainer,
+    ::Type{C},
     devices::IS.FlattenIteratorWrapper{T},
-    device_model::DeviceModel{T},
-    network_model::NetworkModel{<:NativeACNetworkModel},
-) where {T <: _TRANSFORMERS}
+    device_model::DeviceModel{T, <:_CONTROL_FORMULATIONS},
+    network_model::NetworkModel,
+) where {C <: _CONTROL_CONSTRAINTS, T <: _TRANSFORMERS}
     _control_enabled(device_model) || return
 
+    branches = _branches_for_cons(C, device_model, network_model)
+    time_steps = get_time_steps(container)
     cons = add_constraints_container!(
         container,
-        ReactivePowerFlowControlConstraint,
+        C,
         T,
-        String[],
-        Int[],
-        Int[];
-        sparse = true,
+        _branch_names(branches),
+        1:2,
+        time_steps,
     )
     qft = get_variable(container, FlowReactivePowerFromToVariable, T)
-    qtf = get_variable(container, FlowReactivePowerToFromVariable, T)
+    flow = _flow_array(container, C, device_model, network_model)
 
-    time_steps = get_time_steps(container)
     jump_model = get_jump_model(container)
-    _foreach_branch(
-        _representative_branches(network_model, T, ReactivePowerFlowControlConstraint),
-    ) do rep
-        _reactive_controlled(rep, device_model) || return
+    _foreach_branch(branches) do rep
+        _flow_controlled(C, rep, device_model) || return
         cont_lims = _quantity_limits(rep)
         line_lims = _flow_limits(rep, device_model)
 
@@ -1518,15 +1597,15 @@ function _add_reactive_control_constraints!(
 
         for t in time_steps
             cons[rep.name, 1, t] =
-                JuMP.@constraint(jump_model, qft[rep.name, t] >= cont_lims.min)
+                JuMP.@constraint(jump_model, flow[rep.name, t] >= cont_lims.min)
             cons[rep.name, 2, t] =
-                JuMP.@constraint(jump_model, qft[rep.name, t] <= cont_lims.max)
+                JuMP.@constraint(jump_model, flow[rep.name, t] <= cont_lims.max)
         end
     end
     return
 end
 
-_add_reactive_control_constraints!(
+_add_flow_control_constraints!(
     ::OptimizationContainer,
     ::IS.FlattenIteratorWrapper{T},
     ::DeviceModel{T},
@@ -1537,11 +1616,24 @@ function _add_transformer_control_constraints!(
     container::OptimizationContainer,
     sys::PSY.System,
     devices::IS.FlattenIteratorWrapper{T},
-    device_model::DeviceModel{T},
-    network_model::NetworkModel,
+    device_model::DeviceModel{T, <:_CONTROL_FORMULATIONS},
+    network_model::NetworkModel{<:_TAP_NETWORKS},
 ) where {T <: _TRANSFORMERS}
+    _control_enabled(device_model) || return
     _add_voltage_control_constraints!(container, sys, devices, device_model, network_model)
-    _add_reactive_control_constraints!(container, devices, device_model, network_model)
+    _add_flow_control_constraints!(container, ReactivePowerFlowControlConstraint, devices, device_model, network_model)
+    return
+end
+
+function _add_transformer_control_constraints!(
+    container::OptimizationContainer,
+    sys::PSY.System,
+    devices::IS.FlattenIteratorWrapper{T},
+    device_model::DeviceModel{T, <:_CONTROL_FORMULATIONS},
+    network_model::NetworkModel{<:_PHASE_NETWORKS},
+) where {T <: _TRANSFORMERS}
+    _control_enabled(device_model) || return
+    _add_flow_control_constraints!(container, ActivePowerFlowControlConstraint, devices, device_model, network_model)
     return
 end
 
