@@ -361,7 +361,7 @@ function add_variable_cost_to_objective!(
 ) where {T <: VariableType, U <: AbstractControllablePowerLoadFormulation}
     component_name = PSY.get_name(component)
     @debug "Market Bid" _group = LOG_GROUP_COST_FUNCTIONS component_name
-    if _offer_curve_is_genuine(container, component, get_output_offer_curves(cost_function))
+    if IOM.is_nontrivial_offer(container, component, get_output_offer_curves(cost_function))
         throw(
             ArgumentError(
                 "Component $(component_name) is not allowed to participate as a supply.",
