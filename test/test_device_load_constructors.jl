@@ -584,7 +584,7 @@ end
     set_operation_cost!(
         iloadbus4,
         MarketBidCost(;
-            no_load_cost = LinearCurve(0.0),
+            minimum_energy_offer = LinearCurve(0.0),
             start_up = (hot = 0.0, warm = 0.0, cold = 0.0),
             shut_down = LinearCurve(0.0),
             incremental_offer_curves = make_market_bid_curve(
@@ -608,7 +608,7 @@ end
     set_operation_cost!(
         iloadbus4,
         MarketBidCost(;
-            no_load_cost = LinearCurve(0.0),
+            minimum_energy_offer = LinearCurve(0.0),
             start_up = (hot = 0.0, warm = 0.0, cold = 0.0),
             shut_down = LinearCurve(0.0),
             decremental_offer_curves = make_market_bid_curve(

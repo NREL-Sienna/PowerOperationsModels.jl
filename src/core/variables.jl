@@ -42,6 +42,15 @@ struct EnergyVariable <: VariableType end
 struct LiftVariable <: VariableType end
 
 """
+Binary block-bid commitment variable (``z``) for a FIXED-`curve_style` market bid
+(`PSY.CurveStyles.FIXED`): one JuMP variable per (component, direction), reused unscaled
+at every period of the horizon in both the settlement row and the objective. The block
+clears at its full MW envelope in every period when ``z = 1``, or not at all when
+``z = 0`` — an all-or-nothing decision across the whole bid period.
+"""
+struct BlockBidCommitmentVariable <: VariableType end
+
+"""
 Struct to dispatch the creation of Reactive Power Variables
 
 Docs abbreviation: ``q``

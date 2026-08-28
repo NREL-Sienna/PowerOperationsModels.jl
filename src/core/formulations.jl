@@ -79,6 +79,30 @@ Formulation type to enable load shifting
 """
 struct PowerLoadShift <: AbstractControllablePowerLoadFormulation end
 
+"""
+Market-container load formulation for an AS-only interruptible load: an `ActivePowerVariable`
+that is fixed to zero every period whenever its market bid is costless (`_is_costless_offer`),
+or priced through the standard decremental `MarketBidCost` path otherwise. Registered via
+`set_market_component_model!`, so it never touches the physical `ActivePowerBalance` — its
+settlement contribution (`-1.0`, like a decremental `VirtualParticipant`) is the load's only
+balance-row entry.
+
+Reserve range expressions (`ActivePowerRangeExpressionLB`/`UB`) are anchored on the constant
+`max_active_power` parameter, NOT on this formulation's own (possibly zero-fixed) energy
+variable: a costless device dispatching at `P ≡ 0` would otherwise make any up-reserve award
+infeasible (`LB = P - r_up >= 0` forces `r_up <= 0`). Anchoring on `max_active_power` decouples
+reserve eligibility from realized market energy, matching the "AS-only" intent — the physical
+forecast this component would otherwise carry is modeled separately by a `StaticPowerLoad`-
+formulated twin `DeviceModel` for the same component in `template.devices` (that twin's mere
+presence is also what lets the reserve service machinery find this component type: see
+`market_loads.jl`).
+
+Offline-reserve range placement (`offline_reserve_in_range_ub`, add_to_expression.jl:~2566)
+dispatches on the TEMPLATE registration's formulation (the `StaticPowerLoad` twin above), not
+this one — a future override on `MarketLoadBid` would be silently ignored through that path.
+"""
+struct MarketLoadBid <: AbstractControllablePowerLoadFormulation end
+
 ############################ Regulation Device Formulations ################################
 abstract type AbstractRegulationFormulation <: AbstractDeviceFormulation end
 struct ReserveLimitedRegulation <: AbstractRegulationFormulation end
@@ -105,6 +129,25 @@ abstract type AbstractSourceFormulation <: AbstractDeviceFormulation end
 Formulation type to add import and export model for `Source`
 """
 struct ImportExportSourceModel <: AbstractSourceFormulation end
+
+########################### Market Component Formulations ##############################
+
+"""
+Formulation for `PSY.VirtualParticipant` market components. Adds `ActivePowerOutVariable`
+(supply / incremental award) and `ActivePowerInVariable` (demand / decremental award),
+bounded by `max_supply`/`max_demand`, and adds both directly to the single system-wide
+`SettlementBalance` row (+out, -in) — never to a physical `ActivePowerBalance` row.
+`settlement_point`/`trading_hubs` are recorded on the component but unresolved here: with
+one settlement row, location is moot. `PSY.CurveStyles` selects the bid's shape: CURVE gets
+a fresh divisible variable per period, VARIABLE one shared divisible variable across the
+horizon, and FIXED a shared binary [`BlockBidCommitmentVariable`](@ref).
+
+Simultaneous nonzero `ActivePowerOutVariable` and `ActivePowerInVariable` on the same
+participant (self-crossing) is permitted, mirroring real DAM virtual-bidding rules: an
+in-merit incremental and an in-merit decremental bid on the same participant both clear on
+their own economic merits, irrespective of common ownership.
+"""
+struct VirtualBidDispatch <: AbstractDeviceFormulation end
 
 # Does this device formulation contribute to ReactivePowerBalance? Reactive-only
 # formulations are dropped from a template under an active-power-only network (no Q balance).

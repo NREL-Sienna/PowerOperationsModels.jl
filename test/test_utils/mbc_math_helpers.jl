@@ -409,7 +409,7 @@ function stub_ts_market_bid_cost(;
     decremental_trivial::Bool = false,
 )
     return PSY.MarketBidTimeSeriesCost(;
-        no_load_cost = PSY.TimeSeriesLinearCurve(_stub_forecast_key("no_load")),
+        minimum_energy_offer = PSY.TimeSeriesLinearCurve(_stub_forecast_key("no_load")),
         start_up = _stub_forecast_key("start_up"),
         shut_down = PSY.TimeSeriesLinearCurve(_stub_forecast_key("shut_down")),
         incremental_offer_curves = stub_ts_offer_curve(;

@@ -218,7 +218,7 @@ end
 @testset "ThermalStandard + ThermalBasicUnitCommitment + static MBC" begin
     # Distinct values on every dial so a wiring swap is visible.
     mbc = PSY.MarketBidCost(;
-        no_load_cost = PSY.LinearCurve(10.0),  # unused by thermal objective; kept as a
+        minimum_energy_offer = PSY.LinearCurve(10.0),  # unused by thermal objective; kept as a
         # canary for accidental wiring into obj.
         start_up = (hot = 50.0, warm = 80.0, cold = 100.0),
         shut_down = PSY.LinearCurve(30.0),

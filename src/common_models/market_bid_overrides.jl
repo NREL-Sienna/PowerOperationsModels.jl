@@ -138,9 +138,9 @@ function IOM.validate_occ_component(
     ::Type{IncrementalCostAtMinParameter},
     device::Union{PSY.RenewableDispatch, PSY.Storage},
 )
-    x = _scalar_if_static(PSY.get_no_load_cost(PSY.get_operation_cost(device)))
+    x = _scalar_if_static(PSY.get_minimum_energy_offer(PSY.get_operation_cost(device)))
     if !isnothing(x) && x != 0.0
-        @warn "Nonzero no-load cost detected for renewable generation or storage device $(get_name(device))."
+        @warn "Nonzero minimum-energy offer detected for renewable generation or storage device $(get_name(device))."
     end
 end
 
@@ -148,9 +148,9 @@ function IOM.validate_occ_component(
     ::Type{DecrementalCostAtMinParameter},
     device::PSY.Storage,
 )
-    x = _scalar_if_static(PSY.get_no_load_cost(PSY.get_operation_cost(device)))
+    x = _scalar_if_static(PSY.get_minimum_energy_offer(PSY.get_operation_cost(device)))
     if !isnothing(x) && x != 0.0
-        @warn "Nonzero no-load cost detected for storage device $(get_name(device))."
+        @warn "Nonzero minimum-energy offer detected for storage device $(get_name(device))."
     end
 end
 
@@ -255,6 +255,50 @@ function add_variable_cost_to_objective!(
         cost_function,
         ActivePowerInVariable,
         ImportExportSourceModel,
+    )
+    return
+end
+
+#################################################################################
+# Section 6a: VirtualParticipant — incremental (supply) and decremental (demand)
+# offers on a MarketBidCost. Structurally identical two-sided precedent to Source
+# ImportExport above, just keyed on MBC_TYPES instead of IEC_TYPES.
+#################################################################################
+
+function add_variable_cost_to_objective!(
+    container::OptimizationContainer,
+    ::Type{ActivePowerOutVariable},
+    component::PSY.VirtualParticipant,
+    cost_function::MBC_TYPES,
+    ::Type{VirtualBidDispatch},
+)
+    IOM.is_nontrivial_offer(get_output_offer_curves(cost_function)) || return
+    add_pwl_term_delta!(
+        IncrementalOffer(),
+        container,
+        component,
+        cost_function,
+        ActivePowerOutVariable,
+        VirtualBidDispatch,
+    )
+    return
+end
+
+function add_variable_cost_to_objective!(
+    container::OptimizationContainer,
+    ::Type{ActivePowerInVariable},
+    component::PSY.VirtualParticipant,
+    cost_function::MBC_TYPES,
+    ::Type{VirtualBidDispatch},
+)
+    IOM.is_nontrivial_offer(get_input_offer_curves(cost_function)) || return
+    add_pwl_term_delta!(
+        DecrementalOffer(),
+        container,
+        component,
+        cost_function,
+        ActivePowerInVariable,
+        VirtualBidDispatch,
     )
     return
 end

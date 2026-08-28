@@ -158,7 +158,7 @@ end
 """Set everything except the incremental_offer_curves to zero on the static MarketBidCost attached to the unit."""
 function zero_out_non_incremental_curve!(::PSY.System, unit::PSY.Component)
     cost = deepcopy(get_operation_cost(unit)::MarketBidCost)
-    set_no_load_cost!(cost, LinearCurve(0.0))
+    set_minimum_energy_offer!(cost, LinearCurve(0.0))
     set_start_up!(cost, (hot = 0.0, warm = 0.0, cold = 0.0))
     set_shut_down!(cost, LinearCurve(0.0))
     # set minimum generation cost (but not min gen power) to zero.
@@ -170,16 +170,16 @@ function zero_out_non_incremental_curve!(::PSY.System, unit::PSY.Component)
     set_operation_cost!(unit, cost)
 end
 
-"Zero out the no_load_cost and fold its value into the incremental curve's initial_input. Not designed for time series."
+"Zero out the minimum_energy_offer and fold its value into the incremental curve's initial_input. Not designed for time series."
 function no_load_to_initial_input!(comp::Generator)
     cost = get_operation_cost(comp)::MarketBidCost
-    no_load = get_proportional_term(PSY.get_no_load_cost(cost))
+    no_load = get_proportional_term(PSY.get_minimum_energy_offer(cost))
     old_fd = get_function_data(
         get_value_curve(get_incremental_offer_curves(get_operation_cost(comp))),
     )::IS.PiecewiseStepData
     new_vc = PiecewiseIncrementalCurve(old_fd, no_load, nothing)
     set_incremental_offer_curves!(get_operation_cost(comp), CostCurve(new_vc))
-    set_no_load_cost!(get_operation_cost(comp), LinearCurve(0.0))
+    set_minimum_energy_offer!(get_operation_cost(comp), LinearCurve(0.0))
     return
 end
 
@@ -233,7 +233,7 @@ function _constant_ts_offer_curve!(
 end
 
 # Promote `comp`'s static MarketBidCost to a `MarketBidTimeSeriesCost`, with all fields
-# backed by time series. Offer curves and no_load_cost get constant-valued series; startup
+# backed by time series. Offer curves and minimum_energy_offer get constant-valued series; startup
 # and shutdown optionally vary per `startup_incr`/`shutdown_incr = (res_incr, interval_incr)`.
 # Returns the startup and shutdown Deterministic objects (callers compare to these).
 function _promote_mbc_to_ts!(
@@ -251,11 +251,11 @@ function _promote_mbc_to_ts!(
     else
         shutdown_base
     end
-    nl_base = get_proportional_term(get_no_load_cost(op_cost))
+    nl_base = get_proportional_term(get_minimum_energy_offer(op_cost))
 
     su_ts = make_deterministic_ts(sys, "start_up", su_base, startup_incr...)
     sd_ts = make_deterministic_ts(sys, "shut_down", sd_base, shutdown_incr...)
-    nl_ts = make_deterministic_ts(sys, "no_load_cost", nl_base, 0.0, 0.0)
+    nl_ts = make_deterministic_ts(sys, "minimum_energy_offer", nl_base, 0.0, 0.0)
     su_key = add_time_series!(sys, comp, su_ts)
     sd_key = add_time_series!(sys, comp, sd_ts)
     nl_key = add_time_series!(sys, comp, nl_ts)
@@ -268,7 +268,7 @@ function _promote_mbc_to_ts!(
             "decremental")
 
     new_cost = MarketBidTimeSeriesCost(;
-        no_load_cost = TimeSeriesLinearCurve(nl_key),
+        minimum_energy_offer = TimeSeriesLinearCurve(nl_key),
         start_up = su_key,
         shut_down = TimeSeriesLinearCurve(sd_key),
         incremental_offer_curves = incr_curve,
@@ -503,7 +503,7 @@ function create_multistart_sys(
     set_operation_cost!(
         ms_comp,
         MarketBidCost(;
-            no_load_cost = LinearCurve(0.0),
+            minimum_energy_offer = LinearCurve(0.0),
             start_up = (hot = 300.0, warm = 450.0, cold = 500.0),
             shut_down = LinearCurve(100.0),
             incremental_offer_curves = CostCurve(new_ic),

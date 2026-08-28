@@ -193,12 +193,15 @@ import InfrastructureOptimizationModels:
     get_network_model,
     get_network_formulation,
     get_hvdc_network_model,
+    get_market_model,
     get_component_types,
     get_model,
     set_network_model!,
     set_hvdc_network_model!,
     set_device_model!,
     set_service_model!,
+    set_market_model!,
+    set_market_component_model!,
     finalize_template!,
     validate_time_series!,
     validate_template,
@@ -246,6 +249,7 @@ include("core/parameters.jl")
 include("core/formulations.jl")
 include("core/bilinear_configs.jl")
 include("core/network_formulations.jl")
+include("core/market_formulations.jl")
 include("core/branch_slack_specs.jl")
 include("core/problem_template.jl")
 include("core/feedforward_interface.jl")
@@ -323,6 +327,12 @@ include("network_models/acr_model.jl")
 include("network_models/lpacc_model.jl")
 include("network_models/network_constructor.jl")
 
+# Market Models
+include("market_models/settlement_balance.jl")
+include("market_models/market_constructor.jl")
+include("market_models/virtual_participant.jl")
+include("market_models/market_loads.jl")
+
 # Services Models
 include("services_models/service_slacks.jl")
 include("services_models/reserves.jl")
@@ -380,6 +390,7 @@ import InfrastructureOptimizationModels:
 # Functions defined in POM (core/interfaces.jl)
 export construct_device!
 export construct_service!
+export construct_market_component!
 export add_to_objective_function!
 export add_constraints!
 export get_variable_multiplier
@@ -431,6 +442,9 @@ export set_network_model!
 export get_network_formulation
 export get_hvdc_network_model
 export set_hvdc_network_model!
+export get_market_model
+export set_market_model!
+export set_market_component_model!
 export validate_time_series!
 export init_optimization_container!
 export get_network_model
@@ -514,6 +528,7 @@ export INITIALIZATION_PROBLEM_HORIZON_COUNT
 export ActivePowerVariable
 export ActivePowerInVariable
 export ActivePowerOutVariable
+export BlockBidCommitmentVariable
 export ReactivePowerVariable
 export PowerAboveMinimumVariable
 
@@ -771,6 +786,7 @@ export PiecewiseLinearBlockDecrementalOfferConstraint
 export RampConstraint
 export RampLimitConstraint
 export CopperPlateBalanceConstraint
+export SettlementBalanceConstraint
 export ActiveRangeICConstraint
 export NodalBalanceActiveConstraint
 export ReferenceBusConstraint
@@ -864,6 +880,7 @@ export StaticPowerLoad
 export PowerLoadInterruption
 export PowerLoadDispatch
 export PowerLoadShift
+export MarketLoadBid
 
 # Renewable Formulations
 export RenewableFullDispatch
@@ -871,6 +888,7 @@ export RenewableConstantPowerFactor
 
 # Source Formulations
 export ImportExportSourceModel
+export VirtualBidDispatch
 
 # SynCons Formulations
 export SynchronousCondenserBasicDispatch
@@ -962,6 +980,7 @@ export AbstractACRNetworkModel
 export AbstractLPACCNetworkModel
 export AbstractIVRNetworkModel
 export AbstractActivePowerModel
+export SettlementMarket
 export AbstractReactivePowerNetworkModel
 export NFANetworkModel
 export DCPLLNetworkModel

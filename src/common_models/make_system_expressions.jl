@@ -4,6 +4,24 @@ function make_container_array(ax...)
 end
 
 """
+Allocate the settlement balance expression: a single row (axis `[1]`) per timestep, keyed on
+`PSY.System` and deliberately subnetwork-independent — unlike the physical
+`CopperPlateBalanceConstraint`/`ActivePowerBalance` row, which is keyed per reference bus (one
+row per subnetwork). Separate from the network's physical balance expressions. Called once
+per build when the template carries a market model.
+"""
+function initialize_settlement_expression!(
+    container::OptimizationContainer,
+    ::IOM.MarketModel,
+    ::PSY.System,
+)
+    time_steps = get_time_steps(container)
+    container.expressions[ExpressionKey(IOM.SettlementBalance, PSY.System)] =
+        make_container_array([1], time_steps)
+    return
+end
+
+"""
 Generic fallback for full power flow models (ACP, ACR, etc.).
 Creates both ActivePowerBalance and ReactivePowerBalance on ACBus.
 """

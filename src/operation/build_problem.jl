@@ -96,6 +96,11 @@ function build_problem!(
         sys,
     )
 
+    market_model = get_market_model(template)
+    if market_model !== nothing
+        initialize_settlement_expression!(container, market_model, sys)
+    end
+
     # Order is required
     for device_model in values(template.devices)
         @debug "Building Arguments for $(get_component_type(device_model)) with $(get_formulation(device_model)) formulation" _group =
@@ -113,6 +118,10 @@ function build_problem!(
             @debug "Problem size:" get_problem_size(container) _group =
                 LOG_GROUP_OPTIMIZATION_CONTAINER
         end
+    end
+
+    TimerOutputs.@timeit BUILD_PROBLEMS_TIMER "Market components" begin
+        construct_market_components!(container, sys, ArgumentConstructStage(), template)
     end
 
     TimerOutputs.@timeit BUILD_PROBLEMS_TIMER "Services" begin
@@ -173,6 +182,10 @@ function build_problem!(
             @debug "Problem size:" get_problem_size(container) _group =
                 LOG_GROUP_OPTIMIZATION_CONTAINER
         end
+    end
+
+    TimerOutputs.@timeit BUILD_PROBLEMS_TIMER "Market components" begin
+        construct_market_components!(container, sys, ModelConstructStage(), template)
     end
 
     # Balance/reference constraints close after device ModelConstructStage so that

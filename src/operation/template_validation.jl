@@ -113,7 +113,68 @@ function validate_template_impl!(model::IOM.AbstractOptimizationModel)
     _check_voltage_regulation_conflicts!(template, system, network_model)
     _check_branch_rating_time_series_formulation!(template.branches, system)
     validate_network_model(network_model, unmodeled_branch_types, model_has_branch_filters)
+    _check_market_model!(template)
     _build_device_model_outages!(template, system)
+    return
+end
+
+# The market model's settlement_domain must be `PSY.System`, and it only makes sense
+# against an active-power network. Deferred to here (rather than checked in
+# `set_market_model!`) to mirror how `set_network_model!` defers its own network-model
+# validation to `validate_network_model` in this function.
+function _check_market_model!(template::PowerOperationsProblemTemplate)
+    market_model = get_market_model(template)
+    market_model === nothing && return
+    settlement_domain = IOM.get_settlement_domain(market_model)
+    if settlement_domain !== PSY.System
+        throw(
+            ArgumentError(
+                "Market model settlement_domain must be PSY.System (a single system-wide " *
+                "settlement row is the only supported domain), got $(settlement_domain).",
+            ),
+        )
+    end
+    network_formulation = get_network_formulation(template)
+    # CopperPlateNetworkModel EXACTLY, not merely `<: AbstractActivePowerModel`.
+    # PTDF/AreaPTDF/DCP/DCPLL are also `AbstractActivePowerModel` subtypes (via
+    # `AbstractDCPNetworkModel`) but only slack the balance ROW while leaving branch flow
+    # limits binding, which silently congestion-contaminates the settlement price.
+    # AreaBalanceNetworkModel's per-area semantics are unconfirmed and excluded until
+    # settled. Only CopperPlate genuinely neutralizes the physical balance system-wide.
+    if network_formulation !== CopperPlateNetworkModel
+        throw(
+            ArgumentError(
+                "Market model requires network formulation CopperPlateNetworkModel " *
+                "exactly (any other formulation leaves branch or area constraints " *
+                "binding, silently contaminating the settlement price), got " *
+                "$(network_formulation).",
+            ),
+        )
+    end
+    network_model = get_network_model(template)
+    if IOM.get_use_slacks(network_model)
+        throw(
+            ArgumentError(
+                "NetworkModel(...; use_slacks = true) conflicts with a market model: the " *
+                "market rule prices the physical balance slack at 0.0 regardless (the " *
+                "settlement balance is the binding accounting identity), so the " *
+                "requested penalty ($(BALANCE_SLACK_COST)) can never be honored. Remove " *
+                "the market model or set use_slacks = false.",
+            ),
+        )
+    end
+    component_models = IOM.get_market_component_models(market_model)
+    if isempty(component_models)
+        throw(
+            ArgumentError(
+                "Market model $(typeof(market_model)) has no market component models. A " *
+                "market model with zero components is a configuration error (it leaves " *
+                "the physical balance unconstrained and no settlement equality to clear " *
+                "against) -- call set_market_component_model! for at least one component " *
+                "type, or remove the market model.",
+            ),
+        )
+    end
     return
 end
 
