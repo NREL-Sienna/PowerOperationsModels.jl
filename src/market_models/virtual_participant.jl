@@ -20,6 +20,10 @@ get_variable_binary(::Type{ActivePowerInVariable}, ::Type{<:PSY.VirtualParticipa
 # FIXED-style block-bid commitment (z): binary, unbounded beyond {0,1}.
 get_variable_binary(::Type{BlockBidCommitmentVariable}, ::Type{<:PSY.VirtualParticipant}, ::Type{VirtualBidDispatch}) = true
 
+# Generic `= 1.0` PWL-parameter fallbacks for market components (not Device)
+get_multiplier_value(::Type{<:AbstractPiecewiseLinearSlopeParameter}, ::PSY.VirtualParticipant, ::Type{VirtualBidDispatch}) = 1.0
+get_multiplier_value(::Type{<:AbstractPiecewiseLinearBreakpointParameter}, ::PSY.VirtualParticipant, ::Type{VirtualBidDispatch}) = 1.0
+
 #! format: on
 
 """

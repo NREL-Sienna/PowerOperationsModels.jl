@@ -521,6 +521,38 @@ function IOM.add_pwl_term_delta!(
     end
 end
 
+const INERT_OFFER_SPAN_TOL = 1e-3
+
+# Static curves: the data is in the struct, so the plain domain check answers directly.
+_offer_curve_is_genuine(
+    ::OptimizationContainer,
+    ::IS.InfrastructureSystemsComponent,
+    curves,
+) = IOM.is_nontrivial_offer(curves)
+
+# A one-sided bid's absent side can be a REAL stored inert series (document round-trips
+# `_require` both curve fields), so a TS key's presence does not mean genuine
+# participation. Resolve the series through the component and test the envelope: a side
+# whose every step spans <= INERT_OFFER_SPAN_TOL MW offers nothing.
+function _offer_curve_is_genuine(
+    container::OptimizationContainer,
+    component::IS.InfrastructureSystemsComponent,
+    curves::IS.CostCurve{IS.TimeSeriesPiecewiseIncrementalCurve},
+)
+    IOM.is_nontrivial_offer(curves) || return false
+    ts_type = get_default_time_series_type(container)
+    ts_name = IS.get_name(IS.get_time_series_key(curves))
+    PSY.has_time_series(component, ts_type, ts_name) || return false
+    window = IOM.get_time_series_initial_values!(container, ts_type, component, ts_name)
+    return any(_offer_step_span(fd) > INERT_OFFER_SPAN_TOL for fd in window)
+end
+
+function _offer_step_span(fd::IS.PiecewiseStepData)
+    x = IS.get_x_coords(fd)
+    return last(x) - first(x)
+end
+_offer_step_span(::Any) = Inf  # unknown eltype: stay strict
+
 function IOM.add_variable_cost_to_objective!(
     container::OptimizationContainer,
     ::Type{T},
@@ -530,7 +562,7 @@ function IOM.add_variable_cost_to_objective!(
 ) where {T <: VariableType, U <: AbstractDeviceFormulation}
     component_name = IS.get_name(component)
     @debug "Market Bid" _group = LOG_GROUP_COST_FUNCTIONS component_name
-    if IOM.is_nontrivial_offer(get_input_offer_curves(cost_function))
+    if _offer_curve_is_genuine(container, component, get_input_offer_curves(cost_function))
         throw(
             ArgumentError(
                 "Component $(component_name) is not allowed to participate as a demand.",
