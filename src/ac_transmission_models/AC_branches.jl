@@ -2120,7 +2120,7 @@ function add_expressions!(
             shift = phase_controlled ? phase_var[rep.name, t] : dc_shift
             flow = JuMP.@expression(
                 jump_model,
-                b * (va[from_name, t] - va[to_name, t] - shift) * tap
+                b * (va[from_name, t] - va[to_name, t] - shift)
             )
             bfe[rep.name, t] = flow
             add_proportional_to_jump_expression!(nodal_expr[from_no, t], flow, -1.0)
@@ -2460,7 +2460,7 @@ function add_constraints!(
         phase_controlled = _phase_controlled(rep, device_model)
         for t in time_steps
             shift = phase_controlled ? phase_var[rep.name, t] : dc_shift
-            cons[rep.name, t] = JuMP.@constraint(jump_model, pft[name, t] == b * (va[from_name, t] - va[to_name, t] - shift) * tap)
+            cons[rep.name, t] = JuMP.@constraint(jump_model, pft[name, t] == b * (va[from_name, t] - va[to_name, t] - shift))
         end
     end
     return
