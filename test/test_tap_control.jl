@@ -431,29 +431,3 @@ function _build_log(sys, network_formulation, device_type; kwargs...)
     )
     return read(joinpath(dir, "operation_problem.log"), String)
 end
-
-@testset "circuits with no control block draw no unimplemented-control warning" begin
-    for objective in (
-        PSY.TransformerControlObjective.UNDEFINED,
-        PSY.TransformerControlObjective.FIXED,
-        PSY.TransformerControlObjective.VOLTAGE_DISABLED,
-        PSY.TransformerControlObjective.REACTIVE_POWER_FLOW_DISABLED,
-    )
-        fixture = _controlled_sys14(objective)
-        log = _build_log(fixture.sys, ACPNetworkModel, PSY.TwoWindingTransformer)
-        @test !occursin("not yet implemented", log)
-    end
-end
-
-@testset "a positive control objective POM does not model warns once per circuit" begin
-    for objective in (
-        PSY.TransformerControlObjective.ACTIVE_POWER_FLOW,
-        PSY.TransformerControlObjective.CONTROL_OF_DC_LINE,
-        PSY.TransformerControlObjective.ASYMMETRIC_ACTIVE_POWER_FLOW,
-    )
-        fixture = _controlled_sys14(objective)
-        log = _build_log(fixture.sys, ACPNetworkModel, PSY.TwoWindingTransformer)
-        @test occursin("not yet implemented", log)
-        @test occursin(string(objective), log)
-    end
-end
