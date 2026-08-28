@@ -1362,6 +1362,12 @@ function add_constraints!(
         _add_flow_constraint_containers!(container, T, _branch_names(reps))
     jump_model = get_jump_model(container)
     slacks = _flow_equality_slacks(container, device_model, T)
+    tap_var =
+        if has_container_key(container, TapRatioVariable, T)
+            get_variable(container, TapRatioVariable, T)
+        else
+            nothing
+        end
 
     _foreach_branch(reps) do rep
         name = rep.name
@@ -1370,13 +1376,9 @@ function add_constraints!(
         to_bus = _to_name(rep)
 
         vp = _voltage_products(container, network_model, T, name, from_bus, to_bus)
-        tap_var = if _tap_controlled(rep, device_model, network_model)
-            get_variable(container, TapRatioVariable, T)
-        else
-            nothing
-        end
+        tap_controlled = _tap_controlled(rep, device_model, network_model)
         for t in time_steps
-            tap = isnothing(tap_var) ? adm.tap : tap_var[name, t]
+            tap = tap_controlled ? tap_var[name, t] : adm.tap
             y = _tapped_admittance(jump_model, adm, tap)
 
             cons_pft[name, t] = JuMP.@constraint(
@@ -1688,6 +1690,7 @@ function add_constraints!(
     jump_model = get_jump_model(container)
     slacks = _flow_equality_slacks(container, device_model, T)
     cslacks = _current_equality_slacks(container, device_model, T)
+
     tap_var =
         if has_container_key(container, TapRatioVariable, T)
             get_variable(container, TapRatioVariable, T)
@@ -1711,12 +1714,9 @@ function add_constraints!(
         r = g / ymag2
         x = -b / ymag2
 
+        tap_controlled = _tap_controlled(rep, device_model, network_model)
         for t in time_steps
-            tm = if _tap_controlled(rep, device_model, network_model)
-                tap_var[name, t]
-            else
-                adm.tap
-            end
+            tm = tap_controlled ? tap_var[name, t] : adm.tap
             tr = tm * cos(adm.shift)
             ti = tm * sin(adm.shift)
             tm2 = tm^2
@@ -2033,10 +2033,11 @@ function add_expressions!(
         to_name = _to_name(rep)
         from_no = _from_number(rep)
         to_no = _to_number(rep)
+        tap = _admittance(rep).tap
         for t in time_steps
             flow = JuMP.@expression(
                 jump_model,
-                b * (va[from_name, t] - va[to_name, t] - shift)
+                b * (va[from_name, t] - va[to_name, t] - shift) * tap
             )
             bfe[rep.name, t] = flow
             add_proportional_to_jump_expression!(nodal_expr[from_no, t], flow, -1.0)
@@ -2361,33 +2362,15 @@ function add_constraints!(
     )
 
     jump_model = get_jump_model(container)
-    tap_var =
-        if has_container_key(container, TapRatioVariable, T)
-            get_variable(container, TapRatioVariable, T)
-        else
-            nothing
-        end
-
     _foreach_branch(reps) do rep
         name = rep.name
         b = _dc_susceptance(rep)
         shift = _dc_shift(rep)
         from_name = _from_name(rep)
         to_name = _to_name(rep)
-        tap_controlled = _tap_controlled(rep, device_model, network_model)
-        tap = tap_controlled ? _admittance(rep).tap : 1.0
+        tap = _admittance(rep).tap
         for t in time_steps
-            angle =
-                JuMP.@expression(jump_model, va[from_name, t] - va[to_name, t] - shift)
-            cons[name, t] =
-                if tap_controlled
-                    JuMP.@constraint(
-                        jump_model,
-                        pft[name, t] * tap_var[name, t] == b * angle * tap
-                    )
-                else
-                    JuMP.@constraint(jump_model, pft[name, t] == b * angle)
-                end
+            cons[name, t] = JuMP.@constraint(jump_model, pft[name, t] == b * (va[from_name, t] - va[to_name, t] - shift) * tap)
         end
     end
     return
