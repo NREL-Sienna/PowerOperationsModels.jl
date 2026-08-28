@@ -330,6 +330,8 @@ include("network_models/network_constructor.jl")
 # Market Models
 include("market_models/settlement_balance.jl")
 include("market_models/market_constructor.jl")
+include("market_models/nodal_distribution.jl")
+include("market_models/point_to_point_bid.jl")
 include("market_models/virtual_participant.jl")
 include("market_models/market_loads.jl")
 
@@ -391,6 +393,8 @@ import InfrastructureOptimizationModels:
 export construct_device!
 export construct_service!
 export construct_market_component!
+export get_distribution_factors
+export add_cleared_position!
 export add_to_objective_function!
 export add_constraints!
 export get_variable_multiplier
@@ -529,6 +533,8 @@ export ActivePowerVariable
 export ActivePowerInVariable
 export ActivePowerOutVariable
 export BlockBidCommitmentVariable
+export ClearedPositionVariable
+export ClearedTransferVariable
 export ReactivePowerVariable
 export PowerAboveMinimumVariable
 
@@ -727,6 +733,7 @@ export ReserveChargeConstraint
 
 # expressions
 export TotalReserveOffering
+export AggregateClearedInjection
 
 # parameters
 export EnergyLimitParameter
@@ -787,6 +794,7 @@ export RampConstraint
 export RampLimitConstraint
 export CopperPlateBalanceConstraint
 export SettlementBalanceConstraint
+export ClearedPositionConstraint
 export ActiveRangeICConstraint
 export NodalBalanceActiveConstraint
 export ReferenceBusConstraint
@@ -845,6 +853,7 @@ export BThetaBranchFlow
 # Exports - Parameter Types (defined in core/parameters.jl)
 #################################################################################
 export ActivePowerTimeSeriesParameter
+export DistributionFactorParameter
 export ActivePowerOutTimeSeriesParameter
 export ActivePowerInTimeSeriesParameter
 export ReactivePowerTimeSeriesParameter
@@ -889,6 +898,9 @@ export RenewableConstantPowerFactor
 # Source Formulations
 export ImportExportSourceModel
 export VirtualBidDispatch
+export NodalRedistribution
+export AggregateBalance
+export SpreadBid
 
 # SynCons Formulations
 export SynchronousCondenserBasicDispatch

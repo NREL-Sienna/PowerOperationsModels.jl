@@ -863,6 +863,19 @@ should_write_resulting_value(::Type{HydroTurbineFlowRateVariable}) = false
 convert_output_to_natural_units(::Type{ActivePowerVariable}) = true
 convert_output_to_natural_units(::Type{PowerAboveMinimumVariable}) = true
 convert_output_to_natural_units(::Type{ActivePowerInVariable}) = true
+"""
+Cleared net position of a settlement location, tied to [`AggregateClearedInjection`](@ref)
+by [`ClearedPositionConstraint`](@ref). Fanning this one variable out onto member buses adds
+one term per bus instead of copying every instrument's terms into every member bus, and it
+doubles as the reportable cleared position per settlement point.
+"""
+struct ClearedPositionVariable <: VariableType end
+
+"""
+Cleared quantity of a `PSY.PointToPointBid`: a withdrawal at `from`, an injection at `to`.
+"""
+struct ClearedTransferVariable <: VariableType end
+
 convert_output_to_natural_units(::Type{ActivePowerOutVariable}) = true
 convert_output_to_natural_units(::Type{EnergyVariable}) = true
 convert_output_to_natural_units(::Type{ReactivePowerVariable}) = true

@@ -66,6 +66,12 @@ keeps its own parameters/slacks): the settlement row carries only bid variables.
 struct SettlementBalanceConstraint <: ConstraintType end
 
 """
+`ClearedPositionVariable[loc, t] == AggregateClearedInjection[loc, t]` — one row per
+settlement location per timestep, never per bus.
+"""
+struct ClearedPositionConstraint <: ConstraintType end
+
+"""
 Coupling constraint linking a controllable shunt's reactive injection to its
 [`ShuntSusceptanceVariable`](@ref) and the local bus voltage. Used by
 [`ShuntSusceptanceDispatch`](@ref) under all AC network models (ACP/ACR/IVR):

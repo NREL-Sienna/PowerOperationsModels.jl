@@ -149,6 +149,30 @@ their own economic merits, irrespective of common ownership.
 """
 struct VirtualBidDispatch <: AbstractDeviceFormulation end
 
+"""
+Location formulation for `PSY.ACBus`, `PSY.LoadZone`, and `PSY.TradingHub`: the settlement
+location's cleared position ([`ClearedPositionVariable`](@ref)) is distributed onto its member
+buses' `ActivePowerBalance` via per-bus distribution factors, so a nodal network model prices
+the congestion that position creates. A bus distributes to itself with factor `1.0`; a load
+zone reads its own `distribution_factor` time series per member bus (feature `"bus"` = bus
+number; a member bus without one contributes `0.0`); a trading hub reads the series if it has
+any, else distributes uniformly. A declared no-op under `CopperPlateNetworkModel`.
+"""
+struct NodalRedistribution <: AbstractDeviceFormulation end
+
+"""
+Location formulation: the settlement location's cleared position stays an aggregate
+equality with no nodal effect.
+"""
+struct AggregateBalance <: AbstractDeviceFormulation end
+
+"""
+Formulation for `PSY.PointToPointBid`: one [`ClearedTransferVariable`](@ref) per bid, written
+as −q into the `from` location's [`AggregateClearedInjection`](@ref) and +q into the `to`
+location's. Excluded from `SettlementBalance`: its two settlement terms would cancel exactly.
+"""
+struct SpreadBid <: AbstractDeviceFormulation end
+
 # Does this device formulation contribute to ReactivePowerBalance? Reactive-only
 # formulations are dropped from a template under an active-power-only network (no Q balance).
 models_reactive_power(::Type{<:AbstractDeviceFormulation}) = false

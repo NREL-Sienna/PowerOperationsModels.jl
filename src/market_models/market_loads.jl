@@ -13,41 +13,12 @@ get_min_max_limits(
 
 #! format: on
 
-"""
-Seeds `ActivePowerRangeExpressionLB`/`UB` with the constant `max_active_power` (device
-parameter, system per-unit) rather than the device's own `ActivePowerVariable`. This is the
-decoupling documented on [`MarketLoadBid`](@ref): reserve eligibility rides the load's rated
-capacity, not its (possibly zero-fixed) market energy. Reserve-service construction later adds
-`\\mp r` terms into these same containers via the standard `PSY.ElectricLoad` reserve
-machinery (`add_to_expression.jl`), keyed only by component type -- so this seeding step and
-the service's own additions land in the same expression regardless of call order.
-"""
-function _seed_market_load_reserve_ranges!(
-    container::OptimizationContainer,
-    devices::Union{Vector{L}, IS.FlattenIteratorWrapper{L}},
-    model::DeviceModel{L, MarketLoadBid},
-) where {L <: PSY.ControllableLoad}
-    time_steps = get_time_steps(container)
-    for T in (ActivePowerRangeExpressionLB, ActivePowerRangeExpressionUB)
-        has_container_key(container, T, L) || add_expressions!(container, T, devices, model)
-        expression = get_expression(container, T, L)
-        for d in devices
-            name = PSY.get_name(d)
-            pmax = PSY.get_max_active_power(d, PSY.SU)
-            for t in time_steps
-                add_proportional_to_jump_expression!(expression[name, t], pmax, 1.0)
-            end
-        end
-    end
-    return
-end
-
 _is_reserve_down_service(::PSY.Reserve{PSY.ReserveDown}) = true
 _is_reserve_down_service(::PSY.Service) = false
 
 """
 A `MarketLoadBid` load's reserve ranges are seeded on the constant `max_active_power`
-parameter (`_seed_market_load_reserve_ranges!`), both bounded within `[0, max_active_power]`
+parameter (`_seed_reserve_ranges_on_limits!`), both bounded within `[0, max_active_power]`
 (`get_min_max_limits`). For an `ElectricLoad`, down-reserve enters the UB expression at
 `+1.0` (`add_to_expression.jl`: "Load down-reserve is committed extra consumption"), so with
 `P` replaced by the constant `pmax` the UB constraint becomes `pmax + Σr_down <= pmax`, i.e.
@@ -88,6 +59,7 @@ function construct_market_component!(
     ::ArgumentConstructStage,
     model::DeviceModel{L, MarketLoadBid},
     ::IOM.MarketModel,
+    ::NetworkModel{<:AbstractNetworkModel},
 ) where {L <: PSY.ControllableLoad}
     devices = get_available_components(model, sys)
     add_cost_expressions!(container, devices, model)
@@ -115,7 +87,7 @@ function construct_market_component!(
         process_market_bid_parameters!(container, priced_devices, model, false, true)
     end
 
-    _seed_market_load_reserve_ranges!(container, devices, model)
+    _seed_reserve_ranges_on_limits!(container, devices, model)
     return
 end
 
@@ -131,27 +103,25 @@ function construct_market_component!(
     ::ModelConstructStage,
     model::DeviceModel{L, MarketLoadBid},
     ::IOM.MarketModel,
-) where {L <: PSY.ControllableLoad}
+    ::NetworkModel{N},
+) where {L <: PSY.ControllableLoad, N <: AbstractNetworkModel}
     devices = get_available_components(model, sys)
 
-    # The bare `AbstractNetworkModel` type is unused downstream; it's forced by
-    # `construct_market_component!`'s fixed signature (no `NetworkModel` instance available here).
     add_range_constraints!(
         container,
         ActivePowerVariableLimitsConstraint,
         ActivePowerRangeExpressionLB,
         devices,
         model,
-        AbstractNetworkModel,
+        N,
     )
-    # Same: type argument only, unused downstream.
     add_range_constraints!(
         container,
         ActivePowerVariableLimitsConstraint,
         ActivePowerRangeExpressionUB,
         devices,
         model,
-        AbstractNetworkModel,
+        N,
     )
 
     priced_devices = [d for d in devices if !_is_costless_offer(PSY.get_operation_cost(d))]

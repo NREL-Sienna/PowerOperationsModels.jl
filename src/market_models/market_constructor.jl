@@ -8,6 +8,7 @@ function construct_market_component!(
     ::M,
     model::DeviceModel{D, F},
     ::IOM.MarketModel,
+    ::NetworkModel,
 ) where {
     M <: IOM.ConstructStage,
     D <: IS.InfrastructureSystemsComponent,
@@ -20,6 +21,18 @@ function construct_market_component!(
     )
 end
 
+# Location component models must build their AggregateClearedInjection expressions before
+# transaction models write into them; Dict iteration order is not a contract.
+construct_priority(::Type{<:PSY.Topology}) = 1
+construct_priority(::Type{PSY.TradingHub}) = 1
+construct_priority(::Type{<:IS.InfrastructureSystemsComponent}) = 2
+
+function _ordered_component_models(market_model::IOM.MarketModel)
+    component_models = collect(values(IOM.get_market_component_models(market_model)))
+    sort!(component_models; by = m -> construct_priority(get_component_type(m)))
+    return component_models
+end
+
 function construct_market_components!(
     container::OptimizationContainer,
     sys::PSY.System,
@@ -29,13 +42,15 @@ function construct_market_components!(
     market_model = get_market_model(template)
     market_model === nothing && return
     add_physical_bids_to_settlement!(container, template, sys)
-    for component_model in values(IOM.get_market_component_models(market_model))
+    network_model = get_network_model(template)
+    for component_model in _ordered_component_models(market_model)
         construct_market_component!(
             container,
             sys,
             ArgumentConstructStage(),
             component_model,
             market_model,
+            network_model,
         )
     end
     return
@@ -60,13 +75,15 @@ function construct_market_components!(
             "construct_market_components! on an unvalidated template.",
         )
     end
-    for component_model in values(component_models)
+    network_model = get_network_model(template)
+    for component_model in _ordered_component_models(market_model)
         construct_market_component!(
             container,
             sys,
             ModelConstructStage(),
             component_model,
             market_model,
+            network_model,
         )
     end
     add_constraints!(container, SettlementBalanceConstraint, sys, market_model)

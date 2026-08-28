@@ -123,6 +123,16 @@ Parameter to define energy capacity limits for hydro pump-turbine time series
 """
 struct EnergyCapacityTimeSeriesParameter <: TimeSeriesParameter end
 
+const DISTRIBUTION_FACTOR_TS_NAME = "distribution_factor"
+
+"""
+Per-bus distribution factors of a settlement location: the location owns one
+`distribution_factor` time series per member bus, feature-keyed by `"bus" => bus number`.
+Values are consumed as `Float64` constraint coefficients — never as JuMP parameters —
+because they multiply cleared-quantity variables.
+"""
+struct DistributionFactorParameter <: TimeSeriesParameter end
+
 """
 Parameter to define energy target for feedforward
 """

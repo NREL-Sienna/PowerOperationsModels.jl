@@ -134,23 +134,7 @@ function _check_market_model!(template::PowerOperationsProblemTemplate)
             ),
         )
     end
-    network_formulation = get_network_formulation(template)
-    # CopperPlateNetworkModel EXACTLY, not merely `<: AbstractActivePowerModel`.
-    # PTDF/AreaPTDF/DCP/DCPLL are also `AbstractActivePowerModel` subtypes (via
-    # `AbstractDCPNetworkModel`) but only slack the balance ROW while leaving branch flow
-    # limits binding, which silently congestion-contaminates the settlement price.
-    # AreaBalanceNetworkModel's per-area semantics are unconfirmed and excluded until
-    # settled. Only CopperPlate genuinely neutralizes the physical balance system-wide.
-    if network_formulation !== CopperPlateNetworkModel
-        throw(
-            ArgumentError(
-                "Market model requires network formulation CopperPlateNetworkModel " *
-                "exactly (any other formulation leaves branch or area constraints " *
-                "binding, silently contaminating the settlement price), got " *
-                "$(network_formulation).",
-            ),
-        )
-    end
+    _check_market_network_formulation!(template, market_model)
     network_model = get_network_model(template)
     if IOM.get_use_slacks(network_model)
         throw(
@@ -724,6 +708,47 @@ function _warn_unmatched_user_outages(
                    post-contingency constraints." _group =
                 IOM.LOG_GROUP_MODELS_VALIDATION
         end
+    end
+    return
+end
+
+_distributes_nodally(::DeviceModel{<:PSY.Component, NodalRedistribution}) = true
+_distributes_nodally(::DeviceModel) = false
+
+# Without nodal distribution, cleared positions have no nodal footprint: any formulation
+# other than CopperPlate would leave branch or area constraints binding on the physical
+# side alone, silently contaminating the settlement price. Requiring CopperPlate EXACTLY
+# (not merely `<: AbstractActivePowerModel`) is what neutralizes the physical balance.
+# With a NodalRedistribution location model, congestion pricing is the point, so any
+# active-power nodal formulation is admitted.
+function _check_market_network_formulation!(
+    template::PowerOperationsProblemTemplate,
+    market_model::IOM.MarketModel,
+)
+    network_formulation = get_network_formulation(template)
+    component_models = values(IOM.get_market_component_models(market_model))
+    if any(_distributes_nodally, component_models)
+        if !(network_formulation <: AbstractActivePowerModel)
+            throw(
+                ArgumentError(
+                    "NodalRedistribution distributes cleared positions onto the active " *
+                    "power nodal balance and requires an AbstractActivePowerModel " *
+                    "network formulation, got $(network_formulation).",
+                ),
+            )
+        end
+        return
+    end
+    if network_formulation !== CopperPlateNetworkModel
+        throw(
+            ArgumentError(
+                "Market model requires network formulation CopperPlateNetworkModel " *
+                "exactly (any other formulation leaves branch or area constraints " *
+                "binding, silently contaminating the settlement price), got " *
+                "$(network_formulation). Add a NodalRedistribution location model to " *
+                "price congestion from distributed cleared positions.",
+            ),
+        )
     end
     return
 end

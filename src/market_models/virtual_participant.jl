@@ -420,11 +420,66 @@ function _add_block_bid_objective_terms!(
 end
 
 """
+A divisible virtual settles at a point OR at trading hubs (PSY enforces mutual exclusion);
+a virtual with neither has no nodal footprint and writes nowhere. Under a nodal network
+model the location must carry a `NodalRedistribution` component model, or the write fails
+loudly on the missing `AggregateClearedInjection` container: the template asked to clear
+a located virtual without modeling its location. Under `CopperPlateNetworkModel` location
+is moot and the write is a declared no-op (see the method below). Location writes are
+additive to the settlement-row writes: `AggregateClearedInjection` never feeds
+`SettlementBalance`, so nothing is counted twice. Each hub receives the participant's full
+award: the current bid plumbing carries one award per participant, not one per hub, so a
+participant settling at several hubs is rejected until a per-hub split exists rather than
+silently over-injecting.
+"""
+function _add_virtual_location_writes!(
+    container::OptimizationContainer,
+    d::PSY.VirtualParticipant,
+    p_out::JuMP.VariableRef,
+    p_in::JuMP.VariableRef,
+    t::Int,
+    ::NetworkModel{<:AbstractNetworkModel},
+)
+    point = PSY.get_settlement_point(d)
+    if point !== nothing
+        add_cleared_position!(container, point, p_out, 1.0, t)
+        add_cleared_position!(container, point, p_in, -1.0, t)
+        return
+    end
+    hubs = PSY.get_trading_hubs(d)
+    if length(hubs) > 1
+        error(
+            "VirtualParticipant $(PSY.get_name(d)) settles at $(length(hubs)) trading hubs, " *
+            "but its award is a single quantity with no per-hub split; nodal distribution " *
+            "supports one trading hub per participant.",
+        )
+    end
+    for hub in hubs
+        add_cleared_position!(container, hub, p_out, 1.0, t)
+        add_cleared_position!(container, hub, p_in, -1.0, t)
+    end
+    return
+end
+
+function _add_virtual_location_writes!(
+    ::OptimizationContainer,
+    ::PSY.VirtualParticipant,
+    ::JuMP.VariableRef,
+    ::JuMP.VariableRef,
+    ::Int,
+    ::NetworkModel{CopperPlateNetworkModel},
+)
+    return
+end
+
+"""
 Argument stage for `VirtualBidDispatch`: creates `ActivePowerOutVariable`/
 `ActivePowerInVariable` for CURVE/VARIABLE devices and `BlockBidCommitmentVariable` for
 FIXED devices (dispatched on `PSY.get_curve_style`), populates MBC PWL parameters, and
-adds every device's bid to the single system-wide `SettlementBalance` row (+out, -in).
-Never touches a physical `ActivePowerBalance` row.
+adds every device's bid to the single system-wide `SettlementBalance` row (+out, -in) and,
+for divisible devices, to their settlement location's `AggregateClearedInjection`
+(`_add_virtual_location_writes!`). Never touches a physical `ActivePowerBalance` row
+directly: the location model distributes the position.
 """
 function construct_market_component!(
     container::OptimizationContainer,
@@ -432,6 +487,7 @@ function construct_market_component!(
     ::ArgumentConstructStage,
     model::DeviceModel{PSY.VirtualParticipant, VirtualBidDispatch},
     ::IOM.MarketModel,
+    network_model::NetworkModel{<:AbstractNetworkModel},
 )
     devices = get_available_components(model, sys)
     add_cost_expressions!(container, devices, model)
@@ -469,6 +525,16 @@ function construct_market_component!(
             )
             _add_settlement_terms!(settlement_expr, p_out, name, 1.0, time_steps)
             _add_settlement_terms!(settlement_expr, p_in, name, -1.0, time_steps)
+            for t in time_steps
+                _add_virtual_location_writes!(
+                    container,
+                    d,
+                    p_out[name, t],
+                    p_in[name, t],
+                    t,
+                    network_model,
+                )
+            end
         end
     end
 
@@ -499,6 +565,7 @@ function construct_market_component!(
     ::ModelConstructStage,
     model::DeviceModel{PSY.VirtualParticipant, VirtualBidDispatch},
     ::IOM.MarketModel,
+    ::NetworkModel{<:AbstractNetworkModel},
 )
     devices = get_available_components(model, sys)
     fixed_devices, divisible_devices = _partition_by_curve_style(devices)
