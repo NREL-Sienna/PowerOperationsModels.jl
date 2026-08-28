@@ -282,7 +282,7 @@ function construct_device!(
     devices = get_available_components(device_model, sys)
     _add_static_branch_flow_variables!(container, devices, device_model, network_model)
     _add_static_branch_balance_arguments!(container, device_model, devices, network_model)
-    add_variables!(container, TapRatioVariable, devices, device_model, network_model)
+    _add_transformer_control_variables!(container, devices, device_model, network_model)
     return
 end
 
@@ -346,7 +346,7 @@ function construct_device!(
         get_pair_metas(slack_spec(StaticBranchBounds, U)),
     )
     _wire_static_branch_flow_to_balance!(container, devices, device_model, network_model)
-    add_variables!(container, TapRatioVariable, devices, device_model, network_model)
+    _add_transformer_control_variables!(container, devices, device_model, network_model)
     add_feedforward_arguments!(container, device_model, devices)
     return
 end
@@ -409,7 +409,7 @@ function construct_device!(
     devices = get_available_components(device_model, sys)
     _add_static_branch_flow_variables!(container, devices, device_model, network_model)
     _add_static_branch_balance_arguments!(container, device_model, devices, network_model)
-    add_variables!(container, TapRatioVariable, devices, device_model, network_model)
+    _add_transformer_control_variables!(container, devices, device_model, network_model)
     return
 end
 
@@ -521,7 +521,7 @@ function construct_device!(
     _add_static_branch_flow_variables!(container, devices, device_model, network_model)
     add_variables!(container, CosineApproximation, devices, device_model, network_model)
     _add_static_branch_balance_arguments!(container, device_model, devices, network_model)
-    add_variables!(container, TapRatioVariable, devices, device_model, network_model)
+    _add_transformer_control_variables!(container, devices, device_model, network_model)
     return
 end
 
@@ -587,7 +587,7 @@ function construct_device!(
         get_pair_metas(slack_spec(StaticBranchBounds, LPACCNetworkModel)),
     )
     add_variables!(container, CosineApproximation, devices, device_model, network_model)
-    add_variables!(container, TapRatioVariable, devices, device_model, network_model)
+    _add_transformer_control_variables!(container, devices, device_model, network_model)
     _wire_static_branch_flow_to_balance!(container, devices, device_model, network_model)
     add_feedforward_arguments!(container, device_model, devices)
     return
@@ -693,7 +693,7 @@ function construct_device!(
             network_model,
         )
     end
-    add_variables!(container, TapRatioVariable, devices, device_model, network_model)
+    _add_transformer_control_variables!(container, devices, device_model, network_model)
     add_feedforward_arguments!(container, device_model, devices)
     return
 end
@@ -786,7 +786,7 @@ function construct_device!(
         device_model,
         network_model,
     )
-    add_variables!(container, TapRatioVariable, devices, device_model, network_model)
+    _add_transformer_control_variables!(container, devices, device_model, network_model)
     _wire_static_branch_flow_to_balance!(container, devices, device_model, network_model)
     add_feedforward_arguments!(container, device_model, devices)
     return
@@ -853,6 +853,7 @@ function construct_device!(
             network_model,
         )
     end
+    _add_transformer_control_variables!(container, device_model, device_model, network_model)
     add_feedforward_arguments!(container, device_model, devices)
     return
 end
@@ -879,6 +880,7 @@ function construct_device!(
     add_constraints!(
         container, sys, AngleDifferenceConstraint, devices, device_model, network_model,
     )
+    _add_transformer_control_constraints!(container, devices, device_model, network_model)
     add_feedforward_constraints!(container, device_model, devices)
     add_to_objective_function!(container, devices, device_model, DCPNetworkModel)
     add_constraint_dual!(container, sys, device_model)
@@ -1018,6 +1020,7 @@ function construct_device!(
         device_model,
         network_model,
     )
+    _add_transformer_control_variables!(container, devices, device_model, network_model)
     # Slacks turn the rating into a soft limit, so the two enforcement styles are
     # mutually exclusive: hard variable bounds without slacks (tighter QCP), slacked
     # FlowRateConstraint pairs (ModelConstructStage) with them.
@@ -1064,6 +1067,7 @@ function construct_device!(
     add_constraints!(
         container, sys, AngleDifferenceConstraint, devices, device_model, network_model,
     )
+    _add_transformer_control_constraints!(container, sys, devices, device_model, network_model)
     add_feedforward_constraints!(container, device_model, devices)
     add_to_objective_function!(container, devices, device_model, DCPLLNetworkModel)
     add_constraint_dual!(container, sys, device_model)
@@ -1100,6 +1104,7 @@ function construct_device!(
         device_model,
         network_model,
     )
+    _add_transformer_control_variables!(container, devices, device_model, network_model)
     if get_use_slacks(device_model)
         _add_flow_slacks!(container, devices, device_model, network_model)
     else
@@ -1145,6 +1150,7 @@ function construct_device!(
     add_constraints!(
         container, sys, AngleDifferenceConstraint, devices, device_model, network_model,
     )
+    _add_transformer_control_constraints!(container, sys, devices, device_model, network_model)
     add_feedforward_constraints!(container, device_model, devices)
     add_to_objective_function!(container, devices, device_model, DCPLLNetworkModel)
     add_constraint_dual!(container, sys, device_model)
@@ -1168,6 +1174,7 @@ function construct_device!(
         LOG_GROUP_BRANCH_CONSTRUCTIONS
     devices = get_available_components(device_model, sys)
     add_variables!(container, FlowActivePowerVariable, devices, device_model, network_model)
+    _add_transformer_control_variables!(container, devices, device_model, network_model)
     if get_use_slacks(device_model)
         _add_flow_slacks!(container, devices, device_model, network_model)
     end
@@ -1204,6 +1211,7 @@ function construct_device!(
     add_constraints!(
         container, sys, AngleDifferenceConstraint, devices, device_model, network_model,
     )
+    _add_transformer_control_constraints!(container, sys, devices, device_model, network_model)
     add_feedforward_constraints!(container, device_model, devices)
     add_to_objective_function!(container, devices, device_model, DCPNetworkModel)
     add_constraint_dual!(container, sys, device_model)
@@ -1219,6 +1227,7 @@ function construct_device!(
     network_model::NetworkModel{<:AbstractPTDFNetworkModel},
 ) where {T <: PSY.ACTransmission}
     devices = get_available_components(device_model, sys)
+    _add_transformer_control_variables!(container, devices, device_model, network_model)
     if get_use_slacks(device_model)
         _add_flow_slacks!(container, devices, device_model, network_model)
     end
@@ -1285,6 +1294,7 @@ function construct_device!(
             network_model,
         )
     end
+    _add_transformer_control_constraints!(container, sys, devices, device_model, network_model)
     add_feedforward_constraints!(container, device_model, devices)
     add_to_objective_function!(container, devices, device_model, PTDFNetworkModel)
     add_constraint_dual!(container, sys, device_model)
@@ -1301,6 +1311,7 @@ function construct_device!(
     devices = get_available_components(device_model, sys)
 
     add_variables!(container, FlowActivePowerVariable, devices, device_model, network_model)
+    _add_transformer_control_variables!(container, devices, device_model, network_model)
 
     if get_use_slacks(device_model)
         _add_flow_slacks!(container, devices, device_model, network_model)
@@ -1328,6 +1339,7 @@ function construct_device!(
     )
 
     add_constraints!(container, NetworkFlowConstraint, devices, device_model, network_model)
+    _add_transformer_control_constraints!(container, sys, devices, device_model, network_model)
     add_feedforward_constraints!(container, device_model, devices)
     add_to_objective_function!(container, devices, device_model, PTDFNetworkModel)
     add_constraint_dual!(container, sys, device_model)

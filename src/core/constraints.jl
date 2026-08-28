@@ -170,7 +170,7 @@ The specified constraints are formulated as:
 struct HVDCPowerBalance <: ConstraintType end
 struct FrequencyResponseConstraint <: ConstraintType end
 """
-Struct to create the constraint the AC branch flows depending on the network model.
+Equality-constrains a branch's flow according to its network model. We store flow as a variable for use in feed-forwards.
 For more information check [Branch Formulations](@ref PowerSystems.Branch-Formulations).
 
 The specified constraint depends on the network model chosen. The most common application is the StaticBranch in a PTDF Network Model:
@@ -275,7 +275,7 @@ struct RampConstraint <: ConstraintType end
 struct RampLimitConstraint <: ConstraintType end
 struct RangeLimitConstraint <: ConstraintType end
 """
-Struct to create the constraint that set the AC flow limits through AC branches and HVDC two-terminal branches.
+Constrains the upper and lower bounds of a branch's flow, which is equality-constrained by NetworkFlowConstraints.
 
 For more information check [Branch Formulations](@ref PowerSystems.Branch-Formulations).
 
