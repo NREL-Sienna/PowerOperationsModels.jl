@@ -669,43 +669,29 @@ function _assert_flow_expression_dimensions(
     return
 end
 
-function _make_flow_expressions!(
-    name::String,
-    time_steps::UnitRange{Int},
-    ptdf_col::Vector{Float64},
-    nodal_balance_expressions::Matrix{JuMP.AffExpr},
-    shift_offset::Float64,
-)
-    @debug "Making Flow Expression on thread $(Threads.threadid()) for branch $name"
-    _assert_flow_expression_dimensions(name, length(ptdf_col), nodal_balance_expressions)
-    nz_idx = [i for i in eachindex(ptdf_col) if abs(ptdf_col[i]) > PTDF_ZERO_TOL]
-    hint = length(nz_idx)
-    expressions = Vector{JuMP.AffExpr}(undef, length(time_steps))
-    for t in time_steps
-        acc = IOM.get_hinted_aff_expr(hint)
-        @inbounds for i in nz_idx
-            JuMP.add_to_expression!(acc, ptdf_col[i], nodal_balance_expressions[i, t])
-        end
-        JuMP.add_to_expression!(acc, shift_offset)
-        expressions[t] = acc
-    end
-    return name, expressions
+function _nz_entries(ptdf_col::Vector{Float64})
+    idx = [i for i in eachindex(ptdf_col) if abs(ptdf_col[i]) > PTDF_ZERO_TOL]
+    return idx, ptdf_col[idx]
 end
+_nz_entries(ptdf_col::SparseArrays.SparseVector{Float64, Int}) =
+    (SparseArrays.nonzeroinds(ptdf_col), SparseArrays.nonzeros(ptdf_col))
+
+_add_shift_injection!(acc::JuMP.AffExpr, inj::Float64, ::Int) = JuMP.add_to_expression!(acc, inj)
+_add_shift_injection!(acc::JuMP.AffExpr, inj::Vector{JuMP.AffExpr}, t::Int) = JuMP.add_to_expression!(acc, inj[t])
 
 function _make_flow_expressions!(
     name::String,
     time_steps::UnitRange{Int},
-    ptdf_col::SparseArrays.SparseVector{Float64, Int},
+    ptdf_col,
     nodal_balance_expressions::Matrix{JuMP.AffExpr},
-    shift_offset::Float64,
+    shift_injection::Union{Float64, Vector{JuMP.AffExpr}},
 )
-    @debug "Making Flow Expression on thread $(Threads.threadid()) for branch $name"
+    @debug "Making Flow Expression on thread $(Threads.threadid()) for branch $(rep.name)"
     _assert_flow_expression_dimensions(name, length(ptdf_col), nodal_balance_expressions)
-    nz_idx = SparseArrays.nonzeroinds(ptdf_col)
-    nz_val = SparseArrays.nonzeros(ptdf_col)
+    nz_idx, nz_val = _nz_entries(ptdf_col)
     hint = length(nz_idx)
     expressions = Vector{JuMP.AffExpr}(undef, length(time_steps))
-    for t in time_steps
+    for t in get_time_steps(container)
         acc = IOM.get_hinted_aff_expr(hint)
         @inbounds for k in eachindex(nz_idx)
             JuMP.add_to_expression!(
@@ -714,7 +700,7 @@ function _make_flow_expressions!(
                 nodal_balance_expressions[nz_idx[k], t],
             )
         end
-        JuMP.add_to_expression!(acc, shift_offset)
+        _add_shift_injection!(acc, injection, t)
         expressions[t] = acc
     end
     return name, expressions
@@ -734,31 +720,22 @@ function add_expressions!(
     branch_names = get_branch_argument_variable_axis(catalog, devices)
     # `collect` to a Vector so the spawn loop below can index it for multi-threading.
     name_to_arc_map = collect(PNM.get_name_to_arc_map(catalog, B))
-    nodal_balance_expressions = get_expression(container, ActivePowerBalance,
-        PSY.ACBus,
-    )
+    nodal_balance_expressions = get_expression(container, ActivePowerBalance, PSY.ACBus)
+    flow_expr = add_expression_container!(container, PTDFBranchFlow, B, branch_names, time_steps,)
 
-    branch_flow_expr = add_expression_container!(container, PTDFBranchFlow,
-        B,
-        branch_names,
-        time_steps,
-    )
-
-    # `ptdf[arc, :]` is a KLU solve; libklu is not concurrency-safe, so the
-    # solves run serially on the dispatcher and only the JuMP `AffExpr` build is
-    # parallelized via `Threads.@spawn`. The try/catch surfaces the inner
-    # exception — the default error handler shows only the wrapping
-    # `TaskFailedException`, which makes spawn-task failures undebuggable.
     tasks = map(name_to_arc_map) do pair
         (name, (arc, _)) = pair
+        # ptdf[arc, :] is a KLU solve; libklu is not concurrency safe, so this
+        # happens in the main thread.
         ptdf_col = ptdf[arc, :]
+        shift_injection = _phase_controlled(rep, model) ? phase_var[rep.name, :] : -_dc_shift_injection(rep)
         Threads.@spawn try
             _make_flow_expressions!(
                 name,
                 time_steps,
                 ptdf_col,
                 nodal_balance_expressions.data,
-                -PNM.arc_dc_shift_injection(net_reduction_data, arc),
+                shift_injection
             )
         catch e
             @error "PTDF flow-expression task failed" name = name arc = arc exception =
@@ -768,7 +745,7 @@ function add_expressions!(
     end
     for task in tasks
         name, expressions = fetch(task)
-        branch_flow_expr[name, :] .= expressions
+        flow_expr[name, :] .= expressions
     end
     return
 end
@@ -784,8 +761,8 @@ function add_constraints!(
     network_model::NetworkModel{<:AbstractPTDFNetworkModel},
 ) where {T <: PSY.ACTransmission}
     time_steps = get_time_steps(container)
-    branch_flow_expr = get_expression(container, PTDFBranchFlow, T)
-    flow_variables = get_variable(container, FlowActivePowerVariable, T)
+    flow_expr = get_expression(container, PTDFBranchFlow, T)
+    flow_var = get_variable(container, FlowActivePowerVariable, T)
     reduced_branch_tracker = get_reduced_branch_tracker(network_model)
     branches = get_branch_argument_constraint_axis(
         get_branch_catalog(network_model),
@@ -793,11 +770,7 @@ function add_constraints!(
         devices,
         cons_type,
     )
-    branch_flow = add_constraints_container!(container, NetworkFlowConstraint,
-        T,
-        branches,
-        time_steps,
-    )
+    branch_flow = add_constraints_container!(container, NetworkFlowConstraint, T, branches, time_steps,)
     jump_model = get_jump_model(container)
 
     use_slacks = get_use_slacks(device_model)
@@ -808,14 +781,15 @@ function add_constraints!(
 
     for name in branches
         for t in time_steps
-            if use_slacks
-                rhs = slack_ub[name, t] - slack_lb[name, t]
-            else
-                rhs = 0.0
-            end
+            flow =
+                if use_slacks
+                    JuMP.@expression(jump_model, flow_expr[name, t] - slack_ub[name, t] + slack_lb[name, t])
+                else
+                    flow_expr
+                end
             branch_flow[name, t] = JuMP.@constraint(
                 jump_model,
-                branch_flow_expr[name, t] - flow_variables[name, t] == rhs
+                flow_var[name, t] == flow
             )
         end
     end

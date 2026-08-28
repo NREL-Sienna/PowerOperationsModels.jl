@@ -144,20 +144,33 @@ function construct_network!(
     return
 end
 
-function _add_dc_phase_shift_injections!(
+function _add_shift_injections!(
     container::OptimizationContainer,
     model::NetworkModel{<:AbstractPTDFNetworkModel},
+    template::PowerOperationsProblemTemplate,
 )
     network_reduction = get_network_reduction(model)
     nodal_expr = get_expression(container, ActivePowerBalance, PSY.ACBus)
     time_steps = get_time_steps(container)
-    for arc in PNM.get_arc_axis(network_reduction)
-        injection = PNM.arc_dc_shift_injection(network_reduction, arc)
-        iszero(injection) && continue
-        from_no, to_no = arc
-        for t in time_steps
-            JuMP.add_to_expression!(nodal_expr[from_no, t], injection)
-            JuMP.add_to_expression!(nodal_expr[to_no, t], -injection)
+    for branch_model in values(get_branch_models(template))
+        comp_type = get_component_type(branch_model)
+        phase_var =
+            if has_container_key(container, PhaseShifterAngle, comp_type)
+                get_variable(container, PhaseShifterAngle, comp_type)
+            else
+                nothing
+            end
+        _foreach_branch(_all_branches(network_model, branch_model)) do rep
+            phase_controlled = _phase_controlled(rep, branch_model)
+            shift_injection = _dc_shift_injection(rep)
+            if !_phase_controlled && iszero(shift_injection)
+                continue
+            end
+            for t in time_steps
+                injection = phase_controlled ? phase_var[rep.name, t] : _dc_shift_injection(rep)
+                JuMP.add_to_expression!(nodal_expr[from_no, t], injection)
+                JuMP.add_to_expression!(nodal_expr[to_no, t], -injection)
+            end
         end
     end
     return
@@ -167,11 +180,11 @@ function construct_network!(
     container::OptimizationContainer,
     sys::PSY.System,
     model::NetworkModel{<:AbstractPTDFNetworkModel},
-    ::PowerOperationsProblemTemplate,
+    template::PowerOperationsProblemTemplate,
     ::ArgumentConstructStage,
 )
     _add_balance_slack_variables!(container, sys, model; reactive = false)
-    _add_dc_phase_shift_injections!(container, model)
+    _add_shift_injections!(container, model, template)
     return
 end
 
