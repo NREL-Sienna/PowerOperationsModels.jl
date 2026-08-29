@@ -210,6 +210,11 @@ formulation with controls enabled.
 """
 struct ReactivePowerFlowControlConstraint <: ConstraintType end
 """
+Imposed by transformer circuits with ACTIVE_POWER_FLOW control on a branch
+formulation with controls enabled.
+"""
+struct ActivePowerFlowControlConstraint <: ConstraintType end
+"""
 Ties a component-owned [`RegulatedVoltageMagnitude`](@ref) auxiliary variable to the
 rectangular voltage components at its regulated bus under ACR/IVR formulations. One
 entry per regulating device per time step:

@@ -160,11 +160,11 @@ function _add_shift_injections!(
             else
                 nothing
             end
-        _foreach_branch(_all_branches(network_model, branch_model)) do rep
-            phase_controlled = _phase_controlled(rep, branch_model)
+        _foreach_branch(_all_branches(model, comp_type)) do rep
+            phase_controlled = _phase_controlled(rep, branch_model, model)
             shift_injection = _dc_shift_injection(rep)
-            if !_phase_controlled && iszero(shift_injection)
-                continue
+            if !phase_controlled && iszero(shift_injection)
+                return
             end
             for t in time_steps
                 injection = phase_controlled ? phase_var[rep.name, t] : _dc_shift_injection(rep)

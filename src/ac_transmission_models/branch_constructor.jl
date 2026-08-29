@@ -853,7 +853,7 @@ function construct_device!(
             network_model,
         )
     end
-    _add_transformer_control_variables!(container, device_model, device_model, network_model)
+    _add_transformer_control_variables!(container, devices, device_model, network_model)
     add_feedforward_arguments!(container, device_model, devices)
     return
 end
@@ -880,7 +880,7 @@ function construct_device!(
     add_constraints!(
         container, sys, AngleDifferenceConstraint, devices, device_model, network_model,
     )
-    _add_transformer_control_constraints!(container, devices, device_model, network_model)
+    _add_transformer_control_constraints!(container, sys, devices, device_model, network_model)
     add_feedforward_constraints!(container, device_model, devices)
     add_to_objective_function!(container, devices, device_model, DCPNetworkModel)
     add_constraint_dual!(container, sys, device_model)

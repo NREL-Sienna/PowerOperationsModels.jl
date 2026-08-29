@@ -94,13 +94,18 @@ end
             @test JuMP.upper_bound(var) ≈ band.max
         end
 
-        cons = _control_constraints(container, _control_constraint(mode), case.device_type)
-        @test cons !== nothing
-        if cons !== nothing
-            @test unique(first(k) for k in keys(cons.data)) == [fixture.axis_name]
-            for side in 1:2, t in get_time_steps(container)
-                @test haskey(cons.data, (fixture.axis_name, side, t))
+        for other in TAP_CONTROLS
+            cons =
+                _control_constraints(container, _control_constraint(other), case.device_type)
+            if other !== mode
+                cons === nothing || @test isempty(axes(cons)[1])
+                continue
             end
+            @test cons !== nothing
+            cons === nothing && continue
+            @test axes(cons)[1] == [fixture.axis_name]
+            @test size(cons) == (1, 2, length(get_time_steps(container)))
+            @test all(isassigned(cons.data, i) for i in eachindex(cons.data))
         end
     end
 end
@@ -125,7 +130,7 @@ end
         @test !_has_control_constraints(container)
 
         log = read(joinpath(output_dir, "operation_problem.log"), String)
-        @test occursin("DC networks do not support variable-tap", log)
+        @test occursin("tap control is only supported", log)
     end
 end
 

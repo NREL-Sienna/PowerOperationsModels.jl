@@ -114,10 +114,9 @@ end
         cons = _phase_constraints(container, PSY.TwoWindingTransformer)
         @test cons !== nothing
         if cons !== nothing
-            @test unique(first(k) for k in keys(cons.data)) == [fixture.axis_name]
-            for side in 1:2, t in get_time_steps(container)
-                @test haskey(cons.data, (fixture.axis_name, side, t))
-            end
+            @test axes(cons)[1] == [fixture.axis_name]
+            @test size(cons) == (1, 2, length(get_time_steps(container)))
+            @test all(isassigned(cons.data, i) for i in eachindex(cons.data))
         end
     end
 end
@@ -138,8 +137,7 @@ end
 
         cons = _phase_constraints(container, PSY.ThreeWindingTransformer)
         @test cons !== nothing
-        cons === nothing ||
-            @test unique(first(k) for k in keys(cons.data)) == [fixture.axis_name]
+        cons === nothing || @test axes(cons)[1] == [fixture.axis_name]
     end
 end
 
