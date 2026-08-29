@@ -463,12 +463,13 @@ function _build_post_contingency_flow_expressions_for_outage(
 )
     results = Vector{Tuple{String, Vector{JuMP.AffExpr}}}(undef, length(reps))
     for (i, rep) in enumerate(reps)
-        _, expressions = _make_flow_expressions!(
-            rep.name,
+        _, expressions = _ptdf_branch_flow(
+            rep,
             time_steps,
             modf_cols[(outage_id, rep.arc)],
             nodal_balance_expressions,
-            -_dc_shift_injection(rep),
+            nothing,
+            false
         )
         results[i] = (rep.name, expressions)
     end
