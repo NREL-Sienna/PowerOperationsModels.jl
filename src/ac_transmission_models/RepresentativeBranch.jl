@@ -182,6 +182,9 @@ _dc_shift_injection(rep::RepresentativeBranch) =
 
 ################################## Transformer control #####################################
 
+const _TRANSFORMERS = Union{PSY.TwoWindingTransformer, PSY.ThreeWindingTransformer}
+const _CONTROL_FORMULATIONS = Union{StaticBranch, StaticBranchBounds}
+
 const _VOLTAGE_CONTROL = PSY.TransformerControlObjective.VOLTAGE
 const _REACTIVE_CONTROL = PSY.TransformerControlObjective.REACTIVE_POWER_FLOW
 const _ACTIVE_CONTROL = PSY.TransformerControlObjective.ACTIVE_POWER_FLOW
@@ -206,17 +209,24 @@ _control_objective(c::PSY.TransformerCircuit, d::DeviceModel{<:_TRANSFORMERS, <:
 _control_objective(rep::RepresentativeBranch, d::DeviceModel) =
     _control_objective(_get_circuit(rep.branch), d)
 
-_voltage_controlled(rep::RepresentativeBranch, d::DeviceModel) =
+_voltage_controlled(rep::RepresentativeBranch, d::DeviceModel, ::NetworkModel{<:_TAP_NETWORKS}) =
     _control_objective(rep, d) === _VOLTAGE_CONTROL
-_reactive_controlled(rep::RepresentativeBranch, d::DeviceModel) =
+_voltage_controlled(::RepresentativeBranch, ::DeviceModel, ::NetworkModel) = false
+
+_reactive_controlled(rep::RepresentativeBranch, d::DeviceModel, ::NetworkModel{<:_TAP_NETWORKS}) =
     _control_objective(rep, d) === _REACTIVE_CONTROL
+_reactive_controlled(::RepresentativeBranch, ::DeviceModel, ::NetworkModel) = false
 
 _tap_controlled(rep::RepresentativeBranch, d::DeviceModel, ::NetworkModel{<:_TAP_NETWORKS}) =
     _control_objective(rep, d) in _TAP_CONTROLS
 _tap_controlled(::RepresentativeBranch, ::DeviceModel, ::NetworkModel) = false
 
+_active_controlled(rep::RepresentativeBranch, d::DeviceModel, ::NetworkModel{<:_PHASE_NETWORKS}) =
+    _control_objective(rep, d) === _ACTIVE_CONTROL
+_active_controlled(::RepresentativeBranch, ::DeviceModel, ::NetworkModel) = false
+
 _phase_controlled(rep::RepresentativeBranch, d::DeviceModel, ::NetworkModel{<:_PHASE_NETWORKS}) =
-    _control_objective(rep, d) === _PHASE_CONTROLS
+    _control_objective(rep, d) in _PHASE_CONTROLS
 _phase_controlled(::RepresentativeBranch, ::DeviceModel, ::NetworkModel) = false
 
 _controlled_circuit_names(
