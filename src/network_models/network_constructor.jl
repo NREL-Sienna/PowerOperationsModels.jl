@@ -144,41 +144,47 @@ function construct_network!(
     return
 end
 
-function _add_shift_injections!(
-    container::OptimizationContainer,
-    model::NetworkModel{<:AbstractPTDFNetworkModel},
-    template::PowerOperationsProblemTemplate,
-)
-    network_reduction = get_network_reduction(model)
+# Function-barrier for _add_shift_injections!
+function _add_shift_injections_branch!(container::OptimizationContainer, network_model::NetworkModel{<:AbstractPTDFNetworkModel}, branch_model::DeviceModel{T}) where {T <: PSY.ACTransmission}
     nodal_expr = get_expression(container, ActivePowerBalance, PSY.ACBus)
     time_steps = get_time_steps(container)
-    for branch_model in values(get_branch_models(template))
-        comp_type = get_component_type(branch_model)
-        phase_var =
-            if has_container_key(container, PhaseShifterAngle, comp_type)
-                get_variable(container, PhaseShifterAngle, comp_type)
-            else
-                nothing
+    phase_var =
+        if has_container_key(container, PhaseShifterAngle, T)
+            get_variable(container, PhaseShifterAngle, T)
+        else
+            nothing
+        end
+    _foreach_branch(_all_branches(network_model, T)) do rep
+        phase_controlled = _phase_controlled(rep, branch_model, network_model)
+        shift_injection = _dc_shift_injection(rep)
+        from_no, to_no = rep.arc
+        if phase_controlled
+            b = _dc_susceptance(rep)
+            for t in time_steps
+                angle = phase_var[rep.name, t]
+                JuMP.add_to_expression!(nodal_expr[from_no, t], b, angle)
+                JuMP.add_to_expression!(nodal_expr[to_no, t], -b, angle)
             end
-        _foreach_branch(_all_branches(model, comp_type)) do rep
-            phase_controlled = _phase_controlled(rep, branch_model, model)
-            shift_injection = _dc_shift_injection(rep)
-            from_no, to_no = rep.arc
-            if phase_controlled
-                b = _dc_susceptance(rep)
-                for t in time_steps
-                    angle = phase_var[rep.name, t]
-                    JuMP.add_to_expression!(nodal_expr[from_no, t], b, angle)
-                    JuMP.add_to_expression!(nodal_expr[to_no, t], -b, angle)
-                end
-            else
-                iszero(shift_injection) && return
-                for t in time_steps
-                    JuMP.add_to_expression!(nodal_expr[from_no, t], shift_injection)
-                    JuMP.add_to_expression!(nodal_expr[to_no, t], -shift_injection)
-                end
+        else
+            iszero(shift_injection) && return
+            for t in time_steps
+                JuMP.add_to_expression!(nodal_expr[from_no, t], shift_injection)
+                JuMP.add_to_expression!(nodal_expr[to_no, t], -shift_injection)
             end
         end
+    end
+end
+
+# no-op on HVDC
+_add_shift_injections_branch!(::OptimizationContainer, ::NetworkModel, ::DeviceModel) = nothing
+
+function _add_shift_injections!(
+    container::OptimizationContainer,
+    network_model::NetworkModel{<:AbstractPTDFNetworkModel},
+    template::PowerOperationsProblemTemplate,
+)
+    for branch_model in values(get_branch_models(template))
+        _add_shift_injections_branch!(container, network_model, branch_model)
     end
     return
 end

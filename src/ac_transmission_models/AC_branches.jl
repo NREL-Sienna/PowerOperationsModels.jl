@@ -787,15 +787,15 @@ function add_constraints!(
 
     for name in branches
         for t in time_steps
-            flow =
+            rhs =
                 if use_slacks
-                    JuMP.@expression(jump_model, flow_expr[name, t] - slack_ub[name, t] + slack_lb[name, t])
+                    JuMP.@expression(jump_model, slack_ub[name, t] - slack_lb[name, t])
                 else
-                    flow_expr[name, t]
+                    0.0
                 end
             branch_flow[name, t] = JuMP.@constraint(
                 jump_model,
-                flow_var[name, t] == flow
+                flow_expr[name, t] - flow_var[name, t] == rhs
             )
         end
     end
