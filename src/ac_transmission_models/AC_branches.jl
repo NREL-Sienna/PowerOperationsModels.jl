@@ -673,18 +673,16 @@ end
 _nz_entries(ptdf_col::SparseArrays.SparseVector{Float64, Int}) =
     (SparseArrays.nonzeroinds(ptdf_col), SparseArrays.nonzeros(ptdf_col))
 
-_add_shift_injection!(acc::JuMP.AffExpr, inj::Float64, ::Int) = JuMP.add_to_expression!(acc, inj)
-_add_shift_injection!(acc::JuMP.AffExpr, inj::Vector{JuMP.AffExpr}, t::Int) = JuMP.add_to_expression!(acc, inj[t])
-
-function _make_flow_expressions!(
-    name::String,
+function _ptdf_branch_flow(
+    rep::RepresentativeBranch,
     time_steps::UnitRange{Int},
     ptdf_col,
     nodal_balance_expressions::Matrix{JuMP.AffExpr},
-    shift_injection::Union{Float64, Vector{JuMP.AffExpr}},
+    phase_var::Union{DenseAxisArray, Nothing},
+    phase_controlled::Bool,
 )
     @debug "Making Flow Expression on thread $(Threads.threadid()) for branch $(rep.name)"
-    _assert_flow_expression_dimensions(name, length(ptdf_col), nodal_balance_expressions)
+    _assert_flow_expression_dimensions(rep.name, length(ptdf_col), nodal_balance_expressions)
     nz_idx, nz_val = _nz_entries(ptdf_col)
     hint = length(nz_idx)
     expressions = Vector{JuMP.AffExpr}(undef, length(time_steps))
@@ -697,10 +695,14 @@ function _make_flow_expressions!(
                 nodal_balance_expressions[nz_idx[k], t],
             )
         end
-        _add_shift_injection!(acc, shift_injection, t)
+        if phase_controlled
+            JuMP.add_to_expression!(acc, -_dc_susceptance(rep), phase_var[rep.name, t])
+        else
+            JuMP.add_to_expression!(acc, -_dc_shift_injection(rep))
+        end
         expressions[t] = acc
     end
-    return name, expressions
+    return rep.name, expressions
 end
 
 function add_expressions!(
@@ -722,18 +724,24 @@ function add_expressions!(
 
     ptdf = get_network_matrix(network_model)
     nodal_balance_expressions = get_expression(container, ActivePowerBalance, PSY.ACBus)
+    phase_var =
+        if has_container_key(container, PhaseShifterAngle, B)
+            get_variable(container, PhaseShifterAngle, B)
+        else
+            nothing
+        end
     tasks = map(branches) do rep
         # ptdf[arc, :] is a KLU solve; libklu is not concurrency safe, so this
         # happens in the main thread.
         ptdf_col = ptdf[rep.arc, :]
-        shift_injection = _phase_controlled(rep, device_model, network_model) ? phase_var[rep.name, :] : -_dc_shift_injection(rep)
         Threads.@spawn try
-            _make_flow_expressions!(
-                rep.name,
+            _ptdf_branch_flow(
+                rep,
                 time_steps,
                 ptdf_col,
                 nodal_balance_expressions.data,
-                shift_injection
+                phase_var,
+                _phase_controlled(rep, device_model, network_model)
             )
         catch e
             @error "PTDF flow-expression task failed" name = rep.name arc = rep.arc exception =

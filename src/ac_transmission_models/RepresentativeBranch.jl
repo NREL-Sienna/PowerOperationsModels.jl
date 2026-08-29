@@ -193,7 +193,7 @@ const _TAP_CONTROLS = (_VOLTAGE_CONTROL, _REACTIVE_CONTROL)
 const _PHASE_CONTROLS = (_ACTIVE_CONTROL,)
 
 const _TAP_NETWORKS = NativeACNetworkModel
-const _PHASE_NETWORKS = AbstractDCPNetworkModel
+const _PHASE_NETWORKS = Union{DCPNetworkModel, AbstractDCPLLNetworkModel, AbstractPTDFNetworkModel}
 
 _get_circuit(t::PSY.TwoWindingTransformer) = PSY.get_circuit(t)
 _get_circuit(t::PNM.ThreeWindingTransformerCircuit) = t.circuit
@@ -233,7 +233,7 @@ _controlled_circuit_names(
     branch::Union{PSY.ACTransmission, PNM.ThreeWindingTransformerCircuit},
     device_model::DeviceModel,
 ) =
-    if _control_objective(_get_circuit(branch), device_model) in _TAP_CONTROLS
+    if _control_objective(_get_circuit(branch), device_model).value > 0
         [PNM.get_name(branch)]
     else
         String[]

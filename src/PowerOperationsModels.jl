@@ -777,6 +777,7 @@ export ReferenceBusConstraint
 export VoltageMagnitudeConstraint
 export ReactivePowerFlowControlConstraint
 export VoltageControlConstraint
+export ActivePowerFlowControlConstraint
 export RegulatedVoltageMagnitudeConstraint
 export CurrentLimitConstraint
 export AngleDifferenceConstraint
