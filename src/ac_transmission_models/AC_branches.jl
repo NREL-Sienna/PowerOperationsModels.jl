@@ -325,15 +325,17 @@ _add_transformer_control_variables!(
     container::OptimizationContainer,
     devices::IS.FlattenIteratorWrapper{T},
     device_model::DeviceModel{T, <:_CONTROL_FORMULATIONS},
-    network_model::NetworkModel{<:_TAP_NETWORKS}
-) where {T <: _TRANSFORMERS} = add_variables!(container, TapRatioVariable, devices, device_model, network_model)
+    network_model::NetworkModel{<:_TAP_NETWORKS},
+) where {T <: _TRANSFORMERS} =
+    add_variables!(container, TapRatioVariable, devices, device_model, network_model)
 
 _add_transformer_control_variables!(
     container::OptimizationContainer,
     devices::IS.FlattenIteratorWrapper{T},
     device_model::DeviceModel{T, <:_CONTROL_FORMULATIONS},
-    network_model::NetworkModel{<:_PHASE_NETWORKS}
-) where {T <: _TRANSFORMERS} = add_variables!(container, PhaseShifterAngle, devices, device_model, network_model)
+    network_model::NetworkModel{<:_PHASE_NETWORKS},
+) where {T <: _TRANSFORMERS} =
+    add_variables!(container, PhaseShifterAngle, devices, device_model, network_model)
 
 _add_transformer_control_variables!(
     ::OptimizationContainer,
@@ -682,7 +684,11 @@ function _ptdf_branch_flow(
     phase_controlled::Bool,
 )
     @debug "Making Flow Expression on thread $(Threads.threadid()) for branch $(rep.name)"
-    _assert_flow_expression_dimensions(rep.name, length(ptdf_col), nodal_balance_expressions)
+    _assert_flow_expression_dimensions(
+        rep.name,
+        length(ptdf_col),
+        nodal_balance_expressions,
+    )
     nz_idx, nz_val = _nz_entries(ptdf_col)
     hint = length(nz_idx)
     expressions = Vector{JuMP.AffExpr}(undef, length(time_steps))
@@ -741,7 +747,7 @@ function add_expressions!(
                 ptdf_col,
                 nodal_balance_expressions.data,
                 phase_var,
-                _phase_controlled(rep, device_model, network_model)
+                _phase_controlled(rep, device_model, network_model),
             )
         catch e
             @error "PTDF flow-expression task failed" name = rep.name arc = rep.arc exception =
@@ -782,7 +788,13 @@ function add_constraints!(
         devices,
         cons_type,
     )
-    branch_flow = add_constraints_container!(container, NetworkFlowConstraint, T, branches, time_steps,)
+    branch_flow = add_constraints_container!(
+        container,
+        NetworkFlowConstraint,
+        T,
+        branches,
+        time_steps,
+    )
     jump_model = get_jump_model(container)
 
     use_slacks = get_use_slacks(device_model)
@@ -1528,7 +1540,7 @@ _flow_array(
     container::OptimizationContainer,
     ::Type{ReactivePowerFlowControlConstraint},
     ::DeviceModel{T, <:_CONTROL_FORMULATIONS},
-    ::NetworkModel{<:_TAP_NETWORKS}
+    ::NetworkModel{<:_TAP_NETWORKS},
 ) where {T <: _TRANSFORMERS} = get_variable(container, FlowReactivePowerFromToVariable, T)
 _flow_array(
     container::OptimizationContainer,
@@ -1568,7 +1580,10 @@ function _add_flow_control_constraints!(
     devices::IS.FlattenIteratorWrapper{T},
     device_model::DeviceModel{T, <:_CONTROL_FORMULATIONS},
     network_model::NetworkModel,
-) where {C <: Union{ReactivePowerFlowControlConstraint, ActivePowerFlowControlConstraint}, T <: _TRANSFORMERS}
+) where {
+    C <: Union{ReactivePowerFlowControlConstraint, ActivePowerFlowControlConstraint},
+    T <: _TRANSFORMERS,
+}
     _control_enabled(device_model) || return
 
     branches = _branches_for_cons(C, device_model, network_model)
@@ -1617,7 +1632,13 @@ function _add_transformer_control_constraints!(
 ) where {T <: _TRANSFORMERS}
     _control_enabled(device_model) || return
     _add_voltage_control_constraints!(container, sys, devices, device_model, network_model)
-    _add_flow_control_constraints!(container, ReactivePowerFlowControlConstraint, devices, device_model, network_model)
+    _add_flow_control_constraints!(
+        container,
+        ReactivePowerFlowControlConstraint,
+        devices,
+        device_model,
+        network_model,
+    )
     return
 end
 
@@ -1629,7 +1650,13 @@ function _add_transformer_control_constraints!(
     network_model::NetworkModel{<:_PHASE_NETWORKS},
 ) where {T <: _TRANSFORMERS}
     _control_enabled(device_model) || return
-    _add_flow_control_constraints!(container, ActivePowerFlowControlConstraint, devices, device_model, network_model)
+    _add_flow_control_constraints!(
+        container,
+        ActivePowerFlowControlConstraint,
+        devices,
+        device_model,
+        network_model,
+    )
     return
 end
 

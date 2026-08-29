@@ -145,7 +145,11 @@ function construct_network!(
 end
 
 # Function-barrier for _add_shift_injections!
-function _add_shift_injections_branch!(container::OptimizationContainer, network_model::NetworkModel{<:AbstractPTDFNetworkModel}, branch_model::DeviceModel{T}) where {T <: PSY.ACTransmission}
+function _add_shift_injections_branch!(
+    container::OptimizationContainer,
+    network_model::NetworkModel{<:AbstractPTDFNetworkModel},
+    branch_model::DeviceModel{T},
+) where {T <: PSY.ACTransmission}
     nodal_expr = get_expression(container, ActivePowerBalance, PSY.ACBus)
     time_steps = get_time_steps(container)
     phase_var =
@@ -176,7 +180,8 @@ function _add_shift_injections_branch!(container::OptimizationContainer, network
 end
 
 # no-op on HVDC
-_add_shift_injections_branch!(::OptimizationContainer, ::NetworkModel, ::DeviceModel) = nothing
+_add_shift_injections_branch!(::OptimizationContainer, ::NetworkModel, ::DeviceModel) =
+    nothing
 
 function _add_shift_injections!(
     container::OptimizationContainer,
