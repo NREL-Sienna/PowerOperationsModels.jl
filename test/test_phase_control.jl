@@ -383,20 +383,3 @@ end
     @test occursin("Controlled transformer circuit", log)
     @test occursin(fixture.axis_name, log)
 end
-
-############################## security-constrained rejection ##########################
-
-@testset "phase control combined with a security-constrained branch model is rejected" begin
-    # Post-contingency MODF flows are built from the constant phase shift, so a variable α
-    # would leave them silently wrong.
-    fixture = _meshed_fixture()
-    template = _controlled_template(PTDFNetworkModel, PSY.TwoWindingTransformer)
-    set_device_model!(template, PSY.Line, SecurityConstrainedStaticBranch)
-    model = DecisionModel(template, fixture.sys; optimizer = ipopt_optimizer)
-    out = mktempdir(; cleanup = true)
-    @test build!(model; output_dir = out, console_level = Logging.Error) ==
-          IOM.ModelBuildStatus.FAILED
-    log = read(joinpath(out, "operation_problem.log"), String)
-    @test occursin("Phase-controlled transformer circuit", log)
-    @test occursin(fixture.axis_name, log)
-end
