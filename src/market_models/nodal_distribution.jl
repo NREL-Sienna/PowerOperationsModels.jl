@@ -15,10 +15,13 @@ function assert_numeric_distribution_factors(container::OptimizationContainer)
     return
 end
 
-# Membership differs by location type: dispatch, never branch on the type.
+# Membership differs by location type: dispatch, never branch on the type. Only available
+# members count: the nodal balance has no row for a bus that is out of service, so such a
+# member must not receive any of the cleared position.
+_available(buses) = [b for b in buses if PSY.get_available(b)]
 get_member_buses(::PSY.System, bus::PSY.ACBus) = [bus]
-get_member_buses(sys::PSY.System, zone::PSY.LoadZone) = PSY.get_buses(sys, zone)
-get_member_buses(::PSY.System, hub::PSY.TradingHub) = PSY.get_buses(hub)
+get_member_buses(sys::PSY.System, zone::PSY.LoadZone) = _available(PSY.get_buses(sys, zone))
+get_member_buses(::PSY.System, hub::PSY.TradingHub) = _available(PSY.get_buses(hub))
 
 """
 Feature key of the `distribution_factor` series a settlement location carries for one of

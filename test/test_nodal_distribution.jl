@@ -439,3 +439,12 @@ end
     )
     @test dual_value > 1e-6
 end
+
+@testset "get_member_buses drops unavailable members" begin
+    sys, zone, zone_buses = _build_zone_system()
+    PSY.set_available!(zone_buses[1], false)
+    @test POM.get_member_buses(sys, zone) == [zone_buses[2]]
+    hub = PSY.TradingHub(; name = "HUB_ISO", buses = collect(zone_buses))
+    PSY.add_component!(sys, hub)
+    @test POM.get_member_buses(sys, hub) == [zone_buses[2]]
+end
