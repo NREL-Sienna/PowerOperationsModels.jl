@@ -194,6 +194,13 @@ function _pin_transformer_controls!(
                 _warn_circuit(obj, "phase control is only supported on $(_PHASE_NETWORKS).")
                 continue
             end
+            if obj in (
+                PSY.TransformerControlObjective.CONTROL_OF_DC_LINE,
+                PSY.TransformerControlObjective.ASYMMETRIC_ACTIVE_POWER_FLOW,
+            )
+                _warn_circuit(obj, "this control is not yet implemented.")
+                continue
+            end
             _push_component_buses!(buses, circuit)
             if PSY.get_control_objective(circuit) === _VOLTAGE_CONTROL
                 push!(buses, PSY.get_regulated_bus_number(circuit))

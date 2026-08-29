@@ -2156,7 +2156,6 @@ function add_expressions!(
         to_name = _to_name(rep)
         from_no = _from_number(rep)
         to_no = _to_number(rep)
-        tap = _admittance(rep).tap
 
         phase_controlled = _phase_controlled(rep, device_model, network_model)
         for t in time_steps
@@ -2499,7 +2498,6 @@ function add_constraints!(
         dc_shift = _dc_shift(rep)
         from_name = _from_name(rep)
         to_name = _to_name(rep)
-        tap = _admittance(rep).tap
         phase_controlled = _phase_controlled(rep, device_model, network_model)
         for t in time_steps
             shift = phase_controlled ? phase_var[rep.name, t] : dc_shift
