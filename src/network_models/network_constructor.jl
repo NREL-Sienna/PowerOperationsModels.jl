@@ -163,13 +163,20 @@ function _add_shift_injections!(
         _foreach_branch(_all_branches(model, comp_type)) do rep
             phase_controlled = _phase_controlled(rep, branch_model, model)
             shift_injection = _dc_shift_injection(rep)
-            if !phase_controlled && iszero(shift_injection)
-                return
-            end
-            for t in time_steps
-                injection = phase_controlled ? phase_var[rep.name, t] : _dc_shift_injection(rep)
-                JuMP.add_to_expression!(nodal_expr[from_no, t], injection)
-                JuMP.add_to_expression!(nodal_expr[to_no, t], -injection)
+            from_no, to_no = rep.arc
+            if phase_controlled
+                b = _dc_susceptance(rep)
+                for t in time_steps
+                    angle = phase_var[rep.name, t]
+                    JuMP.add_to_expression!(nodal_expr[from_no, t], b, angle)
+                    JuMP.add_to_expression!(nodal_expr[to_no, t], -b, angle)
+                end
+            else
+                iszero(shift_injection) && return
+                for t in time_steps
+                    JuMP.add_to_expression!(nodal_expr[from_no, t], shift_injection)
+                    JuMP.add_to_expression!(nodal_expr[to_no, t], -shift_injection)
+                end
             end
         end
     end

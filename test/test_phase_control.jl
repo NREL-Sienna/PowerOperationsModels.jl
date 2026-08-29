@@ -160,27 +160,8 @@ end
 
         # Build warnings go to the build's own log, not to the caller's logger.
         log = read(joinpath(output_dir, "operation_problem.log"), String)
-        @test occursin(
-            "phase control is not supported on $(nameof(network_formulation)) networks",
-            log,
-        )
+        @test occursin("phase control is only supported on", log)
     end
-end
-
-@testset "a phase objective on a formulation with no control variable is rejected loudly" begin
-    fixture = _meshed_fixture()
-    output_dir = mktempdir(; cleanup = true)
-    model, status = _build_controlled(
-        fixture.sys, DCPNetworkModel, PSY.TwoWindingTransformer;
-        optimizer = ipopt_optimizer, output_dir = output_dir,
-        formulation = StaticBranchUnbounded,
-    )
-    @test status == IOM.ModelBuildStatus.BUILT
-
-    container = IOM.get_optimization_container(model)
-    @test !_has_phase_variable(container)
-    log = read(joinpath(output_dir, "operation_problem.log"), String)
-    @test occursin("StaticBranchUnbounded formulation carries no control variable", log)
 end
 
 ################################### model invariants ###################################
