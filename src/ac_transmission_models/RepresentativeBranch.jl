@@ -194,7 +194,8 @@ const _TAP_CONTROLS = (_VOLTAGE_CONTROL, _REACTIVE_CONTROL)
 const _PHASE_CONTROLS = (_ACTIVE_CONTROL,)
 
 const _TAP_NETWORKS = NativeACNetworkModel
-const _PHASE_NETWORKS = Union{DCPNetworkModel, AbstractDCPLLNetworkModel, AbstractPTDFNetworkModel}
+const _PHASE_NETWORKS =
+    Union{DCPNetworkModel, AbstractDCPLLNetworkModel, AbstractPTDFNetworkModel}
 
 _get_circuit(t::PSY.TwoWindingTransformer) = PSY.get_circuit(t)
 _get_circuit(t::PNM.ThreeWindingTransformerCircuit) = t.circuit
@@ -210,23 +211,43 @@ _control_objective(c::PSY.TransformerCircuit, d::DeviceModel) =
 _control_objective(rep::RepresentativeBranch, d::DeviceModel) =
     _control_objective(_get_circuit(rep.branch), d)
 
-_voltage_controlled(rep::RepresentativeBranch, d::DeviceModel, ::NetworkModel{<:_TAP_NETWORKS}) =
+_voltage_controlled(
+    rep::RepresentativeBranch,
+    d::DeviceModel,
+    ::NetworkModel{<:_TAP_NETWORKS},
+) =
     _control_objective(rep, d) === _VOLTAGE_CONTROL
 _voltage_controlled(::RepresentativeBranch, ::DeviceModel, ::NetworkModel) = false
 
-_reactive_controlled(rep::RepresentativeBranch, d::DeviceModel, ::NetworkModel{<:_TAP_NETWORKS}) =
+_reactive_controlled(
+    rep::RepresentativeBranch,
+    d::DeviceModel,
+    ::NetworkModel{<:_TAP_NETWORKS},
+) =
     _control_objective(rep, d) === _REACTIVE_CONTROL
 _reactive_controlled(::RepresentativeBranch, ::DeviceModel, ::NetworkModel) = false
 
-_tap_controlled(rep::RepresentativeBranch, d::DeviceModel, ::NetworkModel{<:_TAP_NETWORKS}) =
+_tap_controlled(
+    rep::RepresentativeBranch,
+    d::DeviceModel,
+    ::NetworkModel{<:_TAP_NETWORKS},
+) =
     _control_objective(rep, d) in _TAP_CONTROLS
 _tap_controlled(::RepresentativeBranch, ::DeviceModel, ::NetworkModel) = false
 
-_active_controlled(rep::RepresentativeBranch, d::DeviceModel, ::NetworkModel{<:_PHASE_NETWORKS}) =
+_active_controlled(
+    rep::RepresentativeBranch,
+    d::DeviceModel,
+    ::NetworkModel{<:_PHASE_NETWORKS},
+) =
     _control_objective(rep, d) === _ACTIVE_CONTROL
 _active_controlled(::RepresentativeBranch, ::DeviceModel, ::NetworkModel) = false
 
-_phase_controlled(rep::RepresentativeBranch, d::DeviceModel, ::NetworkModel{<:_PHASE_NETWORKS}) =
+_phase_controlled(
+    rep::RepresentativeBranch,
+    d::DeviceModel,
+    ::NetworkModel{<:_PHASE_NETWORKS},
+) =
     _control_objective(rep, d) in _PHASE_CONTROLS
 _phase_controlled(::RepresentativeBranch, ::DeviceModel, ::NetworkModel) = false
 

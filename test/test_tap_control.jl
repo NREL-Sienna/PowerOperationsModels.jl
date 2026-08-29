@@ -96,7 +96,11 @@ end
 
         for other in TAP_CONTROLS
             cons =
-                _control_constraints(container, _control_constraint(other), case.device_type)
+                _control_constraints(
+                    container,
+                    _control_constraint(other),
+                    case.device_type,
+                )
             if other !== mode
                 cons === nothing || @test isempty(axes(cons)[1])
                 continue

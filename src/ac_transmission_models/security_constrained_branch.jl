@@ -469,7 +469,7 @@ function _build_post_contingency_flow_expressions_for_outage(
             modf_cols[(outage_id, rep.arc)],
             nodal_balance_expressions,
             nothing,
-            false
+            false,
         )
         results[i] = (rep.name, expressions)
     end
