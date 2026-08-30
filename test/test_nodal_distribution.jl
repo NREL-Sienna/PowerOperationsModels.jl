@@ -172,16 +172,26 @@ end
     @test POM._check_market_model!(template) === nothing
 end
 
-function _add_hub_and_p2p!(sys, zone)
+function _add_hub_and_p2p!(sys, zone; spread_bid = PSY.MarketBidCost(nothing))
     buses = sort!(collect(PSY.get_components(PSY.ACBus, sys)); by = PSY.get_number)
     hub = PSY.TradingHub(; name = "HUB1", buses = buses[3:4])
     PSY.add_component!(sys, hub)
     bid = PSY.PointToPointBid(;
         name = "P2P1", available = true, from = zone, to = hub,
         max_active_power = 50.0, price_limits = (min = -100.0, max = 100.0),
+        spread_bid = spread_bid,
     )
     PSY.add_component!(sys, bid)
     return hub, bid
+end
+
+# A spread bid template with both terminals' location models registered.
+function _p2p_template()
+    template = _ptdf_market_template()
+    set_market_component_model!(template, DeviceModel(PSY.LoadZone, NodalRedistribution))
+    set_market_component_model!(template, DeviceModel(PSY.TradingHub, NodalRedistribution))
+    set_market_component_model!(template, DeviceModel(PSY.PointToPointBid, SpreadBid))
+    return template
 end
 
 @testset "SpreadBid: two signed writes, nets to zero across all buses" begin
@@ -272,6 +282,200 @@ end
     set_market_component_model!(template, DeviceModel(PSY.LoadZone, NodalRedistribution))
     set_market_component_model!(template, DeviceModel(PSY.PointToPointBid, SpreadBid))
     model = DecisionModel(template, sys; optimizer = HiGHS_optimizer)
+    @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
+          IOM.ModelBuildStatus.FAILED
+end
+
+@testset "SpreadBid prices its incremental curve into the objective" begin
+    sys, zone, zone_buses = _build_zone_system()
+    # Two segments with distinct, increasing marginal prices in natural units (\$/MWh),
+    # spanning the bid's full 50 MW envelope.
+    slopes = [3.0, 8.0]
+    hub, bid = _add_hub_and_p2p!(
+        sys, zone;
+        spread_bid = PSY.MarketBidCost(;
+            incremental_offer_curves = PSY.CostCurve(
+                PSY.PiecewiseIncrementalCurve(0.0, [0.0, 20.0, 50.0], slopes),
+                PSY.NU,
+            ),
+        ),
+    )
+    model = DecisionModel(_p2p_template(), sys; optimizer = HiGHS_optimizer)
+    @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
+          IOM.ModelBuildStatus.BUILT
+    container = get_optimization_container(model)
+    time_steps = get_time_steps(container)
+    t1 = first(time_steps)
+    objective = JuMP.objective_function(get_jump_model(container))
+
+    q = IOM.get_variable(container, ClearedTransferVariable, PSY.PointToPointBid)
+    delta = IOM.get_variable(
+        container, PiecewiseLinearBlockIncrementalOffer, PSY.PointToPointBid,
+    )
+    # The award itself carries no objective coefficient: the price is on the segments.
+    @test JuMP.coefficient(objective, q["P2P1", t1]) == 0.0
+
+    # Independent reference: a curve authored in natural units prices a per-unit award at
+    # slope * base_power, per hour of the model resolution. The sign is POSITIVE -- the
+    # spread bid is an incremental offer, so a higher bid price makes the transfer more
+    # expensive to clear rather than more attractive.
+    base_power = IOM.get_model_base_power(container)
+    dt = Dates.value(IOM.get_resolution(container)) / POM.MILLISECONDS_IN_HOUR
+    for t in time_steps, (segment, slope) in enumerate(slopes)
+        @test isapprox(
+            JuMP.coefficient(objective, delta[("P2P1", segment, t)]),
+            slope * base_power * dt;
+            atol = 1e-9,
+        )
+    end
+    # One delta per segment per period, and nothing else.
+    @test length(delta.data) == length(slopes) * length(time_steps)
+
+    # The award is the sum of its segments, so the curve -- not just `max_active_power` --
+    # bounds what can clear.
+    pwl_constraint = IOM.get_constraint(
+        container, PiecewiseLinearBlockIncrementalOfferConstraint, PSY.PointToPointBid,
+    )
+    con = JuMP.constraint_object(pwl_constraint["P2P1", t1])
+    @test JuMP.coefficient(con.func, q["P2P1", t1]) == 1.0
+    for segment in eachindex(slopes)
+        @test JuMP.coefficient(con.func, delta[("P2P1", segment, t1)]) == -1.0
+    end
+
+    # The two signed position writes are untouched by pricing.
+    zexpr = IOM.get_expression(container, AggregateClearedInjection, PSY.LoadZone)
+    hexpr = IOM.get_expression(container, AggregateClearedInjection, PSY.TradingHub)
+    @test JuMP.coefficient(zexpr["LZ1", t1], q["P2P1", t1]) == -1.0
+    @test JuMP.coefficient(hexpr["HUB1", t1], q["P2P1", t1]) == 1.0
+end
+
+# Promote a bid's spread_bid to a fully time-series-backed `MarketBidTimeSeriesCost` with
+# constant-valued series on the system's own forecast timestamps. `minimum_energy_offer`,
+# `start_up` and `shut_down` are meaningless for a bid that carries no commitment, but the
+# type requires them, so they get zero-valued series. The decremental side gets a
+# zero-span series: the absent side of a one-sided bid is a real stored inert series, not
+# a missing one.
+function _promote_spread_bid_to_ts!(sys, bid, x_coords, slopes)
+    load = first(PSY.get_components(PSY.PowerLoad, sys))
+    existing = PSY.get_time_series(PSY.Deterministic, load, "max_active_power")
+    resolution = PSY.get_resolution(existing)
+    timestamps = collect(keys(PSY.get_data(existing)))
+    horizon = length(first(values(PSY.get_data(existing))))
+    det(name, value) = PSY.Deterministic(;
+        name = name,
+        data = SortedDict(ts => fill(value, horizon) for ts in timestamps),
+        resolution = resolution,
+    )
+    curve = PSY.PiecewiseStepData(x_coords, slopes)
+    inert = PSY.PiecewiseStepData([0.0, 0.0], [0.0])
+    keys_ = map(
+        args -> PSY.add_time_series!(sys, bid, det(args...)),
+        (
+            ("variable_cost incremental", curve),
+            ("initial_input incremental", 0.0),
+            ("variable_cost decremental", inert),
+            ("initial_input decremental", 0.0),
+            ("minimum_energy_offer", 0.0),
+            ("shut_down", 0.0),
+            ("start_up", (0.0, 0.0, 0.0)),
+        ),
+    )
+    inc_key, inc_init, dec_key, dec_init, meo_key, sd_key, su_key = keys_
+    PSY.set_spread_bid!(
+        bid,
+        PSY.MarketBidTimeSeriesCost(;
+            minimum_energy_offer = PSY.TimeSeriesLinearCurve(meo_key),
+            start_up = su_key,
+            shut_down = PSY.TimeSeriesLinearCurve(sd_key),
+            incremental_offer_curves = PSY.make_market_bid_ts_curve(inc_key, inc_init),
+            decremental_offer_curves = PSY.make_market_bid_ts_curve(dec_key, dec_init),
+        ),
+    )
+    return bid
+end
+
+@testset "SpreadBid prices a time-series-backed spread curve identically" begin
+    sys, zone, zone_buses = _build_zone_system()
+    slopes = [3.0, 8.0]
+    hub, bid = _add_hub_and_p2p!(sys, zone)
+    _promote_spread_bid_to_ts!(sys, bid, [0.0, 20.0, 50.0], slopes)
+    model = DecisionModel(_p2p_template(), sys; optimizer = HiGHS_optimizer)
+    @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
+          IOM.ModelBuildStatus.BUILT
+    container = get_optimization_container(model)
+    time_steps = get_time_steps(container)
+    objective = JuMP.objective_function(get_jump_model(container))
+    delta = IOM.get_variable(
+        container, PiecewiseLinearBlockIncrementalOffer, PSY.PointToPointBid,
+    )
+    # The forecast route reads slopes out of the PWL parameter containers rather than the
+    # struct, so it is the reference the static test is checked against: same curve, same
+    # objective coefficients.
+    base_power = IOM.get_model_base_power(container)
+    dt = Dates.value(IOM.get_resolution(container)) / POM.MILLISECONDS_IN_HOUR
+    for t in time_steps, (segment, slope) in enumerate(slopes)
+        @test isapprox(
+            JuMP.coefficient(objective, delta[("P2P1", segment, t)]),
+            slope * base_power * dt;
+            atol = 1e-9,
+        )
+    end
+    # The stored inert decremental series is not a demand offer, so the bid is not
+    # rejected as one.
+    @test IOM.has_container_key(
+        container, IncrementalPiecewiseLinearSlopeParameter, PSY.PointToPointBid,
+    )
+end
+
+@testset "SpreadBid without a curve warns and stays unpriced" begin
+    sys, zone, zone_buses = _build_zone_system()
+    hub, bid = _add_hub_and_p2p!(sys, zone)
+    model = DecisionModel(_p2p_template(), sys; optimizer = HiGHS_optimizer)
+    output_dir = mktempdir(; cleanup = true)
+    @test build!(model; output_dir = output_dir) == IOM.ModelBuildStatus.BUILT
+    container = get_optimization_container(model)
+    t1 = first(get_time_steps(container))
+    q = IOM.get_variable(container, ClearedTransferVariable, PSY.PointToPointBid)
+    @test JuMP.coefficient(JuMP.objective_function(get_jump_model(container)),
+        q["P2P1", t1]) == 0.0
+    @test !IOM.has_container_key(
+        container, PiecewiseLinearBlockIncrementalOffer, PSY.PointToPointBid,
+    )
+    # Free optionality must be loud. Build warnings land in the build log, not at the
+    # call site, so assert by reading the file.
+    log = read(joinpath(output_dir, "operation_problem.log"), String)
+    @test occursin("P2P1 has no incremental spread_bid curve", log)
+end
+
+@testset "SpreadBid rejects block-bid curve styles" begin
+    sys, zone, zone_buses = _build_zone_system()
+    hub, bid = _add_hub_and_p2p!(
+        sys, zone;
+        spread_bid = PSY.MarketBidCost(;
+            incremental_offer_curves = PSY.CostCurve(
+                PSY.PiecewiseIncrementalCurve(0.0, [0.0, 50.0], [3.0]),
+                PSY.NU,
+            ),
+            curve_style = PSY.CurveStyles.FIXED,
+        ),
+    )
+    model = DecisionModel(_p2p_template(), sys; optimizer = HiGHS_optimizer)
+    @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
+          IOM.ModelBuildStatus.FAILED
+end
+
+@testset "SpreadBid rejects a decremental spread curve" begin
+    sys, zone, zone_buses = _build_zone_system()
+    hub, bid = _add_hub_and_p2p!(
+        sys, zone;
+        spread_bid = PSY.MarketBidCost(;
+            decremental_offer_curves = PSY.CostCurve(
+                PSY.PiecewiseIncrementalCurve(0.0, [0.0, 50.0], [3.0]),
+                PSY.NU,
+            ),
+        ),
+    )
+    model = DecisionModel(_p2p_template(), sys; optimizer = HiGHS_optimizer)
     @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
           IOM.ModelBuildStatus.FAILED
 end

@@ -26,6 +26,17 @@ const IEC_TYPES = Union{PSY.ImportExportCost, PSY.ImportExportTimeSeriesCost}
 const TS_OFFER_CURVE_COST_TYPES =
     Union{PSY.MarketBidTimeSeriesCost, PSY.ImportExportTimeSeriesCost}
 
+"""
+Components that price a cleared award against an offer curve. `PSY.VirtualParticipant` and
+`PSY.PointToPointBid` are `MarketTransaction`s rather than devices, so the bound is an
+explicit Union: widening to `PSY.Component` would make these methods ambiguous with the
+`PSY.AbstractReserve` service methods. Every member resolves its cost through
+`IOM.get_operation_cost`, which is the field `operation_cost` for all of them except
+`PSY.PointToPointBid`, whose curve lives on `spread_bid`.
+"""
+const OFFER_CURVE_COMPONENTS =
+    Union{PSY.StaticInjection, PSY.VirtualParticipant, PSY.PointToPointBid}
+
 #################################################################################
 # Section 1: Offer Curve Accessor Wrappers
 # Map PSY cost types (MarketBidCost, ImportExportCost) to a unified interface.
@@ -84,24 +95,23 @@ get_input_offer_curves(
 
 ######################### get_offer_curves(direction, ...) ##############################
 
-# direction and device: bound on a 2-member Union (not plain PSY.Component) so
-# PSY.VirtualParticipant (a MarketTransaction, not a Device) also dispatches here
-# without becoming ambiguous with the AbstractReserve service method below.
+# direction and component: see `OFFER_CURVE_COMPONENTS` for why the bound is an explicit
+# Union rather than PSY.Component.
 get_offer_curves(
     ::IOM.DecrementalOffer,
-    device::Union{PSY.StaticInjection, PSY.VirtualParticipant},
-) = get_input_offer_curves(PSY.get_operation_cost(device))
+    device::OFFER_CURVE_COMPONENTS,
+) = get_input_offer_curves(IOM.get_operation_cost(device))
 get_offer_curves(
     ::IOM.IncrementalOffer,
-    device::Union{PSY.StaticInjection, PSY.VirtualParticipant},
-) = get_output_offer_curves(PSY.get_operation_cost(device))
+    device::OFFER_CURVE_COMPONENTS,
+) = get_output_offer_curves(IOM.get_operation_cost(device))
 IOM.get_initial_input(::IOM.DecrementalOffer, device::PSY.StaticInjection) =
     IS.get_initial_input(
-        IS.get_value_curve(get_input_offer_curves(PSY.get_operation_cost(device))),
+        IS.get_value_curve(get_input_offer_curves(IOM.get_operation_cost(device))),
     )
 IOM.get_initial_input(::IOM.IncrementalOffer, device::PSY.StaticInjection) =
     IS.get_initial_input(
-        IS.get_value_curve(get_output_offer_curves(PSY.get_operation_cost(device))),
+        IS.get_value_curve(get_output_offer_curves(IOM.get_operation_cost(device))),
     )
 
 # direction and cost curve (needed for VOM code path):
@@ -155,11 +165,10 @@ IOM._get_parameter_field(
 # Section 4: Device Cost Detection Predicates (generic)
 #################################################################################
 
-# Bound on a 2-member Union (not plain PSY.Component) so PSY.VirtualParticipant (a
-# MarketTransaction, not a Device) also dispatches here — narrow explicitly rather than
-# widen to Component, since this unconditionally calls PSY.get_operation_cost.
-_has_market_bid_cost(device::Union{PSY.StaticInjection, PSY.VirtualParticipant}) =
-    _has_market_bid_cost(PSY.get_operation_cost(device))
+# Bound on `OFFER_CURVE_COMPONENTS` rather than PSY.Component since this unconditionally
+# calls IOM.get_operation_cost.
+_has_market_bid_cost(device::OFFER_CURVE_COMPONENTS) =
+    _has_market_bid_cost(IOM.get_operation_cost(device))
 _has_market_bid_cost(::MBC_TYPES) = true
 _has_market_bid_cost(::PSY.OperationalCost) = false
 
@@ -168,7 +177,7 @@ _curve_style(cost::MBC_TYPES) = PSY.get_curve_style(cost)
 
 _has_import_export_cost(::PSY.StaticInjection) = false
 _has_import_export_cost(device::PSY.Source) =
-    _has_import_export_cost(PSY.get_operation_cost(device))
+    _has_import_export_cost(IOM.get_operation_cost(device))
 _has_import_export_cost(::IEC_TYPES) = true
 _has_import_export_cost(::PSY.OperationalCost) = false
 
@@ -177,8 +186,8 @@ _has_offer_curve_cost(device::IS.InfrastructureSystemsComponent) =
 
 # With the static/TS type split, time-series parameters are determined by cost type:
 # TS cost types always have time-series parameters; static types never do.
-_has_parameter_time_series(device::Union{PSY.StaticInjection, PSY.VirtualParticipant}) =
-    _has_parameter_time_series(PSY.get_operation_cost(device))
+_has_parameter_time_series(device::OFFER_CURVE_COMPONENTS) =
+    _has_parameter_time_series(IOM.get_operation_cost(device))
 
 _has_parameter_time_series(::TS_OFFER_CURVE_COST_TYPES) = true
 _has_parameter_time_series(::PSY.OperationalCost) = false
@@ -198,34 +207,32 @@ IOM.is_time_variant_proportional(::PSY.ImportExportTimeSeriesCost) = true
 #################################################################################
 
 function IOM.validate_occ_breakpoints_slopes(
-    device::Union{PSY.StaticInjection, PSY.VirtualParticipant},
+    device::OFFER_CURVE_COMPONENTS,
     dir::IOM.OfferDirection,
 )
     offer_curves = get_offer_curves(dir, device)
     _validate_occ_curves(device, dir, offer_curves)
 end
 
-# Static: validate convexity/concavity and cost-type-specific constraints. Bound on a
-# 2-member Union (not StaticInjection or plain Component) so PSY.VirtualParticipant also
-# dispatches here.
+# Static: validate convexity/concavity and cost-type-specific constraints.
 function _validate_occ_curves(
-    device::Union{PSY.StaticInjection, PSY.VirtualParticipant},
+    device::OFFER_CURVE_COMPONENTS,
     dir::IOM.OfferDirection,
     cost_curve::IS.CostCurve{IS.PiecewiseIncrementalCurve},
 )
     device_name = IS.get_name(device)
-    cost_curve_name = nameof(typeof(PSY.get_operation_cost(device)))
+    cost_curve_name = nameof(typeof(IOM.get_operation_cost(device)))
     IOM.curvity_check(dir, cost_curve) ||
         throw(
             ArgumentError(
                 "$(uppercasefirst(string(dir))) $cost_curve_name for component $(device_name) is non-$(IOM.expected_curvity(dir))",
             ),
         )
-    _validate_occ_subtype(PSY.get_operation_cost(device), dir, cost_curve, device_name)
+    _validate_occ_subtype(IOM.get_operation_cost(device), dir, cost_curve, device_name)
 end
 
 # TS-backed: validated at parameter population time, not here
-_validate_occ_curves(::Union{PSY.StaticInjection, PSY.VirtualParticipant},
+_validate_occ_curves(::OFFER_CURVE_COMPONENTS,
     ::IOM.OfferDirection,
     ::IS.CostCurve{IS.TimeSeriesPiecewiseIncrementalCurve}) = nothing
 
@@ -262,7 +269,7 @@ function IOM.validate_occ_component(
     ::Type{<:StartupCostParameter},
     device::PSY.StaticInjection,
 )
-    op_cost = PSY.get_operation_cost(device)
+    op_cost = IOM.get_operation_cost(device)
     # TS types are validated at parameter population time
     IOM._is_time_series_cost(op_cost) && return
     startup = PSY.get_start_up(op_cost)
@@ -282,7 +289,7 @@ function IOM.validate_occ_component(
     ::Type{<:ShutdownCostParameter},
     device::PSY.StaticInjection,
 )
-    op_cost = PSY.get_operation_cost(device)
+    op_cost = IOM.get_operation_cost(device)
     # TS types are validated at parameter population time
     IOM._is_time_series_cost(op_cost) && return
     # Static MBC: shut_down is LinearCurve; ThermalGenerationCost: shut_down is Float64
@@ -304,22 +311,20 @@ end
 IOM.validate_occ_component(::Type{<:AbstractCostAtMinParameter}, ::PSY.StaticInjection) =
     nothing
 
-# Bound on a 2-member Union (not StaticInjection or plain Component) so
-# PSY.VirtualParticipant also dispatches.
 IOM.validate_occ_component(
     ::Type{<:IncrementalPiecewiseLinearBreakpointParameter},
-    device::Union{PSY.StaticInjection, PSY.VirtualParticipant},
+    device::OFFER_CURVE_COMPONENTS,
 ) = IOM.validate_occ_breakpoints_slopes(device, IOM.IncrementalOffer())
 
 IOM.validate_occ_component(
     ::Type{<:DecrementalPiecewiseLinearBreakpointParameter},
-    device::Union{PSY.StaticInjection, PSY.VirtualParticipant},
+    device::OFFER_CURVE_COMPONENTS,
 ) = IOM.validate_occ_breakpoints_slopes(device, IOM.DecrementalOffer())
 
 # Slope and breakpoint validations are done together, nothing to do here
 IOM.validate_occ_component(
     ::Type{<:AbstractPiecewiseLinearSlopeParameter},
-    device::Union{PSY.StaticInjection, PSY.VirtualParticipant},
+    device::OFFER_CURVE_COMPONENTS,
 ) = nothing
 
 #################################################################################
@@ -612,6 +617,10 @@ end
 IOM.get_base_power(sys::PSY.System) = PSY.get_base_power(sys, PSY.NU)
 IOM.get_base_power(c::PSY.Component) = PSY.get_base_power(c, PSY.NU)
 IOM.get_operation_cost(c::PSY.Component) = PSY.get_operation_cost(c)
+# A `PointToPointBid` carries its offer curve on `spread_bid` rather than `operation_cost`
+# (it has no `operation_cost` field at all), so this is the seam that lets the whole
+# offer-curve plumbing price a spread bid with no other special-casing.
+IOM.get_operation_cost(c::PSY.PointToPointBid) = PSY.get_spread_bid(c)
 IOM.get_must_run(c::PSY.Component) = PSY.get_must_run(c)
 IOM.get_active_power_limits(c::PSY.Component) = PSY.get_active_power_limits(c, PSY.SU)
 # `RenewableGen` has no `active_power_limits` field: return (0.0, max_active_power)
