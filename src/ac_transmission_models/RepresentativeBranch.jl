@@ -1,6 +1,6 @@
 #################################### RepresentativeBranch ##################################
 
-const DIRECT_BRANCH_MAP = "direct_branch_map"
+const DIRECT_BRANCH_MAP = :direct_branch_map
 const _NO_BUS_NAMES = Dict{Int, String}()
 
 """
@@ -17,7 +17,7 @@ struct RepresentativeBranch{B}
     name::String
     component_type::DataType
     arc::Tuple{Int, Int}
-    reduction::String
+    reduction::Symbol
     branch::B
     nr::PNM.NetworkReductionData
     number_to_name::Dict{Int, String}
@@ -69,15 +69,16 @@ function _representative_branches(
     ::Type{C};
     number_to_name::Dict{Int, String} = _NO_BUS_NAMES,
 ) where {T <: PSY.ACTransmission, C <: ConstraintType}
-    nr = get_network_reduction(network_model)
+    catalog = get_branch_catalog(network_model)
+    nr = PNM.get_network_reduction_data(catalog)
     tracker = get_reduced_branch_tracker(network_model)
-    arc_map = get_name_to_arc_map_entries(nr, T)
-    all_branch_maps_by_type = PNM.get_all_branch_maps_by_type(nr)
+    arc_map = PNM.get_name_to_arc_map(catalog, T)
+    all_branch_maps_by_type = PNM.get_all_branch_maps_by_type(catalog)
     return RepresentativeBranch[
         _make_representative_branch(
             nr, all_branch_maps_by_type, arc_map, number_to_name, T, name,
         )
-        for name in get_branch_argument_constraint_axis(nr, tracker, T, C)
+        for name in get_branch_argument_constraint_axis(catalog, tracker, T, C)
     ]
 end
 
@@ -89,9 +90,10 @@ function _all_branches(
     ::Type{T};
     number_to_name::Dict{Int, String} = _NO_BUS_NAMES,
 ) where {T <: PSY.ACTransmission}
-    nr = get_network_reduction(network_model)
-    arc_map = get_name_to_arc_map_entries(nr, T)
-    all_branch_maps_by_type = PNM.get_all_branch_maps_by_type(nr)
+    catalog = get_branch_catalog(network_model)
+    nr = PNM.get_network_reduction_data(catalog)
+    arc_map = PNM.get_name_to_arc_map(catalog, T)
+    all_branch_maps_by_type = PNM.get_all_branch_maps_by_type(catalog)
     return RepresentativeBranch[
         _make_representative_branch(
             nr, all_branch_maps_by_type, arc_map, number_to_name, T, name,
@@ -111,13 +113,14 @@ function _representative_branch(
     name::AbstractString;
     number_to_name::Dict{Int, String} = _NO_BUS_NAMES,
 ) where {T <: PSY.ACTransmission}
-    nr = get_network_reduction(network_model)
-    arc_map = get_name_to_arc_map_entries(nr, T)
+    catalog = get_branch_catalog(network_model)
+    nr = PNM.get_network_reduction_data(catalog)
+    arc_map = PNM.get_name_to_arc_map(catalog, T)
     entry_name = if haskey(arc_map, name)
         name
     else
         redirects = get(
-            PNM.get_component_to_reduction_name_map(nr),
+            PNM.get_component_to_reduction_name_map(catalog),
             T,
             Dict{String, String}(),
         )
@@ -126,7 +129,7 @@ function _representative_branch(
     isnothing(entry_name) && return nothing
     return _make_representative_branch(
         nr,
-        PNM.get_all_branch_maps_by_type(nr),
+        PNM.get_all_branch_maps_by_type(catalog),
         arc_map,
         number_to_name,
         T,

@@ -196,7 +196,7 @@ function _add_flow_definition_slacks!(
     # consume these slacks are written once per arc, so a slack on a non-representative
     # member would be priced but never enter a row.
     branch_names = get_branch_argument_constraint_axis(
-        get_network_reduction(network_model),
+        get_branch_catalog(network_model),
         get_reduced_branch_tracker(network_model),
         devices,
         NetworkFlowConstraint,
@@ -227,7 +227,7 @@ function _add_current_magnitude_slacks!(
     # per-arc CurrentLimitConstraint rows, so a slack on a non-representative member name
     # would be priced but never enter a constraint.
     branch_names = get_branch_argument_constraint_axis(
-        get_network_reduction(network_model),
+        get_branch_catalog(network_model),
         get_reduced_branch_tracker(network_model),
         devices,
         CurrentLimitConstraint,
@@ -2505,15 +2505,15 @@ end
 
 function _get_branch_map(network_model::NetworkModel)
     @assert !isempty(network_model.modeled_branch_types)
-    net_reduction_data = get_network_reduction(network_model)
-    all_branch_maps_by_type = PNM.get_all_branch_maps_by_type(net_reduction_data)
+    catalog = get_branch_catalog(network_model)
+    all_branch_maps_by_type = PNM.get_all_branch_maps_by_type(catalog)
     inter_area_branch_map =
     # This method uses ACBranch to support HVDC
         Dict{Tuple{String, String}, Dict{DataType, Vector{String}}}()
-    name_to_arc_maps = PNM.get_name_to_arc_maps(net_reduction_data)
+    name_to_arc_maps = PNM.get_name_to_arc_maps(catalog)
     for br_type in network_model.modeled_branch_types
         !haskey(name_to_arc_maps, br_type) && continue
-        name_to_arc_map = PNM.get_name_to_arc_map(net_reduction_data, br_type)
+        name_to_arc_map = PNM.get_name_to_arc_map(catalog, br_type)
         for (name, (arc, reduction)) in name_to_arc_map
             reduction_entry = all_branch_maps_by_type[reduction][br_type][arc]
             area_from, area_to = _get_area_from_to(reduction_entry)
@@ -2561,14 +2561,14 @@ function _get_area_from_to(reduction_entry::PNM.ThreeWindingTransformerCircuit)
     tfw = PNM.get_transformer(reduction_entry)
     winding_int = PNM.get_winding_number(reduction_entry)
     if winding_int == 1
-        area_from = PSY.get_area(PSY.get_primary_star_arc(tfw).from)
-        area_to = PSY.get_area(PSY.get_primary_star_arc(tfw).to)
+        area_from = PSY.get_area(PSY.get_from(PSY.get_arc(PSY.get_primary_circuit(tfw))))
+        area_to = PSY.get_area(PSY.get_to(PSY.get_arc(PSY.get_primary_circuit(tfw))))
     elseif winding_int == 2
-        area_from = PSY.get_area(PSY.get_secondary_star_arc(tfw).from)
-        area_to = PSY.get_area(PSY.get_secondary_star_arc(tfw).to)
+        area_from = PSY.get_area(PSY.get_from(PSY.get_arc(PSY.get_secondary_circuit(tfw))))
+        area_to = PSY.get_area(PSY.get_to(PSY.get_arc(PSY.get_secondary_circuit(tfw))))
     elseif winding_int == 3
-        area_from = PSY.get_area(PSY.get_tertiary_star_arc(tfw).from)
-        area_to = PSY.get_area(PSY.get_tertiary_star_arc(tfw).to)
+        area_from = PSY.get_area(PSY.get_from(PSY.get_arc(PSY.get_tertiary_circuit(tfw))))
+        area_to = PSY.get_area(PSY.get_to(PSY.get_arc(PSY.get_tertiary_circuit(tfw))))
     else
         @assert false "Winding number $winding_int is not valid for three-winding transformer"
     end

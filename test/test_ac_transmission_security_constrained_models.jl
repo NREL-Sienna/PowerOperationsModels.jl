@@ -78,7 +78,7 @@ end
         IOM.get_expression(container, POM.ActivePowerBalance, PSY.ACBus).data
     time_steps = IOM.get_time_steps(container)
 
-    net_reduction_data = IOM.get_network_reduction(network_model)
+    net_reduction_data = POM.get_branch_catalog(network_model)
     name_to_arc_maps = PNM.get_name_to_arc_maps(net_reduction_data)
     all_branch_maps_by_type = PNM.get_all_branch_maps_by_type(net_reduction_data)
 
@@ -229,7 +229,7 @@ end
         IOM.get_expression(container, POM.ActivePowerBalance, PSY.ACBus).data
     time_steps = IOM.get_time_steps(container)
 
-    net_reduction_data = IOM.get_network_reduction(network_model)
+    net_reduction_data = POM.get_branch_catalog(network_model)
     modeled_branch_types = network_model.modeled_branch_types
 
     n_checked = 0
@@ -249,7 +249,10 @@ end
                 for i in nz_idx
                     JuMP.add_to_expression!(expected, ptdf_col[i], nodal_balance[i, t])
                 end
-                actual = pbf[name, t] + PNM.arc_dc_shift_injection(net_reduction_data, arc)
+                actual =
+                    pbf[name, t] +
+                    PNM.arc_dc_shift_injection(
+                        PNM.get_network_reduction_data(net_reduction_data), arc)
                 @test _affexpr_approx_equal(actual, expected)
             end
         end
@@ -328,7 +331,7 @@ end
     nodal_balance =
         IOM.get_expression(container, POM.ActivePowerBalance, PSY.ACBus).data
 
-    net_reduction_data = IOM.get_network_reduction(network_model)
+    net_reduction_data = POM.get_branch_catalog(network_model)
     modeled_branch_types = network_model.modeled_branch_types
     name_to_arc_maps = PNM.get_name_to_arc_maps(net_reduction_data)
     n_checked = 0
@@ -556,7 +559,7 @@ end
     container = IOM.get_optimization_container(ps_model)
     network_model = IOM.get_network_model(IOM.get_template(ps_model))
     tracker = IOM.get_reduced_branch_tracker(network_model)
-    net_reduction_data = IOM.get_network_reduction(network_model)
+    net_reduction_data = POM.get_branch_catalog(network_model)
 
     # Derive the representative name from the reduction map (PNM names it, e.g.
     # "<name>double_circuit"; not hard-coded so the test tracks PNM naming).
@@ -768,7 +771,7 @@ end
     @test !isempty(con_ub.data)
     @test !isempty(con_lb.data)
 
-    net_reduction_data = IOM.get_network_reduction(network_model)
+    net_reduction_data = POM.get_branch_catalog(network_model)
     name_to_arc_map = PNM.get_name_to_arc_maps(net_reduction_data)[PSY.Line]
     all_branch_maps_by_type = PNM.get_all_branch_maps_by_type(net_reduction_data)
 
