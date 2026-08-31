@@ -160,10 +160,6 @@ _pin_model_all_branches!(::Set{Int}, ::DeviceModel) = nothing
 _warn_circuit(o, m) =
     @warn "Circuit has control $o enabled but $m. This control will be ignored, and the \
            circuit and its regulated bus may be reduced." maxlog = 5
-_supports_tap(::NetworkModel{<:_TAP_NETWORKS}) = true
-_supports_tap(::NetworkModel) = false
-_supports_phase(::NetworkModel{<:_PHASE_NETWORKS}) = true
-_supports_phase(::NetworkModel) = false
 
 const _IMPLEMENTED_CONTROLS = _TAP_CONTROLS
 
@@ -173,8 +169,8 @@ function _pin_transformer_controls!(
     buses::Set{Int},
     m::DeviceModel{<:_TRANSFORMERS, <:_CONTROL_FORMULATIONS},
     sys::PSY.System,
-    network_model::NetworkModel,
-)
+    network_model::NetworkModel{N},
+) where {N <: AbstractNetworkModel}
     _control_enabled(m) || return
     for transformer in get_device_cache(m)
         for circuit in PSY.get_circuits(transformer)
@@ -186,12 +182,12 @@ function _pin_transformer_controls!(
                 _warn_circuit(obj, "the circuit is unavailable")
                 continue
             end
-            if obj in _TAP_CONTROLS && !_supports_tap(network_model)
-                _warn_circuit(obj, "tap control is only supported on $(_TAP_NETWORKS).")
+            if obj in _TAP_CONTROLS && !_supports_tap_control(network_model)
+                _warn_circuit(obj, "tap control is not supported on $(N). Try an AC network.")
                 continue
             end
-            if obj in _PHASE_CONTROLS && !_supports_phase(network_model)
-                _warn_circuit(obj, "phase control is only supported on $(_PHASE_NETWORKS).")
+            if obj in _PHASE_CONTROLS && !_supports_phase_control(network_model)
+                _warn_circuit(obj, "phase control is not supported on $(N). Try a DC network.")
                 continue
             end
             if obj in (

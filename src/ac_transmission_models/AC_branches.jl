@@ -41,6 +41,8 @@ function get_default_time_series_names(
 end
 
 const ENABLE_CONTROLS_KEY = "enable_controls"
+const _TRANSFORMERS = Union{PSY.TwoWindingTransformer, PSY.ThreeWindingTransformer}
+const _CONTROL_FORMULATIONS = Union{StaticBranch, StaticBranchBounds}
 
 _control_attribute(::Type{<:_TRANSFORMERS}, ::Type{<:_CONTROL_FORMULATIONS}) =
     (ENABLE_CONTROLS_KEY => false,)
@@ -351,28 +353,21 @@ function add_variables!(
     return
 end
 
-_add_transformer_control_variables!(
+function _add_transformer_control_variables!(
     container::OptimizationContainer,
     devices::IS.FlattenIteratorWrapper{T},
-    device_model::DeviceModel{T, <:_CONTROL_FORMULATIONS},
-    network_model::NetworkModel{<:_TAP_NETWORKS},
-) where {T <: _TRANSFORMERS} =
-    add_variables!(container, TapRatioVariable, devices, device_model, network_model)
-
-_add_transformer_control_variables!(
-    container::OptimizationContainer,
-    devices::IS.FlattenIteratorWrapper{T},
-    device_model::DeviceModel{T, <:_CONTROL_FORMULATIONS},
-    network_model::NetworkModel{<:_PHASE_NETWORKS},
-) where {T <: _TRANSFORMERS} =
-    add_variables!(container, PhaseShifterAngle, devices, device_model, network_model)
-
-_add_transformer_control_variables!(
-    ::OptimizationContainer,
-    ::IS.FlattenIteratorWrapper,
-    ::DeviceModel,
-    ::NetworkModel,
-) = nothing
+    device_model::DeviceModel,
+    network_model::NetworkModel,
+)
+    _control_enabled(device_model) || return
+    if _supports_tap_control(network_model)
+        add_variables!(container, TapRatioVariable, devices, device_model, network_model)
+    end
+    if _supports_phase_control(network_model)
+        add_variables!(container, PhaseShifterAngle, devices, device_model, network_model)
+    end
+    return
+end
 
 function _add_meta_flow_slack!(
     container::OptimizationContainer,
@@ -1496,19 +1491,19 @@ _branch_uses_control(
     branch,
     device_model::DeviceModel,
     network_model::NetworkModel,
-) = _voltage_controlled(branch, device_model, network_model)
+) = _supports_tap_control(network_model) && _control_objective(branch, device_model) === _VOLTAGE_CONTROL
 _branch_uses_control(
     ::Type{ReactivePowerFlowControlConstraint},
     branch,
     device_model::DeviceModel,
     network_model::NetworkModel,
-) = _reactive_controlled(branch, device_model, network_model)
+) = _supports_tap_control(network_model) && _control_objective(branch, device_model) === _REACTIVE_CONTROL
 _branch_uses_control(
     ::Type{ActivePowerFlowControlConstraint},
     branch,
     device_model::DeviceModel,
     network_model::NetworkModel,
-) = _active_controlled(branch, device_model, network_model)
+) = _supports_phase_control(network_model) && _control_objective(branch, device_model) === _ACTIVE_CONTROL
 
 function _branches_for_cons(
     C::Union{
@@ -1554,7 +1549,7 @@ function _add_voltage_control_constraints!(
     sys::PSY.System,
     devices::IS.FlattenIteratorWrapper{T},
     device_model::DeviceModel{T, <:_CONTROL_FORMULATIONS},
-    network_model::NetworkModel{<:_TAP_NETWORKS},
+    network_model::NetworkModel},
 ) where {T <: _TRANSFORMERS}
     _control_enabled(device_model) || return
 
@@ -1601,7 +1596,7 @@ _flow_array(
     container::OptimizationContainer,
     ::Type{ReactivePowerFlowControlConstraint},
     ::DeviceModel{T, <:_CONTROL_FORMULATIONS},
-    ::NetworkModel{<:_TAP_NETWORKS},
+    ::NetworkModel},
 ) where {T <: _TRANSFORMERS} = get_variable(container, FlowReactivePowerFromToVariable, T)
 _flow_array(
     container::OptimizationContainer,
@@ -1690,46 +1685,31 @@ function _add_transformer_control_constraints!(
     container::OptimizationContainer,
     sys::PSY.System,
     devices::IS.FlattenIteratorWrapper{T},
-    device_model::DeviceModel{T, <:_CONTROL_FORMULATIONS},
-    network_model::NetworkModel{<:_TAP_NETWORKS},
-) where {T <: _TRANSFORMERS}
+    device_model::DeviceModel,
+    network_model::NetworkModel,
+)
     _control_enabled(device_model) || return
-    _add_voltage_control_constraints!(container, sys, devices, device_model, network_model)
-    _add_flow_control_constraints!(
-        container,
-        ReactivePowerFlowControlConstraint,
-        devices,
-        device_model,
-        network_model,
-    )
+    if _supports_tap_control(network_model)
+        _add_voltage_control_constraints!(container, sys, devices, device_model, network_model)
+        _add_flow_control_constraints!(
+            container,
+            ReactivePowerFlowControlConstraint,
+            devices,
+            device_model,
+            network_model,
+        )
+    end
+    if _supports_phase_control(network_model)
+        _add_flow_control_constraints!(
+            container,
+            ActivePowerFlowControlConstraint,
+            devices,
+            device_model,
+            network_model,
+        )
+    end
     return
 end
-
-function _add_transformer_control_constraints!(
-    container::OptimizationContainer,
-    ::PSY.System,
-    devices::IS.FlattenIteratorWrapper{T},
-    device_model::DeviceModel{T, <:_CONTROL_FORMULATIONS},
-    network_model::NetworkModel{<:_PHASE_NETWORKS},
-) where {T <: _TRANSFORMERS}
-    _control_enabled(device_model) || return
-    _add_flow_control_constraints!(
-        container,
-        ActivePowerFlowControlConstraint,
-        devices,
-        device_model,
-        network_model,
-    )
-    return
-end
-
-_add_transformer_control_constraints!(
-    ::OptimizationContainer,
-    ::PSY.System,
-    ::IS.FlattenIteratorWrapper{T},
-    ::DeviceModel{T},
-    ::NetworkModel,
-) where {T <: PSY.ACTransmission} = nothing
 
 ################################## LPACCNetworkModel branch constraints ###############
 

@@ -232,6 +232,7 @@ the active reduction graph. Duplicate arcs within an outage are collapsed
 per-type. Outages sorted by UUID for deterministic axes.
 """
 function _resolve_monitored_branches(
+    sys::PSY.System,
     device_model::DeviceModel,
     network_model::NetworkModel,
 )
@@ -241,13 +242,7 @@ function _resolve_monitored_branches(
         for (T, names) in per_type
             seen = Set{Tuple{Int, Int}}()
             for name in sort!(collect(names))
-                rep = _representative_branch(network_model, T, name)
-                isnothing(rep) && error(
-                    "Monitored component \"$name\" (type $T) for outage $uuid is " *
-                    "absent from both the network-reduction name-to-arc map and the " *
-                    "component-to-reduction map. Verify the component exists in the " *
-                    "system and is modeled with a security-constrained branch formulation.",
-                )
+                rep = _representative_branch(network_model, T, entry_name)
                 rep.arc in seen && continue
                 push!(seen, rep.arc)
                 push!(kept, rep)
@@ -293,6 +288,7 @@ Add branch post-contingency rate limit constraints for ACBranch considering MODF
 """
 function add_constraints!(
     container::OptimizationContainer,
+    sys::PSY.System,
     cons_type::Type{T},
     device_model::DeviceModel{V, U},
     network_model::NetworkModel{X},
@@ -304,7 +300,7 @@ function add_constraints!(
 }
     time_steps = get_time_steps(container)
 
-    resolved = _resolve_monitored_branches(device_model, network_model)
+    resolved = _resolve_monitored_branches(sys, device_model, network_model)
 
     con_lb = _add_post_contingency_sparse_constraints!(container, T, V; meta = "lb")
     con_ub = _add_post_contingency_sparse_constraints!(container, T, V; meta = "ub")
@@ -328,7 +324,6 @@ function add_constraints!(
         outage_id = string(uuid)
         for rep in reps
             name = rep.name
-            entry_type = rep.component_type
             if has_other_v
                 src_lb, src_ub = _find_shared_post_contingency_constraint_sources(
                     container, T, V, outage_id, name, first(time_steps),
@@ -370,9 +365,9 @@ function add_constraints!(
                     continue
                 end
             end
-            if has_pc_rating && _has_post_contingency_rate(container, entry_type, name)
+            if has_pc_rating && _has_post_contingency_rate(container, V, name)
                 param, multiplier =
-                    _post_contingency_rate_columns(container, entry_type, name)
+                    _post_contingency_rate_columns(container, V, name)
                 for t in time_steps
                     sub = if use_slacks
                         _make_post_contingency_slack!(
@@ -490,6 +485,7 @@ recovered from the balance's branch-flow terms (see
 """
 function _add_modf_post_contingency_flow_expressions!(
     container::OptimizationContainer,
+    sys::PSY.System,
     ::Type{T},
     model::DeviceModel{V, F},
     network_model::NetworkModel,
@@ -503,7 +499,7 @@ function _add_modf_post_contingency_flow_expressions!(
     modf_matrix = get_contingency_matrix(network_model)
     registered_contingencies = PNM.get_registered_contingencies(modf_matrix)
 
-    resolved = _resolve_monitored_branches(model, network_model)
+    resolved = _resolve_monitored_branches(sys, model, network_model)
 
     expression_container = _add_post_contingency_sparse_expression!(
         container, T, V, resolved, time_steps,
@@ -561,6 +557,7 @@ end
 # else (branch flows are not variables), so it feeds the MODF product directly.
 function add_post_contingency_flow_expressions!(
     container::OptimizationContainer,
+    sys::PSY.System,
     ::Type{T},
     model::DeviceModel{V, F},
     network_model::NetworkModel{N},
@@ -573,7 +570,7 @@ function add_post_contingency_flow_expressions!(
     nodal_injection_expressions =
         get_expression(container, ActivePowerBalance, PSY.ACBus).data
     _add_modf_post_contingency_flow_expressions!(
-        container, T, model, network_model, nodal_injection_expressions,
+        container, sys, T, model, network_model, nodal_injection_expressions,
     )
     return
 end
@@ -582,6 +579,7 @@ end
 # must be recovered (see `_dcp_nodal_injection_expressions`).
 function add_post_contingency_flow_expressions!(
     container::OptimizationContainer,
+    sys::PSY.System,
     ::Type{T},
     model::DeviceModel{V, F},
     network_model::NetworkModel{DCPNetworkModel},
@@ -594,7 +592,7 @@ function add_post_contingency_flow_expressions!(
     nodal_injection_expressions =
         _dcp_nodal_injection_expressions(container, PNM.get_bus_axis(modf_matrix))
     _add_modf_post_contingency_flow_expressions!(
-        container, T, model, network_model, nodal_injection_expressions,
+        container, sys, T, model, network_model, nodal_injection_expressions,
     )
     return
 end
@@ -798,6 +796,7 @@ function construct_device!(
 
     add_post_contingency_flow_expressions!(
         container,
+        sys,
         PostContingencyBranchFlow,
         device_model,
         network_model,
@@ -805,6 +804,7 @@ function construct_device!(
 
     add_constraints!(
         container,
+        sys,
         PostContingencyFlowRateConstraint,
         device_model,
         network_model,
@@ -893,6 +893,7 @@ function construct_device!(
 
     add_post_contingency_flow_expressions!(
         container,
+        sys,
         PostContingencyBranchFlow,
         device_model,
         network_model,
@@ -900,6 +901,7 @@ function construct_device!(
 
     add_constraints!(
         container,
+        sys,
         PostContingencyFlowRateConstraint,
         device_model,
         network_model,
