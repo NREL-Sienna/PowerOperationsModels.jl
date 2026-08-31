@@ -357,9 +357,12 @@ function _build_catalog(matrix, branch_models::BranchModelContainer)
     base = PNM.get_branch_catalog(matrix)
     filters = IOM._get_filters(branch_models)
     isempty(filters) && return base
+    # `IOM._get_filters` hands back a `Dict{DataType, Function}`, so the call through it cannot
+    # be inferred. Pinning the result to `Bool` keeps that `Any` from leaking into
+    # `_entry_matches`, which PNM folds over every branch while building the catalog.
     function _passes_filter(T, component)
         if haskey(filters, T)
-            return filters[T](component)
+            return filters[T](component)::Bool
         else
             return true
         end
