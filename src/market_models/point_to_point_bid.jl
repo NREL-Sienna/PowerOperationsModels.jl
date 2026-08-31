@@ -44,7 +44,7 @@ function _validate_spread_bid!(container::OptimizationContainer, bid::PSY.PointT
             "FIXED/VARIABLE block clearing has no meaning for it.",
         )
     end
-    if _offer_curve_is_genuine(container, bid, get_input_offer_curves(cost))
+    if IOM.is_nontrivial_offer(container, bid, get_input_offer_curves(cost))
         error(
             "PointToPointBid $(name) has a decremental spread_bid curve. A spread bid's " *
             "willingness-to-pay belongs on the incremental side; a decremental curve is " *
@@ -67,7 +67,7 @@ function _spread_bid_is_priced(
     bid::PSY.PointToPointBid,
 )
     curve = get_output_offer_curves(IOM.get_operation_cost(bid))
-    if !_offer_curve_is_genuine(container, bid, curve)
+    if !IOM.is_nontrivial_offer(container, bid, curve)
         @warn "PointToPointBid $(PSY.get_name(bid)) has no incremental spread_bid curve. " *
               "It contributes no objective term and will clear its full " *
               "$(PSY.get_max_active_power(bid)) MW envelope up to congestion."
