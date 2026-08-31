@@ -251,25 +251,40 @@ _phase_controlled(
     _control_objective(rep, d) in _PHASE_CONTROLS
 _phase_controlled(::RepresentativeBranch, ::DeviceModel, ::NetworkModel) = false
 
-_controlled_circuit_names(
+# Built from `_supports_tap`/`_supports_phase` so this and `_pin_transformer_controls!`
+# cannot disagree: a control the network does not model is warned about and ignored there, so
+# naming it here would turn a merged-away circuit into a hard build failure.
+function _controlled_circuit_names(
     branch::Union{PSY.ACTransmission, PNM.ThreeWindingTransformerCircuit},
     device_model::DeviceModel,
-) =
-    if _control_objective(_get_circuit(branch), device_model).value > 0
-        [PNM.get_name(branch)]
-    else
-        String[]
+    network_model::NetworkModel,
+)
+    objective = _control_objective(_get_circuit(branch), device_model)
+    modeled =
+        (objective in _TAP_CONTROLS && _supports_tap(network_model)) ||
+        (objective in _PHASE_CONTROLS && _supports_phase(network_model))
+    if modeled
+        return [PNM.get_name(branch)]
     end
+    return String[]
+end
 _controlled_circuit_names(
     entry::PNM.AbstractReductionAggregate,
     device_model::DeviceModel,
+    network_model::NetworkModel,
 ) = reduce(
     vcat,
-    (_controlled_circuit_names(member, device_model) for member in entry);
+    (
+        _controlled_circuit_names(member, device_model, network_model) for
+        member in entry
+    );
     init = String[],
 )
-_controlled_circuit_names(rep::RepresentativeBranch, device_model::DeviceModel) =
-    _controlled_circuit_names(rep.branch, device_model)
+_controlled_circuit_names(
+    rep::RepresentativeBranch,
+    device_model::DeviceModel,
+    network_model::NetworkModel,
+) = _controlled_circuit_names(rep.branch, device_model, network_model)
 
 _control_limits(::Nothing) = (min = -Inf, max = Inf)
 _control_limits(c::PSY.TransformerCircuit) = PSY.get_control_limits(c)

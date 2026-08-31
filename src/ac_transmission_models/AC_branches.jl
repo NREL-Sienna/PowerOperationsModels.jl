@@ -147,7 +147,7 @@ function _branches_for_var(
     members = RepresentativeBranch[]
     _foreach_branch(_all_branches(network_model, T)) do branch
         if branch.reduction !== DIRECT_BRANCH_MAP
-            names = _controlled_circuit_names(branch, device_model)
+            names = _controlled_circuit_names(branch, device_model, network_model)
             isempty(names) && return
             error(
                 "Controlled transformer circuit $(join(names, ", ")) was merged into the \
@@ -200,6 +200,36 @@ _branch_variable_bounds(
     ::DeviceModel{<:PSY.ACTransmission, <:AbstractBranchFormulation},
     ::NetworkModel,
 ) = _control_limits(rep)
+
+# `control_limits` is dual-purpose — a tap-ratio band under voltage/reactive control, a
+# phase-angle band in radians under active-power control — but `PSY.TransformerCircuit`
+# defaults it to the TAP band `(min = 0.9, max = 1.1)`. A circuit authored for
+# ACTIVE_POWER_FLOW without explicit limits would therefore have its angle forced into
+# [0.9, 1.1] rad (52°-63°), excluding the neutral shift and the 0.0 start value, and the
+# model would still solve. Anchor on the stored α: the authored operating point has to be
+# feasible, which rejects the inherited tap default without assuming a band shape.
+function _branch_variable_bounds(
+    ::Type{PhaseShifterAngle},
+    rep::RepresentativeBranch,
+    ::DeviceModel{<:PSY.ACTransmission, <:AbstractBranchFormulation},
+    ::NetworkModel,
+)
+    limits = _control_limits(rep)
+    shift = _dc_shift(rep)
+    if !(limits.min <= shift <= limits.max)
+        throw(
+            IS.ConflictingInputsError(
+                "Phase-controlled circuit $(rep.name) has control_limits \
+                 (min = $(limits.min), max = $(limits.max)) rad, which excludes its own \
+                 stored phase shift α = $(shift) rad, so the authored operating point is \
+                 infeasible. `PSY.TransformerCircuit` defaults `control_limits` to the \
+                 tap-ratio band (min = 0.9, max = 1.1); set explicit phase-angle bounds in \
+                 radians for ACTIVE_POWER_FLOW control.",
+            ),
+        )
+    end
+    return limits
+end
 
 function _branch_variable_bounds(
     ::Type{<:AbstractBranchCurrentVariable},
@@ -1610,8 +1640,10 @@ function _add_flow_control_constraints!(
     return
 end
 
+# No-op for any (constraint, device, network) triple `_flow_array` has no method for.
 _add_flow_control_constraints!(
     ::OptimizationContainer,
+    ::Type{<:ConstraintType},
     ::IS.FlattenIteratorWrapper{T},
     ::DeviceModel{T},
     ::NetworkModel,
