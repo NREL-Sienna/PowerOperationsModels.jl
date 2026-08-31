@@ -212,7 +212,7 @@ end
 
 # TS-backed: validated at parameter population time, not here
 _validate_occ_curves(::PSY.StaticInjection, ::IOM.OfferDirection,
-    ::IS.CostCurve{IS.TimeSeriesPiecewiseIncrementalCurve}) = nothing
+    ::IS.CostCurve{<:IS.TimeSeriesPiecewiseIncrementalCurve}) = nothing
 
 _validate_occ_subtype(::PSY.MarketBidCost, ::IOM.OfferDirection, ::IS.CostCurve, args...) =
     nothing

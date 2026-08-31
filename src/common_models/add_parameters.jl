@@ -466,6 +466,12 @@ _get_time_series_name(
 ) where {T <: ParameterType} =
     get_time_series_names(model)[T]
 
+# A key carries only its store-minted association id; the name lives in the catalog.
+# Needed because the downstream read machinery (`has_time_series`,
+# `get_time_series_initial_values!`) is still name-addressed.
+_ts_name_from_key(owner::PSY.Component, key::IS.TimeSeriesKey) =
+    IS.get_name(IS.get_time_series_metadata(owner, key))
+
 # Time-varying ORDC: the slope/breakpoint parameters read from the curve time
 # series referenced by the service's `variable` field.
 _get_time_series_name(
@@ -477,7 +483,7 @@ _get_time_series_name(
     },
     service::PSY.AbstractReserve,
     ::ServiceModel,
-) = IS.get_name(IS.get_time_series_key(PSY.get_variable(service)))
+) = _ts_name_from_key(service, IS.get_time_series_key(PSY.get_variable(service)))
 
 # The fact that we're seeing these parameters means that we should
 # have a time-varying MBC/IEC, so the `get_time_series_key` call should be valid.
@@ -490,7 +496,7 @@ function _get_time_series_name(
     op_cost = PSY.get_operation_cost(device)
     IS.@assert_op op_cost isa TS_OFFER_CURVE_COST_TYPES
     # The TS-backed startup field is the time-series key itself.
-    return IS.get_name(PSY.get_start_up(op_cost))
+    return _ts_name_from_key(device, PSY.get_start_up(op_cost))
 end
 
 function _get_time_series_name(
@@ -500,7 +506,7 @@ function _get_time_series_name(
 )
     op_cost = PSY.get_operation_cost(device)
     IS.@assert_op op_cost isa TS_OFFER_CURVE_COST_TYPES
-    return IS.get_name(IS.get_time_series_key(PSY.get_shut_down(op_cost)))
+    return _ts_name_from_key(device, IS.get_time_series_key(PSY.get_shut_down(op_cost)))
 end
 
 function _get_time_series_name(
@@ -510,7 +516,8 @@ function _get_time_series_name(
 )
     op_cost = PSY.get_operation_cost(device)
     IS.@assert_op op_cost isa TS_OFFER_CURVE_COST_TYPES
-    return IS.get_name(
+    return _ts_name_from_key(
+        device,
         IS.get_initial_input(
             PSY.get_value_curve(get_output_offer_curves(op_cost)),
         ),
@@ -524,7 +531,8 @@ function _get_time_series_name(
 )
     op_cost = PSY.get_operation_cost(device)
     IS.@assert_op op_cost isa TS_OFFER_CURVE_COST_TYPES
-    return IS.get_name(
+    return _ts_name_from_key(
+        device,
         IS.get_initial_input(
             PSY.get_value_curve(get_input_offer_curves(op_cost)),
         ),
@@ -543,7 +551,7 @@ function _get_time_series_name(
         DecrementalPiecewiseLinearBreakpointParameter,
     },
 }
-    return IS.get_name(_device_offer_curve_ts_key(T, device))
+    return _ts_name_from_key(device, _device_offer_curve_ts_key(T, device))
 end
 
 #################################################################################

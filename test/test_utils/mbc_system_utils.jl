@@ -74,8 +74,8 @@ function replace_load_with_interruptible!(sys::System)
         conformity = get_conformity(load1),
     )
     add_component!(sys, interruptible_load)
-    for ts_key in get_time_series_keys(load1)
-        ts = get_time_series(load1, ts_key)
+    for md in IS.list_time_series_metadata(load1)
+        ts = get_time_series(load1, IS.get_time_series_key(md))
         add_time_series!(
             sys,
             interruptible_load,
@@ -463,11 +463,11 @@ function build_sys_decr2(
 
     # make the max_active_power time series constant.
     il = first(get_components(PSY.InterruptiblePowerLoad, sys))
-    for ts_key in get_time_series_keys(il)
-        if get_name(ts_key) == "max_active_power"
+    for md in IS.list_time_series_metadata(il)
+        if IS.get_name(md) == "max_active_power"
             max_active_power_ts = get_time_series(
                 first(get_components(PSY.InterruptiblePowerLoad, sys)),
-                ts_key,
+                IS.get_time_series_key(md),
             )
             max_max_active_power = maximum(maximum(values(max_active_power_ts.data)))
             remove_time_series!(sys, Deterministic, il, "max_active_power")

@@ -13,12 +13,15 @@ function create_temporary_cost_function_in_system_per_unit(
     original_cost_function::PSY.FuelCurve,
     new_data::PSY.PiecewiseLinearData,
 )
-    return PSY.FuelCurve(
-        PSY.PiecewisePointCurve(new_data),
-        PSY.SU,
-        PSY.get_fuel_cost(original_cost_function),
-        IS.LinearCurve(0.0),  # setting fuel offtake cost to default value of 0
-        PSY.get_vom_cost(original_cost_function),
+    # Keyword form: the fixed and time-series fuel cost are separate, mutually
+    # exclusive fields, so carry both through unchanged.
+    return PSY.FuelCurve(;
+        value_curve = PSY.PiecewisePointCurve(new_data),
+        power_units = PSY.SU,
+        fuel_cost = PSY.get_fuel_cost(original_cost_function),
+        fuel_cost_time_series = IS.get_fuel_cost_time_series(original_cost_function),
+        startup_fuel_offtake = IS.LinearCurve(0.0),  # default of 0
+        vom_cost = PSY.get_vom_cost(original_cost_function),
     )
 end
 
@@ -200,15 +203,14 @@ function _onvar_cost(container::OptimizationContainer, cost_function::Union{PSY.
     cost_component = PSY.get_function_data(value_curve)
     # In Unit/h
     constant_term = PSY.get_constant_term(cost_component)
-    fuel_cost = PSY.get_fuel_cost(cost_function)
-    if typeof(fuel_cost) <: Float64
-        return constant_term * fuel_cost
-    else
+    if IS.is_time_series_backed(cost_function)
         parameter_array = get_parameter_array(container, FuelCostParameter, T)
         parameter_multiplier =
             get_parameter_multiplier_array(container, FuelCostParameter, T)
         name = PSY.get_name(d)
         return constant_term * parameter_array[name, t] * parameter_multiplier[name, t]
+    else
+        return constant_term * PSY.get_fuel_cost(cost_function)
     end
 end
 

@@ -2476,7 +2476,7 @@ function construct_device!(
     if all(has_ts)
         for device in devices
             name = PSY.get_name(device)
-            num_ts = length(unique(PSY.get_name.(PSY.get_time_series_keys(device))))
+            num_ts = length(unique(IS.get_name.(IS.list_time_series_metadata(device))))
             if num_ts < 2
                 error(
                     "AreaInterchange $name has less than two time series. It is required to add both from_to and to_from time series.",

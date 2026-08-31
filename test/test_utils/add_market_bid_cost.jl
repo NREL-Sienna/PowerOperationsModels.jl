@@ -69,8 +69,8 @@ Get a deterministic or DeterministicSingleTimeSeries time series from the system
 function get_deterministic_ts(sys::PSY.System)
     for device in get_components(PSY.Device, sys)
         if has_time_series(device, Union{DeterministicSingleTimeSeries, Deterministic})
-            for key in PSY.get_time_series_keys(device)
-                ts = get_time_series(device, key)
+            for md in IS.list_time_series_metadata(device)
+                ts = get_time_series(device, IS.get_time_series_key(md))
                 if ts isa DeterministicSingleTimeSeries || ts isa Deterministic
                     return ts
                 end
@@ -128,8 +128,10 @@ function extend_mbc!(
         old_shut_down = get_proportional_term(get_shut_down(op_cost))
 
         # TS-backed no_load and shut_down (constant TS of the baseline scalar value).
-        nl_ts = make_deterministic_ts(sys, "no_load_cost", old_no_load, 0.0, 0.0)
-        sd_ts = make_deterministic_ts(sys, "shut_down_cost", old_shut_down, 0.0, 0.0)
+        nl_ts = make_deterministic_ts(sys, "no_load_cost", old_no_load, 0.0, 0.0;
+            linear = true)
+        sd_ts = make_deterministic_ts(sys, "shut_down_cost", old_shut_down, 0.0, 0.0;
+            linear = true)
         su_ts = make_deterministic_ts(sys, "start_up", Tuple(old_start_up), 0.0, 0.0)
         nl_key = add_time_series!(sys, comp, nl_ts)
         sd_key = add_time_series!(sys, comp, sd_ts)
@@ -209,10 +211,18 @@ function make_deterministic_ts(
     horizon::Period,
     interval::Period,
     window_count::Int,
-    resolution::Period,
+    resolution::Period;
+    linear::Bool = false,
 ) where {T <: Union{Number, Tuple}}
     horizon_count = IS.get_horizon_count(horizon, resolution)
-    ts_data = OrderedDict{DateTime, Vector{T}}()
+    # `linear = true` wraps each scalar as `LinearFunctionData(value, 0.0)` — the element
+    # type `TimeSeriesLinearCurve` keys require (shut-down / no-load cost fields).
+    E = if linear
+        IS.LinearFunctionData
+    else
+        T
+    end
+    ts_data = OrderedDict{DateTime, Vector{E}}()
     for i in 0:(window_count - 1)
         if ini_val isa Tuple
             series = [
@@ -221,6 +231,9 @@ function make_deterministic_ts(
             ]
         else
             series = ini_val .+ res_incr .* (0:(horizon_count - 1)) .+ i * interval_incr
+        end
+        if linear
+            series = IS.LinearFunctionData.(series, 0.0)
         end
         ts_data[init_time + i * interval] = series
     end
