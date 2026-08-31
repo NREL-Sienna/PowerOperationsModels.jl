@@ -2328,9 +2328,10 @@ function _get_direction(
         _get_direction(arc_tuple, x, direction_map, net_reduction_data) for
         x in reduction_entry
     ]
-    # direction of segments relative to the reduced degree two chain:
-    _, segment_orientations =
-        PNM._get_chain_data(arc_tuple, reduction_entry, net_reduction_data)
+    # direction of segments relative to the reduced degree two chain. The arc is passed so PNM
+    # can reject a chain whose recorded frame is not this arc's; a chain reached through a
+    # parallel group keeps its own key, which need not match the group's.
+    segment_orientations = PNM.get_segment_orientations(reduction_entry, arc_tuple)
     segment_directions = [x == :FromTo ? 1.0 : -1.0 for x in segment_orientations]
     net_directions = mapping_directions .* segment_directions
     if allequal(net_directions)
