@@ -678,7 +678,7 @@ _nz_entries(ptdf_col::SparseArrays.SparseVector{Float64, Int}) =
 function _ptdf_branch_flow(
     rep::RepresentativeBranch,
     time_steps::UnitRange{Int},
-    ptdf_col,
+    ptdf_col::Union{Vector{Float64}, SparseArrays.SparseVector{Float64, Int}},
     nodal_balance_expressions::Matrix{JuMP.AffExpr},
     phase_var::Union{DenseAxisArray, Nothing},
     phase_controlled::Bool,
