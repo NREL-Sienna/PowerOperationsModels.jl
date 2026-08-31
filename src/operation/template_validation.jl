@@ -110,6 +110,7 @@ function validate_template_impl!(model::IOM.AbstractOptimizationModel)
     end
     _check_security_constrained_three_winding_transformer!(template.branches)
     _check_security_constrained_network!(template.branches, network_model)
+    _check_security_constrained_phase_control!(template.branches, network_model)
     _check_voltage_regulation_conflicts!(template, system, network_model)
     _check_branch_rating_time_series_formulation!(template.branches, system)
     validate_network_model(network_model, unmodeled_branch_types, model_has_branch_filters)
@@ -322,6 +323,62 @@ function _check_flow_slack_support(
     throw(
         ArgumentError(
             "$(F) formulation and $(N) is not compatible with the use of slacks",
+        ),
+    )
+end
+
+# Circuits this model puts in ACTIVE_POWER_FLOW control, named as `_controlled_circuit_names`
+# names them. Read off the device cache: the network reduction does not exist yet at
+# validation time, so the `RepresentativeBranch` API is unavailable here.
+function _phase_controlled_circuit_names(
+    device_model::DeviceModel{<:_TRANSFORMERS, <:_CONTROL_FORMULATIONS},
+    network_model::NetworkModel,
+)
+    names = String[]
+    _control_enabled(device_model) || return names
+    _supports_phase(network_model) || return names
+    for transformer in get_device_cache(device_model)
+        circuits = PSY.get_circuits(transformer)
+        for (i, circuit) in enumerate(circuits)
+            _control_objective(circuit, device_model) in _PHASE_CONTROLS || continue
+            if length(circuits) == 1
+                push!(names, PSY.get_name(transformer))
+            else
+                push!(names, "$(PSY.get_name(transformer))_winding_$(i)")
+            end
+        end
+    end
+    return names
+end
+
+_phase_controlled_circuit_names(::DeviceModel, ::NetworkModel) = String[]
+
+# `_build_post_contingency_flow_expressions_for_outage` builds every post-contingency flow
+# from the FIXED `_dc_shift_injection`, never from `PhaseShifterAngle`. A variable angle
+# would therefore move only the base case, leaving the N-1 rows silently wrong, so reject
+# the pair instead of building it.
+function _check_security_constrained_phase_control!(
+    branch_models::IOM.BranchModelContainer,
+    network_model::NetworkModel,
+)
+    sc_types = [
+        get_component_type(m) for m in values(branch_models) if
+        get_formulation(m) <: AbstractSecurityConstrainedStaticBranch
+    ]
+    isempty(sc_types) && return
+    controlled = reduce(
+        vcat,
+        (_phase_controlled_circuit_names(m, network_model) for m in values(branch_models));
+        init = String[],
+    )
+    isempty(controlled) && return
+    throw(
+        IS.ConflictingInputsError(
+            "Phase-controlled transformer circuit(s) $(join(controlled, ", ")) cannot be \
+             combined with the security-constrained branch model(s) for \
+             $(join(sc_types, ", ")): post-contingency MODF flows are built from the fixed \
+             phase shift, so a variable phase-shifter angle would make them wrong. Disable \
+             the circuit control or drop the security-constrained formulation.",
         ),
     )
 end
