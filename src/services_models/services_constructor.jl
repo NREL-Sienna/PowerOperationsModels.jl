@@ -972,7 +972,8 @@ function construct_service!(
     if !isempty(interfaces) && all(has_ts)
         for interface in interfaces
             name = PSY.get_name(interface)
-            num_ts = length(unique(PSY.get_name.(PSY.get_time_series_keys(interface))))
+            # Thin keys carry no name; count distinct names off the metadata catalog.
+            num_ts = length(unique(IS.get_name.(IS.list_time_series_metadata(interface))))
             if num_ts < 2
                 error(
                     "TransmissionInterface $name has less than two time series. It is required to add both min_flow and max_flow time series.",
