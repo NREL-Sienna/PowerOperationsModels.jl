@@ -144,52 +144,72 @@ function construct_network!(
     return
 end
 
-# Function-barrier for _add_shift_injections!
-function _add_shift_injections_branch!(
+# Arcs whose DC shift comes from a `PhaseShifterAngle` variable instead of the stored
+# constant. `_branches_for_var` rejects a controlled circuit that a reduction merged into a
+# composite entry, so a controlled arc carries exactly one circuit and the variable term
+# replaces that arc's whole injection.
+function _add_controlled_shift_injections!(
     container::OptimizationContainer,
     network_model::NetworkModel{<:AbstractPTDFNetworkModel},
     branch_model::DeviceModel{T},
+    controlled_arcs::Set{Tuple{Int, Int}},
 ) where {T <: PSY.ACTransmission}
+    has_container_key(container, PhaseShifterAngle, T) || return
+    phase_var = get_variable(container, PhaseShifterAngle, T)
     nodal_expr = get_expression(container, ActivePowerBalance, PSY.ACBus)
     time_steps = get_time_steps(container)
-    phase_var =
-        if has_container_key(container, PhaseShifterAngle, T)
-            get_variable(container, PhaseShifterAngle, T)
-        else
-            nothing
-        end
     _foreach_branch(_all_branches(network_model, T)) do rep
-        phase_controlled = _phase_controlled(rep, branch_model, network_model)
-        shift_injection = _dc_shift_injection(rep)
+        _phase_controlled(rep, branch_model, network_model) || return
+        push!(controlled_arcs, rep.arc)
+        b = _dc_susceptance(rep)
         from_no, to_no = rep.arc
-        if phase_controlled
-            b = _dc_susceptance(rep)
-            for t in time_steps
-                angle = phase_var[rep.name, t]
-                JuMP.add_to_expression!(nodal_expr[from_no, t], b, angle)
-                JuMP.add_to_expression!(nodal_expr[to_no, t], -b, angle)
-            end
-        else
-            iszero(shift_injection) && return
-            for t in time_steps
-                JuMP.add_to_expression!(nodal_expr[from_no, t], shift_injection)
-                JuMP.add_to_expression!(nodal_expr[to_no, t], -shift_injection)
-            end
+        for t in time_steps
+            angle = phase_var[rep.name, t]
+            JuMP.add_to_expression!(nodal_expr[from_no, t], b, angle)
+            JuMP.add_to_expression!(nodal_expr[to_no, t], -b, angle)
         end
     end
+    return
 end
 
-# no-op on HVDC
-_add_shift_injections_branch!(::OptimizationContainer, ::NetworkModel, ::DeviceModel) =
-    nothing
+# no-op on HVDC and any other non-AC branch model
+_add_controlled_shift_injections!(
+    ::OptimizationContainer,
+    ::NetworkModel,
+    ::DeviceModel,
+    ::Set{Tuple{Int, Int}},
+) = nothing
 
 function _add_shift_injections!(
     container::OptimizationContainer,
     network_model::NetworkModel{<:AbstractPTDFNetworkModel},
     template::PowerOperationsProblemTemplate,
 )
+    controlled_arcs = Set{Tuple{Int, Int}}()
     for branch_model in values(get_branch_models(template))
-        _add_shift_injections_branch!(container, network_model, branch_model)
+        _add_controlled_shift_injections!(
+            container,
+            network_model,
+            branch_model,
+            controlled_arcs,
+        )
+    end
+    # Every other arc keeps its stored constant. This sweeps the reduced arc axis rather
+    # than the template's branch models because `requires_all_branch_models` is false for
+    # PTDF networks: a shifted arc whose branch type has no DeviceModel is still in the
+    # PTDF, so iterating only modeled types would silently drop its injection.
+    nodal_expr = get_expression(container, ActivePowerBalance, PSY.ACBus)
+    time_steps = get_time_steps(container)
+    network_reduction = get_network_reduction(network_model)
+    for arc in PNM.get_arc_axis(network_reduction)
+        arc in controlled_arcs && continue
+        injection = PNM.arc_dc_shift_injection(network_reduction, arc)
+        iszero(injection) && continue
+        from_no, to_no = arc
+        for t in time_steps
+            JuMP.add_to_expression!(nodal_expr[from_no, t], injection)
+            JuMP.add_to_expression!(nodal_expr[to_no, t], -injection)
+        end
     end
     return
 end
