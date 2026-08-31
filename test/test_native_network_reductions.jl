@@ -504,11 +504,12 @@ end
     container = IOM.get_optimization_container(model)
     network_model = get_network_model(get_template(model))
     nr = get_network_reduction(network_model)
+    catalog = POM.get_branch_catalog(network_model)
 
     # Guard: a genuine (non-identity) reduction. An identity reduction would silently make
     # this a duplicate of the c_sys5 coefficient tests.
     @test !isempty(nr)
-    line_entries = POM.get_name_to_arc_map_entries(nr, PSY.Line)
+    line_entries = PNM.get_name_to_arc_map(catalog, PSY.Line)
     reduced_names = collect(keys(line_entries))
     n_raw_lines = length(collect(PSY.get_components(PSY.Line, sys)))
     @test length(reduced_names) < n_raw_lines       # series/parallel arcs merged
@@ -609,7 +610,7 @@ end
     # Directional flow variables carry hard ±(equivalent rating) box bounds, and every
     # slack column is priced. The equivalent rating is read from the reduction entry (the
     # PNM series/parallel aggregate reached exactly as `branch_rate_bounds!` does).
-    all_maps = PNM.get_all_branch_maps_by_type(nr)
+    all_maps = PNM.get_all_branch_maps_by_type(catalog)
     device_model = get_model(get_template(model), PSY.Line)
     for (name, (arc, reduction)) in line_entries
         entry = all_maps[reduction][PSY.Line][arc]

@@ -164,7 +164,7 @@ function mock_construct_devices!(
         IOM.get_network_model(template),
         POM.YbusNetworkData(
             mock_ybus,
-            PNM.get_network_reduction_data(mock_ybus),
+            PNM.get_branch_catalog(mock_ybus),
         ),
     )
     IOM.get_optimization_container(problem).built_for_recurrent_solves =
