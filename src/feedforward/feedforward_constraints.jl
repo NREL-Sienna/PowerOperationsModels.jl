@@ -34,12 +34,21 @@ function add_feedforward_constraints!(
     return
 end
 
+# `must_run` has no shared abstract type to hang off: it sits on the two concrete `ThermalGen`
+# types and on `HydroPumpTurbine`, whose sibling `HydroTurbine` lacks it. Reading it through a
+# trait keeps the must-run skip on dispatch instead of a per-device `hasmethod` probe.
+_is_must_run(::PSY.Component)::Bool = false
+_is_must_run(d::PSY.ThermalGen)::Bool = PSY.get_must_run(d)
+_is_must_run(d::PSY.HydroPumpTurbine)::Bool = PSY.get_must_run(d)
+
 # IOM's `upper_bound_range_with_parameter!` / `lower_bound_range_with_parameter!` read the
 # multiplier straight out of the parameter container. The semicontinuous feedforward supplies
 # its own -- zeros when the status already sits inside the range expressions, the variable's
 # own bounds otherwise -- and has to skip must-run units, so it keeps this loop. The per-entry
 # constraint is IOM's `add_range_bound_constraint!`, and the direction is IOM's `BoundDirection`.
-function _bound_range_with_parameter!(
+# Named apart from IOM's own `_bound_range_with_parameter!`, which this deliberately does not
+# call.
+function _feedforward_bound_range_with_parameter!(
     dir::IOM.BoundDirection,
     jump_model::JuMP.Model,
     constraint_container::JuMPConstraintArray,
@@ -50,9 +59,7 @@ function _bound_range_with_parameter!(
 ) where {V <: PSY.Component}
     time_steps = axes(constraint_container)[2]
     for device in devices
-        if hasmethod(PSY.get_must_run, Tuple{V})
-            PSY.get_must_run(device) && continue
-        end
+        _is_must_run(device) && continue
         name = PSY.get_name(device)
         for t in time_steps
             IOM.add_range_bound_constraint!(
@@ -104,7 +111,7 @@ function _add_sc_feedforward_constraints!(
             time_steps;
             meta = "$(U)_$(IOM.constraint_meta(dir))",
         )
-        _bound_range_with_parameter!(
+        _feedforward_bound_range_with_parameter!(
             dir,
             jump_model,
             constraint,
@@ -153,7 +160,7 @@ function _add_sc_feedforward_constraints!(
         )
         multiplier =
             DenseAxisArray(repeat(bound_values, 1, time_steps[end]), names, time_steps)
-        _bound_range_with_parameter!(
+        _feedforward_bound_range_with_parameter!(
             dir,
             jump_model,
             constraint,
@@ -180,43 +187,12 @@ function add_feedforward_constraints!(
         @assert issetequal(var_axes[1], PSY.get_name.(devices))
         IS.@assert_op var_axes[2] == time_steps
         # A non-zero lower bound left on the variable would fight the semicontinuous
-        # constraint and can make the model infeasible when the unit is off.
-        for v in variable
-            if JuMP.has_lower_bound(v) && JuMP.lower_bound(v) > 0.0
-                @debug "lb reset" JuMP.lower_bound(v) v _group =
-                    IOM.LOG_GROUP_FEEDFORWARDS_CONSTRUCTION
-                JuMP.set_lower_bound(v, 0.0)
-            end
-        end
-        _add_sc_feedforward_constraints!(
-            container,
-            FeedforwardSemiContinuousConstraint,
-            parameter_type,
-            var,
-            devices,
-            model,
-        )
-    end
-    return
-end
-
-function add_feedforward_constraints!(
-    container::OptimizationContainer,
-    model::DeviceModel{T, U},
-    devices::Union{Vector{T}, IS.FlattenIteratorWrapper{T}},
-    ff::SemiContinuousFeedforward,
-) where {T <: PSY.ThermalGen, U <: AbstractThermalFormulation}
-    parameter_type = get_default_parameter_type(ff, T)
-    time_steps = get_time_steps(container)
-    for var in get_affected_values(ff)
-        variable = get_variable(container, var)
-        var_axes = JuMP.axes(variable)
-        @assert issetequal(var_axes[1], PSY.get_name.(devices))
-        IS.@assert_op var_axes[2] == time_steps
-        # A must-run unit keeps its own lower bound: it is never turned off, so the
-        # semicontinuous constraints skip it entirely.
+        # constraint and can make the model infeasible when the unit is off. A must-run
+        # unit keeps its own lower bound instead: it is never turned off, and
+        # `_feedforward_bound_range_with_parameter!` skips it, so clearing the bound here
+        # would leave it with no lower bound at all.
         for d in devices
-            PSY.get_must_run(d) && continue
+            _is_must_run(d) && continue
             for v in variable[PSY.get_name(d), :]
                 if JuMP.has_lower_bound(v) && JuMP.lower_bound(v) > 0.0
                     @debug "lb reset $(PSY.get_name(d))" JuMP.lower_bound(v) v _group =
@@ -237,6 +213,82 @@ function add_feedforward_constraints!(
     return
 end
 
+# The upper- and lower-bound feedforwards differ only in the constraint type, the slack
+# type, the sign the slack enters with, and the sense of the inequality. The first three
+# are resolved by dispatch on `IOM.BoundDirection` below; the last is IOM's
+# `add_range_bound_constraint!`, the same primitive the semicontinuous path uses.
+_feedforward_constraint_type(::IOM.UpperBound) = FeedforwardUpperBoundConstraint
+_feedforward_constraint_type(::IOM.LowerBound) = FeedforwardLowerBoundConstraint
+
+_feedforward_slack_type(::IOM.UpperBound) = UpperBoundFeedForwardSlack
+_feedforward_slack_type(::IOM.LowerBound) = LowerBoundFeedForwardSlack
+
+# A slack relaxes the bound, so it moves the constrained side toward the parameter.
+_slack_adjusted(::IOM.UpperBound, variable, slack) = variable - slack
+_slack_adjusted(::IOM.LowerBound, variable, slack) = variable + slack
+
+function _add_bound_feedforward_constraints!(
+    container::OptimizationContainer,
+    dir::IOM.BoundDirection,
+    devices::Union{Vector{T}, IS.FlattenIteratorWrapper{T}},
+    ff::AbstractAffectFeedforward,
+) where {T <: PSY.Component}
+    time_steps = get_time_steps(container)
+    parameter_type = get_default_parameter_type(ff, T)
+    param = get_parameter_array(container, parameter_type, T)
+    multiplier = get_parameter_multiplier_array(container, parameter_type, T)
+    jump_model = get_jump_model(container)
+    use_slacks = get_slacks(ff)
+    for var in get_affected_values(ff)
+        variable = get_variable(container, var)
+        device_name_set, set_time = JuMP.axes(variable)
+        @assert issetequal(device_name_set, PSY.get_name.(devices))
+        IS.@assert_op set_time == time_steps
+
+        var_type = get_entry_type(var)
+        constraint = add_constraints_container!(
+            container,
+            _feedforward_constraint_type(dir),
+            T,
+            device_name_set,
+            time_steps;
+            meta = "$(var_type)$(IOM.constraint_meta(dir))",
+        )
+        if use_slacks
+            # NOTE (deviation from PowerSimulations): PSI allocates the slack when
+            # `add_slacks = true` but never references it in this constraint, so the slack
+            # has no effect there. POM wires it in.
+            slack = get_variable(container, _feedforward_slack_type(dir), T, "$(var_type)")
+            for t in time_steps, name in device_name_set
+                IOM.add_range_bound_constraint!(
+                    dir,
+                    jump_model,
+                    constraint,
+                    name,
+                    t,
+                    _slack_adjusted(dir, variable[name, t], slack[name, t]),
+                    multiplier[name, t],
+                    param[name, t],
+                )
+            end
+        else
+            for t in time_steps, name in device_name_set
+                IOM.add_range_bound_constraint!(
+                    dir,
+                    jump_model,
+                    constraint,
+                    name,
+                    t,
+                    variable[name, t],
+                    multiplier[name, t],
+                    param[name, t],
+                )
+            end
+        end
+    end
+    return
+end
+
 @doc raw"""
 Constructs a parameterized upper bound constraint to implement feedforward from other models.
 
@@ -249,55 +301,11 @@ With `add_slacks = true` the bound is relaxed by a non-negative slack penalized 
 """
 function add_feedforward_constraints!(
     container::OptimizationContainer,
-    ::DeviceModel,
+    ::DeviceModel{T, U},
     devices::Union{Vector{T}, IS.FlattenIteratorWrapper{T}},
     ff::UpperBoundFeedforward,
-) where {T <: PSY.Component}
-    time_steps = get_time_steps(container)
-    parameter_type = get_default_parameter_type(ff, T)
-    param_ub = get_parameter_array(container, parameter_type, T)
-    multiplier_ub = get_parameter_multiplier_array(container, parameter_type, T)
-    jump_model = get_jump_model(container)
-    use_slacks = get_slacks(ff)
-    for var in get_affected_values(ff)
-        variable = get_variable(container, var)
-        device_name_set, set_time = JuMP.axes(variable)
-        @assert issetequal(device_name_set, PSY.get_name.(devices))
-        IS.@assert_op set_time == time_steps
-
-        var_type = get_entry_type(var)
-        con_ub = add_constraints_container!(
-            container,
-            FeedforwardUpperBoundConstraint,
-            T,
-            device_name_set,
-            time_steps;
-            meta = "$(var_type)ub",
-        )
-        # NOTE (deviation from PowerSimulations): PSI allocates
-        # `UpperBoundFeedForwardSlack` when `add_slacks = true` but never references it
-        # in this constraint, so the slack has no effect there. POM wires it in.
-        slack_var = if use_slacks
-            get_variable(container, UpperBoundFeedForwardSlack, T, "$(var_type)")
-        else
-            nothing
-        end
-
-        for t in time_steps, name in device_name_set
-            if use_slacks
-                con_ub[name, t] = JuMP.@constraint(
-                    jump_model,
-                    variable[name, t] - slack_var[name, t] <=
-                    param_ub[name, t] * multiplier_ub[name, t]
-                )
-            else
-                con_ub[name, t] = JuMP.@constraint(
-                    jump_model,
-                    variable[name, t] <= param_ub[name, t] * multiplier_ub[name, t]
-                )
-            end
-        end
-    end
+) where {T <: PSY.Component, U <: AbstractDeviceFormulation}
+    _add_bound_feedforward_constraints!(container, IOM.UpperBound(), devices, ff)
     return
 end
 
@@ -317,48 +325,7 @@ function add_feedforward_constraints!(
     devices::Union{Vector{T}, IS.FlattenIteratorWrapper{T}},
     ff::LowerBoundFeedforward,
 ) where {T <: PSY.Component, U <: AbstractDeviceFormulation}
-    time_steps = get_time_steps(container)
-    parameter_type = get_default_parameter_type(ff, T)
-    param_lb = get_parameter_array(container, parameter_type, T)
-    multiplier_lb = get_parameter_multiplier_array(container, parameter_type, T)
-    jump_model = get_jump_model(container)
-    use_slacks = get_slacks(ff)
-    for var in get_affected_values(ff)
-        variable = get_variable(container, var)
-        device_name_set, set_time = JuMP.axes(variable)
-        @assert issetequal(device_name_set, PSY.get_name.(devices))
-        IS.@assert_op set_time == time_steps
-
-        var_type = get_entry_type(var)
-        con_lb = add_constraints_container!(
-            container,
-            FeedforwardLowerBoundConstraint,
-            T,
-            device_name_set,
-            time_steps;
-            meta = "$(var_type)lb",
-        )
-        slack_var = if use_slacks
-            get_variable(container, LowerBoundFeedForwardSlack, T, "$(var_type)")
-        else
-            nothing
-        end
-
-        for t in time_steps, name in device_name_set
-            if use_slacks
-                con_lb[name, t] = JuMP.@constraint(
-                    jump_model,
-                    variable[name, t] + slack_var[name, t] >=
-                    param_lb[name, t] * multiplier_lb[name, t]
-                )
-            else
-                con_lb[name, t] = JuMP.@constraint(
-                    jump_model,
-                    variable[name, t] >= param_lb[name, t] * multiplier_lb[name, t]
-                )
-            end
-        end
-    end
+    _add_bound_feedforward_constraints!(container, IOM.LowerBound(), devices, ff)
     return
 end
 

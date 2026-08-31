@@ -38,19 +38,43 @@ end
 """
 Attach a feedforward to a `DeviceModel`. Attaching the same feedforward type with
 the same source key twice is a no-op, so a template can be built up incrementally
-without duplicating containers.
+without duplicating containers. Attaching a second, differing `SemiContinuousFeedforward`
+for the same component type errors: only one can supply the `OnStatusParameter` container.
 """
 function attach_feedforward!(
     model::DeviceModel,
-    ff::T,
-) where {T <: AbstractAffectFeedforward}
-    if !isempty(model.feedforwards)
-        ff_k = [get_optimization_container_key(v) for v in model.feedforwards if isa(v, T)]
-        if get_optimization_container_key(ff) ∈ ff_k
-            return
-        end
+    ff::AbstractAffectFeedforward,
+)
+    for attached in model.feedforwards
+        _duplicate_feedforward(attached, ff) && return
+        _check_semicontinuous_conflict(attached, ff)
     end
     push!(model.feedforwards, ff)
+    return
+end
+
+# Same concrete type and same source key means the same container would be built twice.
+function _duplicate_feedforward(
+    a::T,
+    b::T,
+)::Bool where {T <: AbstractAffectFeedforward}
+    return get_optimization_container_key(a) == get_optimization_container_key(b)
+end
+
+function _duplicate_feedforward(
+    ::AbstractAffectFeedforward,
+    ::AbstractAffectFeedforward,
+)::Bool
+    return false
+end
+
+# Forward-declared: `SemiContinuousFeedforward` isn't defined until further down this
+# file, but `attach_feedforward!` above needs to dispatch on it. The fallback method is
+# added here; the concrete-type method is added next to `SemiContinuousFeedforward`.
+function _check_semicontinuous_conflict(
+    ::AbstractAffectFeedforward,
+    ::AbstractAffectFeedforward,
+)
     return
 end
 
@@ -84,7 +108,7 @@ Constructs a parameterized upper bound constraint to implement feedforward from 
 """
 struct UpperBoundFeedforward <: AbstractAffectFeedforward
     optimization_container_key::OptimizationContainerKey
-    affected_values::Vector
+    affected_values::Vector{<:OptimizationContainerKey}
     add_slacks::Bool
     function UpperBoundFeedforward(;
         component_type::Type{<:PSY.Component},
@@ -93,7 +117,7 @@ struct UpperBoundFeedforward <: AbstractAffectFeedforward
         add_slacks::Bool = false,
         meta = IOM.CONTAINER_KEY_EMPTY_META,
     ) where {T}
-        values_vector = Vector(undef, length(affected_values))
+        values_vector = Vector{VariableKey}(undef, length(affected_values))
         for (ix, v) in enumerate(affected_values)
             if v <: VariableType
                 values_vector[ix] =
@@ -178,7 +202,8 @@ get_slacks(ff::LowerBoundFeedforward) = ff.add_slacks
 
 It allows to enable/disable bounds to 0.0 for a specified variable. Commonly used to limit the
 `ActivePowerVariable` in an Economic Dispatch problem by the commitment decision taken in
-an another problem (typically a Unit Commitment problem).
+an another problem (typically a Unit Commitment problem). A `DeviceModel` can carry at most
+one `SemiContinuousFeedforward` per component type; `attach_feedforward!` rejects a second.
 
 # Arguments:
 
@@ -213,6 +238,27 @@ end
 get_default_parameter_type(::SemiContinuousFeedforward, _) = OnStatusParameter
 get_optimization_container_key(f::SemiContinuousFeedforward) = f.optimization_container_key
 
+# The commitment status arrives through a single `OnStatusParameter` container keyed only
+# by parameter and component type, so a device model can carry at most one semicontinuous
+# source per component type. Catching a second, differing one here turns an obscure
+# "is already stored" failure deep inside argument construction into an immediate,
+# actionable error. An exact duplicate is handled by `_duplicate_feedforward` and never
+# reaches this check.
+function _check_semicontinuous_conflict(
+    a::SemiContinuousFeedforward,
+    b::SemiContinuousFeedforward,
+)
+    if get_component_type(a) == get_component_type(b)
+        error(
+            "Cannot attach a second SemiContinuousFeedforward for component type " *
+            "$(get_component_type(b)): $(get_optimization_container_key(a)) is already " *
+            "attached; $(get_optimization_container_key(b)) would conflict. A device " *
+            "model may carry at most one semicontinuous feedforward per component type.",
+        )
+    end
+    return
+end
+
 """
 Whether `model` carries a `SemiContinuousFeedforward` whose affected values include `T`.
 
@@ -228,14 +274,26 @@ function has_semicontinuous_feedforward(
     if isempty(model.feedforwards)
         return false
     end
-    # Every semicontinuous feedforward has to be checked, not just the first: a device
-    # model can carry several with different source keys, and missing one re-introduces
-    # the double-constraining this gate exists to prevent.
+    # A device model carries at most one SemiContinuousFeedforward but may carry other
+    # feedforward types alongside it, so filter on `_is_semicontinuous` across the whole
+    # list rather than assume position.
     return any(
-        T ∈ get_entry_type.(get_affected_values(ff)) for
-        ff in model.feedforwards if isa(ff, SemiContinuousFeedforward)
+        _is_semicontinuous(ff) && T ∈ get_entry_type.(get_affected_values(ff)) for
+        ff in model.feedforwards
     )
 end
+
+"""
+Whether `model` carries any `SemiContinuousFeedforward` at all, regardless of which
+variables it affects. The commitment status then arrives as a variable-valued parameter,
+so formulations must not also build a float-valued `OnStatusParameter` for it.
+"""
+function has_semicontinuous_feedforward(model::DeviceModel)::Bool
+    return any(_is_semicontinuous, model.feedforwards)
+end
+
+_is_semicontinuous(::AbstractAffectFeedforward)::Bool = false
+_is_semicontinuous(::SemiContinuousFeedforward)::Bool = true
 
 function has_semicontinuous_feedforward(
     model::DeviceModel,
@@ -263,14 +321,16 @@ with a Parameter or a Variable as the affected value.
 """
 struct FixValueFeedforward <: AbstractAffectFeedforward
     optimization_container_key::OptimizationContainerKey
-    affected_values::Vector
+    # Both `VariableKey` and `ParameterKey` land here -- this is the only feedforward that
+    # takes a parameter as an affected value -- so the element type is their supertype.
+    affected_values::Vector{<:OptimizationContainerKey}
     function FixValueFeedforward(;
         component_type::Type{<:PSY.Component},
         source::Type{T},
         affected_values::Vector{DataType},
         meta = IOM.CONTAINER_KEY_EMPTY_META,
     ) where {T}
-        values_vector = Vector(undef, length(affected_values))
+        values_vector = Vector{OptimizationContainerKey}(undef, length(affected_values))
         for (ix, v) in enumerate(affected_values)
             if v <: VariableType || v <: ParameterType
                 values_vector[ix] =

@@ -119,10 +119,13 @@ function add_parameters!(
     V <: Union{Vector{D}, IS.FlattenIteratorWrapper{D}},
     W <: AbstractDeviceFormulation,
 } where {D <: PSY.Component}
-    if get_rebuild_model(get_settings(container)) && has_container_key(container, T, D)
+    source_key = get_optimization_container_key(ff)
+    # `_add_parameters!` stores this container under the source variable type as meta, so the
+    # rebuild guard has to look it up with the same meta or it never fires.
+    if get_rebuild_model(get_settings(container)) &&
+       has_container_key(container, T, D, "$(get_entry_type(source_key))")
         return
     end
-    source_key = get_optimization_container_key(ff)
     _add_parameters!(container, T, source_key, model, devices)
     _set_affected_variables!(container, T, D, ff)
     return
@@ -1151,8 +1154,11 @@ function _add_parameters!(
     @debug "adding" T D V _group = IOM.LOG_GROUP_OPTIMIZATION_CONTAINER
 
     # When the OnStatusParameter is added without a feedforward it takes a Float value.
-    # This is used to handle the special case of compact formulations.
-    !isempty(IOM.get_feedforwards(model)) && return
+    # This is used to handle the special case of compact formulations. Only a
+    # semicontinuous feedforward supplies the variable-valued container instead; any other
+    # feedforward leaves it to this method, so gating on `!isempty(feedforwards)` would
+    # drop the container and break the balance expression that reads it.
+    has_semicontinuous_feedforward(model) && return
     names = [PSY.get_name(device) for device in devices]
     time_steps = get_time_steps(container)
     parameter_container = add_param_container!(container, T,
