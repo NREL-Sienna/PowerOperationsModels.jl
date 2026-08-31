@@ -705,13 +705,12 @@ end
 _nz_entries(ptdf_col::SparseArrays.SparseVector{Float64, Int}) =
     (SparseArrays.nonzeroinds(ptdf_col), SparseArrays.nonzeros(ptdf_col))
 
+# Static shift path
 function _ptdf_branch_flow(
     rep::RepresentativeBranch,
     time_steps::UnitRange{Int},
     ptdf_col::Union{Vector{Float64}, SparseArrays.SparseVector{Float64, Int}},
     nodal_balance_expressions::Matrix{JuMP.AffExpr},
-    phase_var::Union{DenseAxisArray, Nothing},
-    phase_controlled::Bool,
 )
     @debug "Making Flow Expression on thread $(Threads.threadid()) for branch $(rep.name)"
     _assert_flow_expression_dimensions(
@@ -722,6 +721,7 @@ function _ptdf_branch_flow(
     nz_idx, nz_val = _nz_entries(ptdf_col)
     hint = length(nz_idx)
     expressions = Vector{JuMP.AffExpr}(undef, length(time_steps))
+    shift_injection = _dc_shift_injection(rep)
     for t in time_steps
         acc = IOM.get_hinted_aff_expr(hint)
         @inbounds for k in eachindex(nz_idx)
@@ -731,11 +731,40 @@ function _ptdf_branch_flow(
                 nodal_balance_expressions[nz_idx[k], t],
             )
         end
-        if phase_controlled
-            JuMP.add_to_expression!(acc, -_dc_susceptance(rep), phase_var[rep.name, t])
-        else
-            JuMP.add_to_expression!(acc, -_dc_shift_injection(rep))
+        JuMP.add_to_expression!(acc, -shift_injection)
+        expressions[t] = acc
+    end
+    return rep.name, expressions
+end
+
+# Variable shift path
+function _ptdf_branch_flow(
+    rep::RepresentativeBranch,
+    time_steps::UnitRange{Int},
+    ptdf_col::Union{Vector{Float64}, SparseArrays.SparseVector{Float64, Int}},
+    nodal_balance_expressions::Matrix{JuMP.AffExpr},
+    phase_var::DenseAxisArray{JuMP.VariableRef, 2},
+)
+    @debug "Making Flow Expression on thread $(Threads.threadid()) for branch $(rep.name)"
+    _assert_flow_expression_dimensions(
+        rep.name,
+        length(ptdf_col),
+        nodal_balance_expressions,
+    )
+    nz_idx, nz_val = _nz_entries(ptdf_col)
+    hint = length(nz_idx)
+    expressions = Vector{JuMP.AffExpr}(undef, length(time_steps))
+    b = _dc_susceptance(rep)
+    for t in time_steps
+        acc = IOM.get_hinted_aff_expr(hint)
+        @inbounds for k in eachindex(nz_idx)
+            JuMP.add_to_expression!(
+                acc,
+                nz_val[k],
+                nodal_balance_expressions[nz_idx[k], t],
+            )
         end
+        JuMP.add_to_expression!(acc, -b, phase_var[rep.name, t])
         expressions[t] = acc
     end
     return rep.name, expressions
@@ -771,14 +800,22 @@ function add_expressions!(
         # happens in the main thread.
         ptdf_col = ptdf[rep.arc, :]
         Threads.@spawn try
-            _ptdf_branch_flow(
-                rep,
-                time_steps,
-                ptdf_col,
-                nodal_balance_expressions.data,
-                phase_var,
-                _phase_controlled(rep, device_model, network_model),
-            )
+            if _phase_controlled(rep, device_model, network_model)
+                _ptdf_branch_flow(
+                    rep,
+                    time_steps,
+                    ptdf_col,
+                    nodal_balance_expressions.data,
+                    phase_var,
+                )
+            else
+                _ptdf_branch_flow(
+                    rep,
+                    time_steps,
+                    ptdf_col,
+                    nodal_balance_expressios.data,
+                )
+            end
         catch e
             @error "PTDF flow-expression task failed" name = rep.name arc = rep.arc exception =
                 (e, catch_backtrace())
@@ -1422,7 +1459,7 @@ function add_constraints!(
         vp = _voltage_products(container, network_model, T, name, from_bus, to_bus)
         tap_controlled = _tap_controlled(rep, device_model, network_model)
         for t in time_steps
-            tap = tap_controlled ? tap_var[name, t] : adm.tap
+            tap = tap_controlled ? JuMP.AffExpr(0.0, tap_var[name, t] => 1.0) : JuMP.AffExpr(adm.tap)
             y = _tapped_admittance(jump_model, adm, tap)
 
             cons_pft[name, t] = JuMP.@constraint(
@@ -1857,7 +1894,7 @@ function add_constraints!(
 
         tap_controlled = _tap_controlled(rep, device_model, network_model)
         for t in time_steps
-            tm = tap_controlled ? tap_var[name, t] : adm.tap
+            tm = tap_controlled ? JuMP.AffExpr(0.0, tap_var[name, t] => 1.0) : JuMP.AffExpr(adm.tap)
             tr = tm * cos(adm.shift)
             ti = tm * sin(adm.shift)
             tm2 = tm^2
@@ -2135,7 +2172,7 @@ function add_constraints!(
                 else
                     p[name, t]
                 end
-            shift = phase_controlled ? phase_var[rep.name, t] : dc_shift
+            shift = phase_controlled ? JuMP.AffExpr(0.0, phase_var[rep.name, t] => 1.0) : JuMP.AffExpr(df_shift)
             cons[name, t] = JuMP.@constraint(
                 jump_model,
                 flow == b * (va[from_name, t] - va[to_name, t] - shift)
@@ -2191,7 +2228,7 @@ function add_expressions!(
 
         phase_controlled = _phase_controlled(rep, device_model, network_model)
         for t in time_steps
-            shift = phase_controlled ? phase_var[rep.name, t] : dc_shift
+            shift = phase_controlled ? JuMP.AffExpr(0.0, phase_var[rep.name, t] => 1.0) : JuMP.AffExpr(df_shift)
             flow = JuMP.@expression(
                 jump_model,
                 b * (va[from_name, t] - va[to_name, t] - shift)
@@ -2532,7 +2569,7 @@ function add_constraints!(
         to_name = _to_name(rep)
         phase_controlled = _phase_controlled(rep, device_model, network_model)
         for t in time_steps
-            shift = phase_controlled ? phase_var[rep.name, t] : dc_shift
+            shift = phase_controlled ? JuMP.AffExpr(0.0, phase_var[rep.name, t] => 1.0) : JuMP.AffExpr(df_shift)
             cons[rep.name, t] = JuMP.@constraint(
                 jump_model,
                 pft[rep.name, t] == b * (va[from_name, t] - va[to_name, t] - shift),
