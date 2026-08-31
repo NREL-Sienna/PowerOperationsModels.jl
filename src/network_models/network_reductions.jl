@@ -269,7 +269,6 @@ function get_branch_argument_variable_axis(
     return collect(keys(name_axis))
 end
 
-
 """
 Representative branch-name axis for a constraint family `U` over components of type `T`
 under an active network reduction.

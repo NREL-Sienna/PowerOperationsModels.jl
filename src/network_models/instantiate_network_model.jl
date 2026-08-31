@@ -357,9 +357,16 @@ function _build_catalog(matrix, branch_models::BranchModelContainer)
     base = PNM.get_branch_catalog(matrix)
     filters = IOM._get_filters(branch_models)
     isempty(filters) && return base
+    function _passes_filter(T, component)
+        if haskey(filters, T)
+            return filters[T](component)
+        else
+            return true
+        end
+    end
     return PNM.BranchCatalog(
         PNM.get_network_reduction_data(base),
-        (T, component) -> haskey(filters, T) ? filters[T](component) : true,
+        _passes_filter,
     )
 end
 

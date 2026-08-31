@@ -249,9 +249,10 @@ end
                 for i in nz_idx
                     JuMP.add_to_expression!(expected, ptdf_col[i], nodal_balance[i, t])
                 end
-                actual = pbf[name, t] +
-                         PNM.arc_dc_shift_injection(
-                             PNM.get_network_reduction_data(net_reduction_data), arc)
+                actual =
+                    pbf[name, t] +
+                    PNM.arc_dc_shift_injection(
+                        PNM.get_network_reduction_data(net_reduction_data), arc)
                 @test _affexpr_approx_equal(actual, expected)
             end
         end
