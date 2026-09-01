@@ -188,7 +188,7 @@ function _storage_market_test_system()
         sys,
         bus,
         PSY.ThermalGenerationCost(;
-            variable = PSY.CostCurve(PSY.LinearCurve(20.0)),
+            variable_operation_cost = PSY.CostCurve(PSY.LinearCurve(20.0)),
             fixed = 0.0,
             start_up = 0.0,
             shut_down = 0.0,
@@ -813,7 +813,7 @@ end
     PSY.add_component!(sys, vp)
 
     thermal_cost = PSY.ThermalGenerationCost(;
-        variable = PSY.CostCurve(PSY.LinearCurve(20.0)),
+        variable_operation_cost = PSY.CostCurve(PSY.LinearCurve(20.0)),
         fixed = 0.0,
         start_up = 0.0,
         shut_down = 0.0,
@@ -960,7 +960,7 @@ function _market_load_test_system()
     # settlement balance regardless (see the testset docstring below), so its cost curve choice
     # does not affect this test's assertions.
     thermal_cost = PSY.ThermalGenerationCost(;
-        variable = PSY.CostCurve(PSY.LinearCurve(20.0)),
+        variable_operation_cost = PSY.CostCurve(PSY.LinearCurve(20.0)),
         fixed = 0.0,
         start_up = 0.0,
         shut_down = 0.0,

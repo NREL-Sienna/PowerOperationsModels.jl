@@ -602,13 +602,15 @@ Docs abbreviation: ``f^\\text{sl,dn}``
 struct InterfaceFlowSlackDown <: VariableType end
 
 """
-Struct to dispatch the creation of Slack variables for UpperBoundFeedforward
+Struct to dispatch the creation of Slack variables that relax an `UpperBoundFeedforward`
+constraint, penalized in the objective at `BALANCE_SLACK_COST`
 
 Docs abbreviation: ``p^\\text{ff,ubsl}``
 """
 struct UpperBoundFeedForwardSlack <: VariableType end
 """
-Struct to dispatch the creation of Slack variables for LowerBoundFeedforward
+Struct to dispatch the creation of Slack variables that relax a `LowerBoundFeedforward`
+constraint, penalized in the objective at `BALANCE_SLACK_COST`
 
 Docs abbreviation: ``p^\\text{ff,lbsl}``
 """

@@ -106,16 +106,24 @@ struct EqualityConstraint <: ConstraintType end
 """
 Struct to create the constraint for semicontinuous feedforward limits.
 
+The commitment status is an `OnStatusParameter` read from the system state, not a commitment
+variable this model solves for. It enters the range expressions scaled by the device's limits,
+which is why the formulation's own range constraints are suppressed rather than added
+alongside these.
+
 For more information check [Feedforward Formulations](@ref ff_formulations).
 
 The specified constraint is formulated as:
 
 ```math
 \\begin{align*}
-&  \\text{ActivePowerRangeExpressionUB}_t := p_t^\\text{th} - \\text{on}_t^\\text{th}P^\\text{th,max} \\le 0, \\quad  \\forall t\\in \\{1, \\dots, T\\}  \\\\
-&  \\text{ActivePowerRangeExpressionLB}_t := p_t^\\text{th} - \\text{on}_t^\\text{th}P^\\text{th,min} \\ge 0, \\quad  \\forall t\\in \\{1, \\dots, T\\}
+&  \\text{ActivePowerRangeExpressionUB}_t := p_t^\\text{th} - \\text{OnStatusParameter}_t P^\\text{th,max} \\le 0, \\quad  \\forall t\\in \\{1, \\dots, T\\}  \\\\
+&  \\text{ActivePowerRangeExpressionLB}_t := p_t^\\text{th} - \\text{OnStatusParameter}_t P^\\text{th,min} \\ge 0, \\quad  \\forall t\\in \\{1, \\dots, T\\}
 \\end{align*}
 ```
+
+Compact formulations schedule ``p_t^\\text{th}`` above the minimum, so their multipliers are
+``P^\\text{th,max} - P^\\text{th,min}`` and ``0`` instead.
 """
 struct FeedforwardSemiContinuousConstraint <: ConstraintType end
 struct FeedforwardIntegralLimitConstraint <: ConstraintType end
@@ -128,9 +136,11 @@ The specified constraint is formulated as:
 
 ```math
 \\begin{align*}
-&  \\text{AffectedVariable}_t - p_t^\\text{ff,ubsl} \\le \\text{SourceVariableParameter}_t, \\quad \\forall t \\in \\{1,\\dots, T\\}
+&  \\text{AffectedVariable}_t - p_t^\\text{ff,ubsl} \\le \\text{SourceVariableParameter}_t \\cdot \\text{multiplier}_t, \\quad \\forall t \\in \\{1,\\dots, T\\}
 \\end{align*}
 ```
+
+The slack term is present only when the feedforward is built with `add_slacks = true`.
 """
 struct FeedforwardUpperBoundConstraint <: ConstraintType end
 """
@@ -142,12 +152,29 @@ The specified constraint is formulated as:
 
 ```math
 \\begin{align*}
-&  \\text{AffectedVariable}_t + p_t^\\text{ff,lbsl} \\ge \\text{SourceVariableParameter}_t, \\quad \\forall t \\in \\{1,\\dots, T\\}
+&  \\text{AffectedVariable}_t + p_t^\\text{ff,lbsl} \\ge \\text{SourceVariableParameter}_t \\cdot \\text{multiplier}_t, \\quad \\forall t \\in \\{1,\\dots, T\\}
 \\end{align*}
 ```
+
+The slack term is present only when the feedforward is built with `add_slacks = true`.
 """
 struct FeedforwardLowerBoundConstraint <: ConstraintType end
 struct FeedforwardEnergyTargetConstraint <: ConstraintType end
+"""
+Struct to create the equality constraint that pins a variable to a quantity read from the
+system state.
+
+For more information check [Feedforward Formulations](@ref ff_formulations).
+
+The specified constraint is formulated as:
+
+```math
+\\begin{align*}
+&  \\text{AffectedVariable}_t = \\text{SourceVariableParameter}_t \\cdot \\text{multiplier}_t, \\quad \\forall t \\in \\{1,\\dots, T\\}
+\\end{align*}
+```
+"""
+struct FeedforwardFixValueConstraint <: ConstraintType end
 """
 Struct to create the constraint that set the flow limits through a PhaseShiftingTransformer.
 
@@ -182,7 +209,9 @@ The specified constraints are formulated as:
 struct HVDCPowerBalance <: ConstraintType end
 struct FrequencyResponseConstraint <: ConstraintType end
 """
-Struct to create the constraint the AC branch flows depending on the network model.
+Equality-constrains a branch's flow according to its network model. Under `StaticBranchBounds`
+flow is stored as a variable, for use in feed-forwards; under `StaticBranch` it is an expression
+(`BThetaBranchFlow` on DCP, `PTDFBranchFlow` on PTDF) and no such variable is created.
 For more information check [Branch Formulations](@ref PowerSystems.Branch-Formulations).
 
 The specified constraint depends on the network model chosen. The most common application is the StaticBranch in a PTDF Network Model:
@@ -212,15 +241,25 @@ struct ReferenceBusConstraint <: ConstraintType end
 """Rectangular-coordinate voltage magnitude bounds: vmin² ≤ vr² + vi² ≤ vmax²."""
 struct VoltageMagnitudeConstraint <: ConstraintType end
 """
+Supertype for the constraints a controlled transformer circuit imposes, one per
+`PSY.TransformerControlObjective` that POM models.
+"""
+abstract type TransformerControlConstraint <: ConstraintType end
+"""
 Imposed by transformer circuits with VOLTAGE control on a branch formulation
 with controls enabled.
 """
-struct VoltageControlConstraint <: ConstraintType end
+struct VoltageControlConstraint <: TransformerControlConstraint end
 """
 Imposed by transformer circuits with REACTIVE_POWER_FLOW control on a branch
 formulation with controls enabled.
 """
-struct ReactivePowerFlowControlConstraint <: ConstraintType end
+struct ReactivePowerFlowControlConstraint <: TransformerControlConstraint end
+"""
+Imposed by transformer circuits with ACTIVE_POWER_FLOW control on a branch
+formulation with controls enabled.
+"""
+struct ActivePowerFlowControlConstraint <: TransformerControlConstraint end
 """
 Ties a component-owned [`RegulatedVoltageMagnitude`](@ref) auxiliary variable to the
 rectangular voltage components at its regulated bus under ACR/IVR formulations. One
@@ -287,7 +326,7 @@ struct RampConstraint <: ConstraintType end
 struct RampLimitConstraint <: ConstraintType end
 struct RangeLimitConstraint <: ConstraintType end
 """
-Struct to create the constraint that set the AC flow limits through AC branches and HVDC two-terminal branches.
+Constrains the upper and lower bounds of a branch's flow, which is equality-constrained by NetworkFlowConstraints.
 
 For more information check [Branch Formulations](@ref PowerSystems.Branch-Formulations).
 
@@ -896,7 +935,8 @@ v_{t} = h_{t} \\text{head_to_volume},
 struct ReservoirHeadToVolumeConstraint <: ConstraintType end
 
 """
-Feedforward constraint to limit the water level budget for reservoir formulations.
+Constraint limiting the water level budget of a reservoir to a budget read from the system
+state.
 """
 struct FeedForwardWaterLevelBudgetConstraint <: ConstraintType end
 

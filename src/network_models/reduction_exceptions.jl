@@ -160,43 +160,45 @@ _pin_model_all_branches!(::Set{Int}, ::DeviceModel) = nothing
 _warn_circuit(o, m) =
     @warn "Circuit has control $o enabled but $m. This control will be ignored, and the \
            circuit and its regulated bus may be reduced." maxlog = 5
-_supports_tap(::NetworkModel{<:NativeACNetworkModel}) = true
-_supports_tap(::NetworkModel) = false
-
-const _IMPLEMENTED_CONTROLS = _TAP_CONTROLS
 
 # A transformer circuit with a bus-based control objective on a transformer
 # with controls enabled must not be reduced away, nor can its regulated bus.
 function _pin_transformer_controls!(
     buses::Set{Int},
-    m::DeviceModel{<:_TRANSFORMERS},
+    m::DeviceModel{<:_TRANSFORMERS, <:_CONTROL_FORMULATIONS},
     sys::PSY.System,
-    network_model::NetworkModel,
-)
+    network_model::NetworkModel{N},
+) where {N <: AbstractNetworkModel}
     _control_enabled(m) || return
     for transformer in get_device_cache(m)
         for circuit in PSY.get_circuits(transformer)
             obj = PSY.get_control_objective(circuit)
-            if obj.value > 0 && !PSY.get_available(circuit)
-                _warn_circuit(obj, "the circuit is unavailable")
-                continue
-            end
-            if obj in _TAP_CONTROLS && !_supports_tap(network_model)
-                _warn_circuit(obj, "DC networks do not support variable-tap")
-                continue
-            end
-            # `obj.value <= 0` is absent (`UNDEFINED`), manual (`FIXED`) or explicitly
-            # disabled control data, not an unimplemented feature: skip it silently.
-            # `enable_controls` is a per-DeviceModel switch, so most circuits under it
-            # legitimately carry no control block at all.
             if obj.value <= 0
                 continue
             end
-            if !(obj in _IMPLEMENTED_CONTROLS)
+            if !PSY.get_available(circuit)
+                _warn_circuit(obj, "the circuit is unavailable")
+                continue
+            end
+            if obj in _TAP_CONTROLS && !_supports_tap_control(network_model)
                 _warn_circuit(
                     obj,
-                    "this control is not yet implemented for this DeviceModel/NetworkModel pair",
+                    "tap control is not supported on $(N). Try an AC network.",
                 )
+                continue
+            end
+            if obj in _PHASE_CONTROLS && !_supports_phase_control(network_model)
+                _warn_circuit(
+                    obj,
+                    "phase control is not supported on $(N). Try a DC network.",
+                )
+                continue
+            end
+            if obj in (
+                PSY.TransformerControlObjective.CONTROL_OF_DC_LINE,
+                PSY.TransformerControlObjective.ASYMMETRIC_ACTIVE_POWER_FLOW,
+            )
+                _warn_circuit(obj, "this control is not yet implemented.")
                 continue
             end
             _push_component_buses!(buses, circuit)

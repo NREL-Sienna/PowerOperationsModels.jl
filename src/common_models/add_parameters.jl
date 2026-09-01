@@ -81,6 +81,76 @@ function add_parameters!(
     return
 end
 
+#################################################################################
+# Feedforward parameters
+#
+# A feedforward names its source through an `OptimizationContainerKey` rather than
+# a device attribute, so these unwrap the key and hand it to the `VariableValueParameter`
+# `_add_parameters!` methods below.
+#################################################################################
+
+function add_parameters!(
+    container::OptimizationContainer,
+    ::Type{T},
+    ff::AbstractAffectFeedforward,
+    model::DeviceModel{D, W},
+    devices::V,
+) where {
+    T <: VariableValueParameter,
+    V <: Union{Vector{D}, IS.FlattenIteratorWrapper{D}},
+    W <: AbstractDeviceFormulation,
+} where {D <: PSY.Component}
+    if get_rebuild_model(get_settings(container)) && has_container_key(container, T, D)
+        return
+    end
+    source_key = get_optimization_container_key(ff)
+    _add_parameters!(container, T, source_key, model, devices)
+    return
+end
+
+function add_parameters!(
+    container::OptimizationContainer,
+    ::Type{T},
+    ff::FixValueFeedforward,
+    model::DeviceModel{D, W},
+    devices::V,
+) where {
+    T <: VariableValueParameter,
+    V <: Union{Vector{D}, IS.FlattenIteratorWrapper{D}},
+    W <: AbstractDeviceFormulation,
+} where {D <: PSY.Component}
+    source_key = get_optimization_container_key(ff)
+    # `_add_parameters!` stores this container under the source variable type as meta, so the
+    # rebuild guard has to look it up with the same meta or it never fires.
+    if get_rebuild_model(get_settings(container)) &&
+       has_container_key(container, T, D, "$(get_entry_type(source_key))")
+        return
+    end
+    _add_parameters!(container, T, source_key, model, devices)
+    _set_affected_variables!(container, T, D, ff)
+    return
+end
+
+# `FixValueFeedforward` is the only feedforward whose parameter has to remember which
+# variables it drives: PowerSimulations' update step reads `affected_keys` to re-fix them.
+function _set_affected_variables!(
+    container::OptimizationContainer,
+    ::Type{T},
+    ::Type{U},
+    ff::FixValueFeedforward,
+) where {
+    T <: VariableValueParameter,
+    U <: PSY.Component,
+}
+    source_key = get_optimization_container_key(ff)
+    var_type = get_entry_type(source_key)
+    parameter_container = get_parameter(container, T, U, "$var_type")
+    param_attributes = get_attributes(parameter_container)
+    affected_variables = get_affected_values(ff)
+    push!(param_attributes.affected_keys, affected_variables...)
+    return
+end
+
 function add_branch_parameters!(
     container::OptimizationContainer,
     ::Type{T},
@@ -396,6 +466,12 @@ _get_time_series_name(
 ) where {T <: ParameterType} =
     get_time_series_names(model)[T]
 
+# A key carries only its store-minted association id; the name lives in the catalog.
+# Needed because the downstream read machinery (`has_time_series`,
+# `get_time_series_initial_values!`) is still name-addressed.
+_ts_name_from_key(owner::PSY.Component, key::IS.TimeSeriesKey) =
+    IS.get_name(IS.get_time_series_metadata(owner, key))
+
 # Time-varying ORDC: the slope/breakpoint parameters read from the curve time
 # series referenced by the service's `variable` field.
 _get_time_series_name(
@@ -407,7 +483,7 @@ _get_time_series_name(
     },
     service::PSY.AbstractReserve,
     ::ServiceModel,
-) = IS.get_name(IS.get_time_series_key(PSY.get_variable(service)))
+) = _ts_name_from_key(service, IS.get_time_series_key(PSY.get_variable(service)))
 
 # The fact that we're seeing these parameters means that we should
 # have a time-varying MBC/IEC, so the `get_time_series_key` call should be valid.
@@ -420,7 +496,7 @@ function _get_time_series_name(
     op_cost = PSY.get_operation_cost(device)
     IS.@assert_op op_cost isa TS_OFFER_CURVE_COST_TYPES
     # The TS-backed startup field is the time-series key itself.
-    return IS.get_name(PSY.get_start_up(op_cost))
+    return _ts_name_from_key(device, PSY.get_start_up(op_cost))
 end
 
 function _get_time_series_name(
@@ -430,7 +506,7 @@ function _get_time_series_name(
 )
     op_cost = PSY.get_operation_cost(device)
     IS.@assert_op op_cost isa TS_OFFER_CURVE_COST_TYPES
-    return IS.get_name(IS.get_time_series_key(PSY.get_shut_down(op_cost)))
+    return _ts_name_from_key(device, IS.get_time_series_key(PSY.get_shut_down(op_cost)))
 end
 
 function _get_time_series_name(
@@ -440,7 +516,8 @@ function _get_time_series_name(
 )
     op_cost = PSY.get_operation_cost(device)
     IS.@assert_op op_cost isa TS_OFFER_CURVE_COST_TYPES
-    return IS.get_name(
+    return _ts_name_from_key(
+        device,
         IS.get_initial_input(
             PSY.get_value_curve(get_output_offer_curves(op_cost)),
         ),
@@ -454,7 +531,8 @@ function _get_time_series_name(
 )
     op_cost = PSY.get_operation_cost(device)
     IS.@assert_op op_cost isa TS_OFFER_CURVE_COST_TYPES
-    return IS.get_name(
+    return _ts_name_from_key(
+        device,
         IS.get_initial_input(
             PSY.get_value_curve(get_input_offer_curves(op_cost)),
         ),
@@ -473,7 +551,7 @@ function _get_time_series_name(
         DecrementalPiecewiseLinearBreakpointParameter,
     },
 }
-    return IS.get_name(_device_offer_curve_ts_key(T, device))
+    return _ts_name_from_key(device, _device_offer_curve_ts_key(T, device))
 end
 
 #################################################################################
@@ -1024,6 +1102,64 @@ function _add_parameters!(
     return
 end
 
+# Shared by the `FixValueParameter` and generic `VariableValueParameter` `AuxVarKey`
+# methods below: builds the parameter container and populates its multiplier/initial-value
+# arrays. `meta` differs only for `FixValueParameter` (see that method for why).
+function _add_auxvar_parameter!(
+    container::OptimizationContainer,
+    ::Type{T},
+    key::AuxVarKey{U, D},
+    devices::V,
+    ::Type{W},
+    meta,
+) where {
+    T <: VariableValueParameter,
+    U <: AuxVariableType,
+    V <: Union{Vector{D}, IS.FlattenIteratorWrapper{D}},
+    W <: AbstractDeviceFormulation,
+} where {D <: PSY.Component}
+    names = [PSY.get_name(device) for device in devices]
+    time_steps = get_time_steps(container)
+    parameter_container =
+        add_param_container!(container, T, D, key, names, time_steps; meta = meta)
+    jump_model = get_jump_model(container)
+    parent_mult = IOM.get_multiplier_array_data(parameter_container)
+    parent_param = IOM.get_parameter_array_data(parameter_container)
+    for (i, d) in enumerate(devices)
+        IOM._set_multiplier_at!(
+            parent_mult,
+            get_parameter_multiplier(T, d, W),
+            i,
+        )
+        ini_val = get_initial_parameter_value(T, d, W)
+        for t in time_steps
+            IOM._set_parameter_at!(parent_param, jump_model, ini_val, i, t)
+        end
+    end
+    return
+end
+
+# An `AuxVariableType` source (e.g. a `FixValueFeedforward` pinned to another model's
+# aux variable) must store under the same "$U" meta as the `VariableKey` method above --
+# `add_feedforward_constraints!` always reads the parameter back under that meta,
+# regardless of whether the source was a variable or an aux variable.
+function _add_parameters!(
+    container::OptimizationContainer,
+    ::Type{T},
+    key::AuxVarKey{U, D},
+    model::DeviceModel{D, W},
+    devices::V,
+) where {
+    T <: FixValueParameter,
+    U <: AuxVariableType,
+    V <: Union{Vector{D}, IS.FlattenIteratorWrapper{D}},
+    W <: AbstractDeviceFormulation,
+} where {D <: PSY.Component}
+    @debug "adding" T D U _group = IOM.LOG_GROUP_OPTIMIZATION_CONTAINER
+    _add_auxvar_parameter!(container, T, key, devices, W, "$U")
+    return
+end
+
 #################################################################################
 # _add_parameters! for AuxVarKey VariableValueParameter
 #################################################################################
@@ -1041,29 +1177,7 @@ function _add_parameters!(
     W <: AbstractDeviceFormulation,
 } where {D <: PSY.Component}
     @debug "adding" T D U _group = IOM.LOG_GROUP_OPTIMIZATION_CONTAINER
-    names = [PSY.get_name(device) for device in devices]
-    time_steps = get_time_steps(container)
-    parameter_container = add_param_container!(container, T,
-        D,
-        key,
-        names,
-        time_steps,
-    )
-    jump_model = get_jump_model(container)
-    parent_mult = IOM.get_multiplier_array_data(parameter_container)
-    parent_param = IOM.get_parameter_array_data(parameter_container)
-
-    for (i, d) in enumerate(devices)
-        IOM._set_multiplier_at!(
-            parent_mult,
-            get_parameter_multiplier(T, d, W),
-            i,
-        )
-        ini_val = get_initial_parameter_value(T, d, W)
-        for t in time_steps
-            IOM._set_parameter_at!(parent_param, jump_model, ini_val, i, t)
-        end
-    end
+    _add_auxvar_parameter!(container, T, key, devices, W, IOM.CONTAINER_KEY_EMPTY_META)
     return
 end
 
@@ -1084,8 +1198,11 @@ function _add_parameters!(
     @debug "adding" T D V _group = IOM.LOG_GROUP_OPTIMIZATION_CONTAINER
 
     # When the OnStatusParameter is added without a feedforward it takes a Float value.
-    # This is used to handle the special case of compact formulations.
-    !isempty(IOM.get_feedforwards(model)) && return
+    # This is used to handle the special case of compact formulations. Only a
+    # semicontinuous feedforward supplies the variable-valued container instead; any other
+    # feedforward leaves it to this method, so gating on `!isempty(feedforwards)` would
+    # drop the container and break the balance expression that reads it.
+    has_semicontinuous_feedforward(model) && return
     names = [PSY.get_name(device) for device in devices]
     time_steps = get_time_steps(container)
     parameter_container = add_param_container!(container, T,

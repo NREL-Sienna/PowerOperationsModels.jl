@@ -335,45 +335,47 @@ end
 #################################################################################
 # Time-series cost helpers
 #
-# Fabricate `ForecastKey`s and build `MarketBidTimeSeriesCost` / TS offer curves without
-# attaching real time series data to the system — the TS dispatch path reads from
+# Fabricate typed `TimeSeriesKey`s and build `MarketBidTimeSeriesCost` / TS offer curves
+# without attaching real time series data to the system — the TS dispatch path reads from
 # pre-populated parameter containers (via `setup_delta_pwl_parameters!` and friends), not
-# from the time-series store. Mirrors IOM's pattern in test/test_ts_value_curve_objective.
+# from the time-series store, so the fabricated ids are never resolved. Mirrors IOM's
+# pattern in test/test_ts_value_curve_objective. The reserved zero id marks the
+# placeholder/absent side of a one-sided participant (IOM's `is_nontrivial_offer`);
+# the store mints real ids from 1.
 #################################################################################
 
-# The owner and association id are stubs like everything else here: these keys are
-# never resolved against a store, so they only have to be well-formed. A single
-# owner and a fixed association id keep two stubs distinguishable by `name` alone,
-# which is what the callers below vary.
-_stub_forecast_key(name::String) = IS.ForecastKey(;
-    owner_id = 1,
-    owner_category = IS.InfraStore.Component,
-    association_id = 1,
-    time_series_type = IS.Deterministic,
-    name = name,
-    initial_timestamp = Dates.DateTime("2020-01-01"),
-    resolution = Dates.Hour(1),
-    horizon = Dates.Hour(24),
-    interval = Dates.Hour(24),
-    count = 1,
-    features = Dict{String, Any}(),
-)
+const _STUB_TS_ID = Ref(0)
+_next_stub_ts_id() = (_STUB_TS_ID[] += 1)
+
+_stub_pwl_key(id::Int) = IS.TimeSeriesKey{IS.Deterministic{IS.PiecewiseStepData}}(id)
+_stub_scalar_key(id::Int) = IS.TimeSeriesKey{IS.Deterministic{Float64}}(id)
+_stub_linear_key(id::Int) = IS.TimeSeriesKey{IS.Deterministic{IS.LinearFunctionData}}(id)
+_stub_startup_key(id::Int) = IS.TimeSeriesKey{IS.Deterministic{NTuple{3, Float64}}}(id)
+_stub_linear_curve() = PSY.TimeSeriesLinearCurve(_stub_linear_key(_next_stub_ts_id()))
 
 """
 Construct a `CostCurve{TimeSeriesPiecewiseIncrementalCurve}` with stub TS keys. Pass
 `trivial = true` for the absent side of a one-sided participant (a load with no supply
-offer, or a generator with no demand offer): it carries reserved empty-name keys, which
+offer, or a generator with no demand offer): it carries the reserved zero-id keys, which
 IOM's `is_nontrivial_offer` treats as the placeholder/absent side.
 """
 function stub_ts_offer_curve(;
-    curve_name::String = "variable_cost",
-    initial_input_name::String = "initial_input",
     power_units = PSY.SU,
     trivial::Bool = false,
 )
+    curve_id = if trivial
+        0
+    else
+        _next_stub_ts_id()
+    end
+    initial_id = if trivial
+        0
+    else
+        _next_stub_ts_id()
+    end
     vc = IS.TimeSeriesPiecewiseIncrementalCurve(
-        _stub_forecast_key(trivial ? "" : curve_name),
-        _stub_forecast_key(trivial ? "" : initial_input_name),
+        _stub_pwl_key(curve_id),
+        _stub_scalar_key(initial_id),
         nothing,
     )
     return PSY.CostCurve(vc, power_units)
@@ -384,16 +386,8 @@ function stub_ts_import_export_cost(;
     power_units = PSY.SU,
 )
     return PSY.ImportExportTimeSeriesCost(;
-        import_offer_curves = stub_ts_offer_curve(;
-            curve_name = "variable_cost import",
-            initial_input_name = "initial_input import",
-            power_units = power_units,
-        ),
-        export_offer_curves = stub_ts_offer_curve(;
-            curve_name = "variable_cost export",
-            initial_input_name = "initial_input export",
-            power_units = power_units,
-        ),
+        import_offer_curves = stub_ts_offer_curve(; power_units = power_units),
+        export_offer_curves = stub_ts_offer_curve(; power_units = power_units),
     )
 end
 
@@ -409,18 +403,14 @@ function stub_ts_market_bid_cost(;
     decremental_trivial::Bool = false,
 )
     return PSY.MarketBidTimeSeriesCost(;
-        minimum_energy_offer = PSY.TimeSeriesLinearCurve(_stub_forecast_key("no_load")),
-        start_up = _stub_forecast_key("start_up"),
-        shut_down = PSY.TimeSeriesLinearCurve(_stub_forecast_key("shut_down")),
+        minimum_energy_offer = _stub_linear_curve(),
+        start_up = _stub_startup_key(_next_stub_ts_id()),
+        shut_down = _stub_linear_curve(),
         incremental_offer_curves = stub_ts_offer_curve(;
-            curve_name = "variable_cost incremental",
-            initial_input_name = "initial_input incremental",
             power_units = power_units,
             trivial = incremental_trivial,
         ),
         decremental_offer_curves = stub_ts_offer_curve(;
-            curve_name = "variable_cost decremental",
-            initial_input_name = "initial_input decremental",
             power_units = power_units,
             trivial = decremental_trivial,
         ),

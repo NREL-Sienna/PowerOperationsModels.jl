@@ -19,28 +19,21 @@ TimeSeriesKey}` is type-invariant but *instance*-dependent, so the trait must
 look at the value, not just the type parameters.
 """
 
-const _FORECAST_KEY = IS.ForecastKey(;
-    owner_id = 1,
-    owner_category = IS.InfraStore.Component,
-    association_id = 1,
-    time_series_type = IS.Deterministic,
-    name = "fuel_price",
-    initial_timestamp = Dates.DateTime("2020-01-01"),
-    resolution = Dates.Hour(1),
-    horizon = Dates.Hour(24),
-    interval = Dates.Hour(24),
-    count = 1,
-    features = Dict{String, Any}(),
-)
+# Fabricated keys: this file only exercises the trait, never a store read, and each
+# field's key type is pinned by the curve it goes into.
+const _FUEL_PRICE_KEY = IS.TimeSeriesKey{IS.Deterministic{Float64}}(1)
+const _LINEAR_CURVE_KEY = IS.TimeSeriesKey{IS.Deterministic{IS.LinearFunctionData}}(2)
+const _QUADRATIC_CURVE_KEY =
+    IS.TimeSeriesKey{IS.Deterministic{IS.QuadraticFunctionData}}(3)
 
 _linear_vc() = PSY.LinearCurve(2.0, 3.0)
 _quadratic_vc() = PSY.QuadraticCurve(1.0, 2.0, 3.0)
 _pwl_vc() = PSY.PiecewisePointCurve([(x = 0.0, y = 0.0), (x = 1.0, y = 2.0)])
-_ts_linear_vc() = PSY.TimeSeriesLinearCurve(_FORECAST_KEY)
-_ts_quadratic_vc() = PSY.TimeSeriesQuadraticCurve(_FORECAST_KEY)
+_ts_linear_vc() = PSY.TimeSeriesLinearCurve(_LINEAR_CURVE_KEY)
+_ts_quadratic_vc() = PSY.TimeSeriesQuadraticCurve(_QUADRATIC_CURVE_KEY)
 
 _tgc(variable) = PSY.ThermalGenerationCost(;
-    variable = variable,
+    variable_operation_cost = variable,
     fixed = 0.0,
     start_up = 0.0,
     shut_down = 0.0,
@@ -53,7 +46,9 @@ _tgc(variable) = PSY.ThermalGenerationCost(;
 
     # FuelCurve{PWL}: `_onvar_cost ≡ 0` regardless of fuel_cost — term is static.
     @test POM.is_time_variant_proportional(_tgc(PSY.FuelCurve(_pwl_vc(), 4.0))) == false
-    @test POM.is_time_variant_proportional(_tgc(PSY.FuelCurve(_pwl_vc(), _FORECAST_KEY))) ==
+    @test POM.is_time_variant_proportional(
+        _tgc(PSY.FuelCurve(_pwl_vc(), _FUEL_PRICE_KEY)),
+    ) ==
           false
 
     # FuelCurve{Linear/Quadratic}: `_onvar_cost = constant_term * fuel_cost_at_t`,
@@ -64,26 +59,26 @@ _tgc(variable) = PSY.ThermalGenerationCost(;
     # LinearCurve
     @test POM.is_time_variant_proportional(_tgc(PSY.FuelCurve(_linear_vc(), 4.0))) == false
     @test POM.is_time_variant_proportional(
-        _tgc(PSY.FuelCurve(_linear_vc(), _FORECAST_KEY)),
+        _tgc(PSY.FuelCurve(_linear_vc(), _FUEL_PRICE_KEY)),
     ) == true
     @test POM.is_time_variant_proportional(
         _tgc(PSY.FuelCurve(_ts_linear_vc(), 4.0)),
     ) == true
     @test POM.is_time_variant_proportional(
-        _tgc(PSY.FuelCurve(_ts_linear_vc(), _FORECAST_KEY)),
+        _tgc(PSY.FuelCurve(_ts_linear_vc(), _FUEL_PRICE_KEY)),
     ) == true
 
     # QuadraticCurve
     @test POM.is_time_variant_proportional(_tgc(PSY.FuelCurve(_quadratic_vc(), 4.0))) ==
           false
     @test POM.is_time_variant_proportional(
-        _tgc(PSY.FuelCurve(_quadratic_vc(), _FORECAST_KEY)),
+        _tgc(PSY.FuelCurve(_quadratic_vc(), _FUEL_PRICE_KEY)),
     ) == true
     @test POM.is_time_variant_proportional(
         _tgc(PSY.FuelCurve(_ts_quadratic_vc(), 4.0)),
     ) == true
     @test POM.is_time_variant_proportional(
-        _tgc(PSY.FuelCurve(_ts_quadratic_vc(), _FORECAST_KEY)),
+        _tgc(PSY.FuelCurve(_ts_quadratic_vc(), _FUEL_PRICE_KEY)),
     ) == true
 end
 

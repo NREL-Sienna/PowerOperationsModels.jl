@@ -227,7 +227,7 @@ end
 # TS-backed: validated at parameter population time, not here
 _validate_occ_curves(::Union{PSY.StaticInjection, PSY.VirtualParticipant},
     ::IOM.OfferDirection,
-    ::IS.CostCurve{IS.TimeSeriesPiecewiseIncrementalCurve}) = nothing
+    ::IS.CostCurve{<:IS.TimeSeriesPiecewiseIncrementalCurve}) = nothing
 
 _validate_occ_subtype(::PSY.MarketBidCost, ::IOM.OfferDirection, ::IS.CostCurve, args...) =
     nothing
@@ -664,7 +664,7 @@ IOM.get_time_series_counts_by_type(sys::PSY.System) =
     IS.get_time_series_counts_by_type(sys.data)
 
 # PSY cost-type dispatches for variable-cost and get_variable_cost:
-IOM.get_variable_cost(cost) = PSY.get_variable(cost)
+IOM.get_variable_cost(cost) = PSY.get_variable_operation_cost(cost)
 
 # Not really market bid related--better spot?
 IOM.component_for_hvdc_interpolation(::Nothing) = PSY.DCBus

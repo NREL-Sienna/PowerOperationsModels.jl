@@ -108,20 +108,26 @@ function validate_template_impl!(model::IOM.AbstractOptimizationModel)
     for k in branch_keys_to_delete
         delete!(template.branches, k)
     end
-    _check_security_constrained_three_winding_transformer!(template.branches)
-    _check_security_constrained_network!(template.branches, network_model)
+    _check_security_constrained_three_winding_transformer(template.branches)
+    _check_security_constrained_network(template.branches, network_model)
+    _check_security_constrained_phase_control(template.branches, network_model)
     _check_voltage_regulation_conflicts!(template, system, network_model)
     _check_branch_rating_time_series_formulation!(template.branches, system)
     validate_network_model(network_model, unmodeled_branch_types, model_has_branch_filters)
     _check_market_model!(template)
     _build_device_model_outages!(template, system)
+    # Must follow `_build_device_model_outages!`: that call is what fills the per-type
+    # monitored-name maps this check reads.
+    _check_monitored_components(template.branches, system)
     return
 end
 
-# The market model's settlement_domain must be `PSY.System`, and it only makes sense
-# against an active-power network. Deferred to here (rather than checked in
-# `set_market_model!`) to mirror how `set_network_model!` defers its own network-model
-# validation to `validate_network_model` in this function.
+"""
+The market model's `settlement_domain` must be `PSY.System`, and it only makes sense
+against an active-power network. Deferred to here (rather than checked in
+`set_market_model!`) to mirror how `set_network_model!` defers its own network-model
+validation to `validate_network_model` in this function.
+"""
 function _check_market_model!(template::PowerOperationsProblemTemplate)
     market_model = get_market_model(template)
     market_model === nothing && return
@@ -244,23 +250,27 @@ function _check_branch_rating_time_series_formulation!(
     return
 end
 
-function _check_security_constrained_three_winding_transformer!(
+function _check_security_constrained_three_winding_transformer(
+    branch_model::DeviceModel{
+        PSY.ThreeWindingTransformer,
+        <:AbstractSecurityConstrainedStaticBranch,
+    },
+)
+    throw(
+        IS.ConflictingInputsError(
+            "Security-constrained branch formulations are not implemented \
+            yet for ThreeWindingTransformers.",
+        ),
+    )
+end
+
+_check_security_constrained_three_winding_transformer(::DeviceModel) = nothing
+
+function _check_security_constrained_three_winding_transformer(
     branch_models::IOM.BranchModelContainer,
 )
-    for (_, device_model) in branch_models
-        D = get_component_type(device_model)
-        B = get_formulation(device_model)
-        if D <: PSY.ThreeWindingTransformer &&
-           B <: AbstractSecurityConstrainedStaticBranch
-            throw(
-                IS.ConflictingInputsError(
-                    "Security-constrained branch formulations are not implemented \
-                    yet for $(D), but it was configured with $(B). Use a non \
-                    security-constrained formulation (e.g. StaticBranch) for \
-                    $(D), or remove it from the template.",
-                ),
-            )
-        end
+    for device_model in values(branch_models)
+        _check_security_constrained_three_winding_transformer(device_model)
     end
     return
 end
@@ -387,27 +397,128 @@ function _check_flow_slack_support(
     )
 end
 
-function _check_security_constrained_network!(
+# Circuits this model puts in ACTIVE_POWER_FLOW control, named as `_controlled_circuit_names`
+# names them. Read off the device cache: the network reduction does not exist yet at
+# validation time, so the `RepresentativeBranch` API is unavailable here.
+function _phase_controlled_circuit_names(
+    device_model::DeviceModel{<:_TRANSFORMERS, <:_CONTROL_FORMULATIONS},
+    network_model::NetworkModel,
+)
+    names = String[]
+    _control_enabled(device_model) || return names
+    _supports_phase_control(network_model) || return names
+    for transformer in get_device_cache(device_model)
+        circuits = PSY.get_circuits(transformer)
+        for (i, circuit) in enumerate(circuits)
+            _control_objective(circuit, device_model) in _PHASE_CONTROLS || continue
+            if length(circuits) == 1
+                push!(names, PSY.get_name(transformer))
+            else
+                push!(names, "$(PSY.get_name(transformer))_winding_$(i)")
+            end
+        end
+    end
+    return names
+end
+
+_phase_controlled_circuit_names(::DeviceModel, ::NetworkModel) = String[]
+
+_is_security_constrained(
+    ::DeviceModel{<:PSY.ACTransmission, <:AbstractSecurityConstrainedStaticBranch},
+) = true
+_is_security_constrained(::DeviceModel) = false
+
+# `_build_post_contingency_flow_expressions_for_outage` builds every post-contingency flow
+# from the FIXED `_dc_shift_injection`, never from `PhaseShifterAngle`. A variable angle
+# would therefore move only the base case, leaving the N-1 rows silently wrong, so reject
+# the pair instead of building it.
+function _check_security_constrained_phase_control(
     branch_models::IOM.BranchModelContainer,
     network_model::NetworkModel,
 )
-    _sc_branch_network_supported(network_model) && return
-    for (_, device_model) in branch_models
-        B = get_formulation(device_model)
-        if B <: AbstractSecurityConstrainedStaticBranch
-            throw(
-                IS.ConflictingInputsError(
-                    "$(B) is not supported with network model \
-                    $(get_network_formulation(network_model)). Supported network \
-                    models are PTDF, AreaPTDF and DCP. Security-constrained \
-                    branches are not available on AC or lossy network models \
-                    (ACP/ACR/IVR/LPACC/DCPLL) because the MODF post-contingency \
-                    formulation is a lossless linear DC construct. NFA, \
-                    CopperPlate and AreaBalance are inert for \
-                    security-constrained branches.",
-                ),
-            )
+    sc_types = [
+        get_component_type(m) for m in values(branch_models) if
+        _is_security_constrained(m)
+    ]
+    isempty(sc_types) && return
+    controlled = reduce(
+        vcat,
+        (_phase_controlled_circuit_names(m, network_model) for m in values(branch_models));
+        init = String[],
+    )
+    isempty(controlled) && return
+    throw(
+        IS.ConflictingInputsError(
+            "Phase-controlled transformer circuit(s) $(join(controlled, ", ")) cannot be \
+             combined with the security-constrained branch model(s) for \
+             $(join(sc_types, ", ")): post-contingency MODF flows are built from the fixed \
+             phase shift, so a variable phase-shifter angle would make them wrong. Disable \
+             the circuit control or drop the security-constrained formulation.",
+        ),
+    )
+end
+
+function _check_security_constrained_network(
+    branch_model::DeviceModel{<:PSY.ACTransmission, B},
+    network_model::NetworkModel,
+) where {B <: AbstractSecurityConstrainedStaticBranch}
+    _sc_branch_network_supported(network_model) || throw(
+        IS.ConflictingInputsError(
+            "$(B) is not supported with network model \
+            $(get_network_formulation(network_model)). Supported network \
+            models are PTDF, AreaPTDF and DCP. Security-constrained \
+            branches are not available on AC or lossy network models \
+            (ACP/ACR/IVR/LPACC/DCPLL) because the MODF post-contingency \
+            formulation is a lossless linear DC construct. NFA, \
+            CopperPlate and AreaBalance are inert for \
+            security-constrained branches.",
+        ),
+    )
+    return
+end
+
+_check_security_constrained_network(::DeviceModel, ::NetworkModel) = nothing
+
+function _check_security_constrained_network(
+    branch_models::IOM.BranchModelContainer,
+    network_model::NetworkModel,
+)
+    for device_model in values(branch_models)
+        _check_security_constrained_network(device_model, network_model)
+    end
+    return
+end
+
+function _check_monitored_components(
+    branch_model::DeviceModel{
+        <:PSY.ACTransmission,
+        <:AbstractSecurityConstrainedStaticBranch,
+    },
+    sys::PSY.System,
+)
+    for (uuid, per_type) in get_outages(branch_model)
+        for (T, names) in per_type
+            for name in names
+                !PSY.has_component(sys, T, name) && error(
+                    "Monitored component \"$name\" (type $T) for outage $uuid is " *
+                    "absent from both the network-reduction name-to-arc map and the " *
+                    "component-to-reduction map. Verify the component exists in the " *
+                    "system and is modeled with a security-constrained branch formulation.",
+                )
+            end
         end
+    end
+    return
+end
+
+_check_monitored_components(::DeviceModel, ::PSY.System) = nothing
+
+function _check_monitored_components(
+    branch_models::IOM.BranchModelContainer,
+    sys::PSY.System,
+)
+    for branch_model in values(branch_models)
+        _check_monitored_components(branch_model, sys)
     end
     return
 end
@@ -441,7 +552,7 @@ function _voltage_regulated_buses(
     for d in get_available_components(device_model, sys)
         for (i, circuit) in enumerate(PSY.get_circuits(d))
             PSY.get_control_objective(circuit) === _VOLTAGE_CONTROL || continue
-            _supports_tap(network_model) || continue
+            _supports_tap_control(network_model) || continue
             bus = PSY.get_bus(sys, PSY.get_regulated_bus_number(circuit))
             name = "$(PSY.get_name(d))_winding_$i"
             if isnothing(bus)

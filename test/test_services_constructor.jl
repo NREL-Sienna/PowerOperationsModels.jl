@@ -16,15 +16,12 @@ function _add_ts_ordc!(
     power_units = PSY.get_power_units(baseline_curve)
     fd = PSY.get_function_data(PSY.get_value_curve(baseline_curve))
 
-    # Construct with a stub TS curve so the component can be added; the real forecast is
-    # attached and set below.
-    stub = stub_ts_offer_curve(; power_units = power_units)
-    # Keyword form: `variable` sits fifth positionally on `OnlineReserve`, so name the fields.
+    # Construct with the default `variable` (the ZERO_OFFER_CURVE "no curve" placeholder);
+    # the real forecast is attached and set below — its key exists only after attachment.
     ordc_ts = OnlineReserve{ReserveUp}(;
         name = name,
         available = true,
         time_frame = PSY.get_time_frame(static_ordc),
-        variable = stub,
     )
     add_service!(sys, ordc_ts, get_components(ThermalStandard, sys))
 
@@ -1551,11 +1548,12 @@ end
         add_forecasts = false, add_single_time_series = true, add_reserves = true)
     res = first(PSY.get_time_series_resolutions(sys))
     grid = first(
-        k for k in IS.get_time_series_keys(first(get_components(PowerLoad, sys))) if
-        k isa IS.StaticTimeSeriesKey
+        md for
+        md in IS.list_time_series_metadata(first(get_components(PowerLoad, sys)))
+        if IS.get_time_series_type(md) <: IS.SingleTimeSeries
     )
-    n = grid.length
-    times = collect(range(grid.initial_timestamp; step = res, length = n))
+    n = IS.get_length(grid)
+    times = collect(range(IS.get_initial_timestamp(grid); step = res, length = n))
 
     # Per-hour demand curves with alternating tranche counts (2 and 3); max tranches = 3.
     two = IS.PiecewiseStepData([0.0, 100.0, 200.0], [50.0, 30.0])
@@ -1572,17 +1570,14 @@ end
             data = IS.TimeSeries.TimeArray(times, curves),
         ))
     # STS-only systems have no forecast params until the transform defines them, so
-    # transform first and mint the key from the resulting params.
+    # transform first and take the key of the forecast row the transform minted.
     transform_single_time_series!(sys, Hour(24), Hour(24); delete_existing = false)
-    key = IS.ForecastKey(; owner_id = 1, owner_category = IS.InfraStore.Component,
-        association_id = 1,
-        time_series_type = IS.Deterministic, name = "variable_cost",
-        initial_timestamp = first(PSY.get_forecast_initial_times(sys)),
-        resolution = res,
-        horizon = PSY.get_forecast_horizon(sys),
-        interval = PSY.get_forecast_interval(sys),
-        count = PSY.get_forecast_window_count(sys),
-        features = Dict{String, Any}())
+    key = IS.get_time_series_key(
+        first(
+            md for md in IS.list_time_series_metadata(ordc_ts)
+            if IS.get_time_series_type(md) <: IS.Forecast
+        ),
+    )
     PSY.set_variable!(ordc_ts,
         PSY.make_market_bid_ts_curve(key, nothing, IS.NaturalUnit()))
 
@@ -1639,7 +1634,7 @@ function _setup_group_reserve_offers!(
     for g in get_components(ThermalStandard, sys)
         pmax = PSY.get_max_active_power(g, PSY.NU)
         energy_slope = PSY.get_proportional_term(
-            PSY.get_value_curve(PSY.get_variable(get_operation_cost(g))),
+            PSY.get_value_curve(PSY.get_variable_operation_cost(get_operation_cost(g))),
         )
         set_operation_cost!(
             g,
@@ -1791,23 +1786,10 @@ end
     curves =
         [IS.PiecewiseStepData([0.0, isodd(h) ? 40.0 : 80.0], [9.0e4]) for h in 1:horizon]
     data = Dict(it => copy(curves) for it in init_times)
-    PSY.add_time_series!(
+    key = PSY.add_time_series!(
         sys,
         group,
         Deterministic("variable_cost", data, Hour(1)),
-    )
-    key = IS.ForecastKey(;
-        owner_id = 1,
-        owner_category = IS.InfraStore.Component,
-        association_id = 1,
-        time_series_type = IS.Deterministic,
-        name = "variable_cost",
-        initial_timestamp = first(init_times),
-        resolution = Hour(1),
-        horizon = Hour(horizon),
-        interval = Hour(24),
-        count = 2,
-        features = Dict{String, Any}(),
     )
     PSY.set_variable!(group, PSY.make_market_bid_ts_curve(key, nothing, IS.NaturalUnit()))
     @test PSY.has_demand_curve(group)
