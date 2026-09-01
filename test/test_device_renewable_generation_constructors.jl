@@ -121,7 +121,7 @@ end
     set_operation_cost!(
         no_ts_re,
         RenewableGenerationCost(;
-            variable = base_cost.variable,
+            variable_operation_cost = base_cost.variable_operation_cost,
             curtailment_cost = CostCurve(LinearCurve(10.0)),
             fixed = base_cost.fixed,
         ),
@@ -162,7 +162,7 @@ end
     set_operation_cost!(
         quad_re,
         RenewableGenerationCost(;
-            variable = CostCurve(QuadraticCurve(-2.0, -1.0, 0.0)),
+            variable_operation_cost = CostCurve(QuadraticCurve(-2.0, -1.0, 0.0)),
             curtailment_cost = base_cost.curtailment_cost,
             fixed = base_cost.fixed,
         ),

@@ -288,10 +288,10 @@ objective_function_multiplier(::Type{WaterSpillageVariable}, ::Type{<:AbstractHy
 IOM.uses_commitment_variables(::Type{<:PSY.HydroGen}) = true
 
 variable_cost(::Nothing, ::Type{ActivePowerVariable}, ::Type{<:PSY.HydroGen}, ::Type{<:AbstractHydroReservoirFormulation})=0.0
-variable_cost(cost::PSY.OperationalCost, ::Type{ActivePowerVariable}, ::Type{<:PSY.HydroGen}, ::Type{<:AbstractHydroFormulation})=PSY.get_variable(cost)
-variable_cost(cost::PSY.OperationalCost, ::Type{ActivePowerPumpVariable}, ::Type{<:PSY.HydroGen}, ::Type{<:AbstractHydroFormulation})=PSY.get_variable(cost)
+variable_cost(cost::PSY.OperationalCost, ::Type{ActivePowerVariable}, ::Type{<:PSY.HydroGen}, ::Type{<:AbstractHydroFormulation})=PSY.get_variable_operation_cost(cost)
+variable_cost(cost::PSY.OperationalCost, ::Type{ActivePowerPumpVariable}, ::Type{<:PSY.HydroGen}, ::Type{<:AbstractHydroFormulation})=PSY.get_variable_operation_cost(cost)
 
-# variable_cost(cost::PSY.OperationalCost, ::ActivePowerOutVariable, ::PSY.HydroTurbine, ::AbstractHydroFormulation)=PSY.get_variable(cost)
+# variable_cost(cost::PSY.OperationalCost, ::ActivePowerOutVariable, ::PSY.HydroTurbine, ::AbstractHydroFormulation)=PSY.get_variable_operation_cost(cost)
 
 variable_cost(cost::PSY.StorageCost, ::Type{ActivePowerVariable}, ::Type{<:PSY.HydroGen}, ::Type{<:AbstractHydroFormulation})=PSY.get_discharge_variable_cost(cost)
 

@@ -33,7 +33,7 @@ _ts_linear_vc() = PSY.TimeSeriesLinearCurve(_LINEAR_CURVE_KEY)
 _ts_quadratic_vc() = PSY.TimeSeriesQuadraticCurve(_QUADRATIC_CURVE_KEY)
 
 _tgc(variable) = PSY.ThermalGenerationCost(;
-    variable = variable,
+    variable_operation_cost = variable,
     fixed = 0.0,
     start_up = 0.0,
     shut_down = 0.0,

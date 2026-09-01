@@ -1367,7 +1367,7 @@ end =#
     remove_time_series!(sys, Deterministic, solitude, "fuel_cost")
     quad_curve = QuadraticCurve(0.05, 1.0, 0.0)
     new_th_cost = ThermalGenerationCost(;
-        variable = FuelCurve(;
+        variable_operation_cost = FuelCurve(;
             value_curve = quad_curve,
             fuel_cost = 1.0,
         ),
@@ -1523,7 +1523,8 @@ end
         table_format = TableFormat.WIDE,
     )
     steam3 = get_component(ThermalStandard, sys, "101_STEAM_3")
-    val_curve = PSY.get_value_curve(PSY.get_variable(PSY.get_operation_cost(steam3)))
+    val_curve =
+        PSY.get_value_curve(PSY.get_variable_operation_cost(PSY.get_operation_cost(steam3)))
     io_curve = InputOutputCurve(val_curve)
     fuel_cost = PSY.get_fuel_cost(steam3)
     x_last = last(io_curve.function_data.points).x

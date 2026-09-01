@@ -805,7 +805,7 @@ end
         reactive_power_limits = (min = -0.3, max = 0.3),
         ramp_limits = (up = 0.5, down = 0.5),
         operation_cost = ThermalGenerationCost(;
-            variable = CostCurve(LinearCurve(0.0)),
+            variable_operation_cost = CostCurve(LinearCurve(0.0)),
             start_up = 0.0,
             shut_down = 0.0,
             fixed = 0.0,

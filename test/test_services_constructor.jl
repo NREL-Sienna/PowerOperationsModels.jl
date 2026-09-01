@@ -1634,7 +1634,7 @@ function _setup_group_reserve_offers!(
     for g in get_components(ThermalStandard, sys)
         pmax = PSY.get_max_active_power(g, PSY.NU)
         energy_slope = PSY.get_proportional_term(
-            PSY.get_value_curve(PSY.get_variable(get_operation_cost(g))),
+            PSY.get_value_curve(PSY.get_variable_operation_cost(get_operation_cost(g))),
         )
         set_operation_cost!(
             g,

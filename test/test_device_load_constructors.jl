@@ -770,7 +770,7 @@ end
         base_power = PSY.get_base_power(il_load, PSY.NU),
         load_balance_time_horizon = 1,
         operation_cost = LoadCost(;
-            variable = CostCurve(
+            variable_operation_cost = CostCurve(
                 LinearCurve(0.0),
                 PSY.NU,
                 LinearCurve(1.0),
@@ -883,7 +883,7 @@ function _build_shiftable_load_system()
         base_power = PSY.get_base_power(il_load, PSY.NU),
         load_balance_time_horizon = 1,
         operation_cost = LoadCost(;
-            variable = CostCurve(
+            variable_operation_cost = CostCurve(
                 LinearCurve(0.0),
                 PSY.NU,
                 LinearCurve(1.0),
