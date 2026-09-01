@@ -351,6 +351,7 @@ _stub_pwl_key(id::Int) = IS.TimeSeriesKey{IS.Deterministic{IS.PiecewiseStepData}
 _stub_scalar_key(id::Int) = IS.TimeSeriesKey{IS.Deterministic{Float64}}(id)
 _stub_linear_key(id::Int) = IS.TimeSeriesKey{IS.Deterministic{IS.LinearFunctionData}}(id)
 _stub_startup_key(id::Int) = IS.TimeSeriesKey{IS.Deterministic{NTuple{3, Float64}}}(id)
+_stub_linear_curve() = PSY.TimeSeriesLinearCurve(_stub_linear_key(_next_stub_ts_id()))
 
 """
 Construct a `CostCurve{TimeSeriesPiecewiseIncrementalCurve}` with stub TS keys. Pass
@@ -402,11 +403,9 @@ function stub_ts_market_bid_cost(;
     decremental_trivial::Bool = false,
 )
     return PSY.MarketBidTimeSeriesCost(;
-        minimum_energy_offer = PSY.TimeSeriesLinearCurve(
-            _stub_linear_key(_next_stub_ts_id()),
-        ),
+        minimum_energy_offer = _stub_linear_curve(),
         start_up = _stub_startup_key(_next_stub_ts_id()),
-        shut_down = PSY.TimeSeriesLinearCurve(_stub_linear_key(_next_stub_ts_id())),
+        shut_down = _stub_linear_curve(),
         incremental_offer_curves = stub_ts_offer_curve(;
             power_units = power_units,
             trivial = incremental_trivial,
