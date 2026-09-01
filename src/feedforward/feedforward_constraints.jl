@@ -289,7 +289,8 @@ function _add_bound_feedforward_constraints!(
 end
 
 @doc raw"""
-Constructs a parameterized upper bound constraint to implement feedforward from other models.
+Constructs a parameterized upper bound constraint that holds the affected variable to a
+quantity read from the system state.
 
 ``` variable[name, t] <= param[name, t] * multiplier[name, t] ```
 
@@ -309,7 +310,8 @@ function add_feedforward_constraints!(
 end
 
 @doc raw"""
-Constructs a parameterized lower bound constraint to implement feedforward from other models.
+Constructs a parameterized lower bound constraint that holds the affected variable to a
+quantity read from the system state.
 
 ``` variable[name, t] >= param[name, t] * multiplier[name, t] ```
 
@@ -329,7 +331,7 @@ function add_feedforward_constraints!(
 end
 
 @doc raw"""
-Pins a variable in this model to the value of a variable in another model.
+Pins a variable in this model to a quantity read from the system state.
 
 ``` variable[name, t] == param[name, t] * multiplier[name, t] ```
 

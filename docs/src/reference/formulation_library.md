@@ -590,9 +590,13 @@ keyed by the service's own name (`meta = get_service_name(model)`). The only fix
 
 ## [Feedforward Formulations](@id ff_formulations)
 
-A feedforward parameterizes a variable in one operation model using values produced by another.
+A feedforward binds a model's variables to a quantity recorded in the system state — it is a
+model-to-state relationship, not a link between two models.
+See [Feedforwards](@ref feedforwards_explanation) for what the system state is, how the
+semicontinuous substitution works, and when to use each type.
+
 POM builds them in two stages: `add_feedforward_arguments!` (ArgumentConstructStage) allocates the
-`VariableValueParameter` container that carries the source model's values plus any slack variables,
+`VariableValueParameter` container that carries the state quantity plus any slack variables,
 and `add_feedforward_constraints!` (ModelConstructStage) builds the constraints that read it.
 Populating those parameters between executions is PowerSimulations' job — it needs simulation
 state, which POM does not have.
@@ -611,12 +615,12 @@ attach_feedforward!(
 )
 ```
 
-| Feedforward                 | Parameter                  | Constraint                            | Effect                                                         |
-|:--------------------------- |:-------------------------- |:------------------------------------- |:-------------------------------------------------------------- |
-| `UpperBoundFeedforward`     | `UpperBoundValueParameter` | `FeedforwardUpperBoundConstraint`     | ``x_t \le \text{param}_t \cdot \text{mult}_t``                 |
-| `LowerBoundFeedforward`     | `LowerBoundValueParameter` | `FeedforwardLowerBoundConstraint`     | ``x_t \ge \text{param}_t \cdot \text{mult}_t``                 |
-| `SemiContinuousFeedforward` | `OnStatusParameter`        | `FeedforwardSemiContinuousConstraint` | commitment from another model bounds ``x_t`` to 0 or its range |
-| `FixValueFeedforward`       | `FixValueParameter`        | `FeedforwardFixValueConstraint`       | ``x_t = \text{param}_t \cdot \text{mult}_t``                   |
+| Feedforward                 | Parameter                  | Constraint                            | Effect                                                            |
+|:--------------------------- |:-------------------------- |:------------------------------------- |:----------------------------------------------------------------- |
+| `UpperBoundFeedforward`     | `UpperBoundValueParameter` | `FeedforwardUpperBoundConstraint`     | ``x_t \le \text{param}_t \cdot \text{mult}_t``                    |
+| `LowerBoundFeedforward`     | `LowerBoundValueParameter` | `FeedforwardLowerBoundConstraint`     | ``x_t \ge \text{param}_t \cdot \text{mult}_t``                    |
+| `SemiContinuousFeedforward` | `OnStatusParameter`        | `FeedforwardSemiContinuousConstraint` | commitment status from the state bounds ``x_t`` to 0 or its range |
+| `FixValueFeedforward`       | `FixValueParameter`        | `FeedforwardFixValueConstraint`       | ``x_t = \text{param}_t \cdot \text{mult}_t``                      |
 
 `UpperBoundFeedforward` and `LowerBoundFeedforward` accept `add_slacks = true`, which relaxes the
 bound with a non-negative `UpperBoundFeedForwardSlack` / `LowerBoundFeedForwardSlack` penalized at

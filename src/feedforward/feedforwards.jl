@@ -1,8 +1,9 @@
 #################################################################################
 # Feedforward type definitions
 #
-# A feedforward parameterizes a variable in one operation model using values
-# produced by another. Construction is a two-stage operation:
+# A feedforward binds a model's variables to the recorded state of the system: the
+# source names a quantity in that state, never the model that last wrote it.
+# Construction is a two-stage operation:
 #
 #   1. ArgumentConstructStage -- `add_feedforward_arguments!` allocates the
 #      `VariableValueParameter` container (and any slack variables) that will
@@ -171,7 +172,7 @@ end
         meta = CONTAINER_KEY_EMPTY_META
     ) where {T}
 
-Constructs a parameterized upper bound constraint to implement feedforward from other models.
+Constructs a parameterized upper bound constraint from a quantity in the system state.
 
 # Arguments:
 
@@ -219,7 +220,7 @@ get_slacks(ff::UpperBoundFeedforward) = ff.add_slacks
         meta = CONTAINER_KEY_EMPTY_META
     ) where {T}
 
-Constructs a parameterized lower bound constraint to implement feedforward from other models.
+Constructs a parameterized lower bound constraint from a quantity in the system state.
 
 # Arguments:
 
@@ -291,10 +292,11 @@ end
         meta = CONTAINER_KEY_EMPTY_META
     ) where {T}
 
-It allows to enable/disable bounds to 0.0 for a specified variable. Commonly used to limit the
-`ActivePowerVariable` in an Economic Dispatch problem by the commitment decision taken in
-an another problem (typically a Unit Commitment problem). A `DeviceModel` can carry at most
-one `SemiContinuousFeedforward` per component type; `attach_feedforward!` rejects a second.
+Bounds a variable to zero or to the device's operating range according to a commitment
+status recorded in the system state. Commonly used to hold the `ActivePowerVariable` of an
+Economic Dispatch to the units the system state reports as online. A `DeviceModel` can carry
+at most one `SemiContinuousFeedforward` per component type; `attach_feedforward!` rejects a
+second.
 
 # Arguments:
 
@@ -349,7 +351,7 @@ end
 Whether `model` carries a `SemiContinuousFeedforward` whose affected values include `T`.
 
 Device formulations use this to suppress their own range constraints: when the
-commitment status arrives as a parameter from another model, the semicontinuous
+commitment status arrives as a parameter read from the system state, the semicontinuous
 feedforward constraints replace the formulation's native bounds. Adding both would
 double-constrain the variable.
 """
@@ -407,8 +409,9 @@ end
         meta = CONTAINER_KEY_EMPTY_META
     ) where {T}
 
-Fixes a Variable or Parameter Value in the model from another problem. Is the only Feed Forward that can be used
-with a Parameter or a Variable as the affected value.
+Fixes a Variable or Parameter Value in the model to a quantity read from the system state.
+Is the only Feed Forward that can be used with a Parameter or a Variable as the affected
+value.
 
 # Arguments:
 
