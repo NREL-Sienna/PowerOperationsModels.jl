@@ -2,14 +2,12 @@ const VOLTAGE_CONTROL = PSY.TransformerControlObjective.VOLTAGE
 const Q_FLOW_CONTROL = PSY.TransformerControlObjective.REACTIVE_POWER_FLOW
 const P_FLOW_CONTROL = PSY.TransformerControlObjective.ACTIVE_POWER_FLOW
 const TAP_CONTROLS = (VOLTAGE_CONTROL, Q_FLOW_CONTROL)
-const PHASE_CONTROLS = (P_FLOW_CONTROL,)
 
 const VOLTAGE_NETWORKS = (ACPNetworkModel, ACRNetworkModel, LPACCNetworkModel)
 const AC_NETWORKS = (VOLTAGE_NETWORKS..., IVRNetworkModel)
 const DC_NETWORKS = (DCPNetworkModel, DCPLLNetworkModel)
 # The networks that build a PhaseShifterAngle. NFA is absent: it has no angles.
 const PHASE_NETWORKS = (DCPNetworkModel, DCPLLNetworkModel, PTDFNetworkModel)
-const ALL_NETWORKS = (AC_NETWORKS..., DC_NETWORKS...)
 
 const CONTROL_FORMULATIONS = (StaticBranch, StaticBranchBounds)
 

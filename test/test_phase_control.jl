@@ -1,7 +1,7 @@
 ######################################## helpers #######################################
 
 # The active-flow object the ACTIVE_POWER_FLOW band is written against, one per
-# network x formulation pair — the test-side mirror of `POM._active_flow_array`.
+# network x formulation pair — the test-side mirror of `POM._flow_array`.
 _phase_flows(container, ::Type{StaticBranch}, ::Type{DCPNetworkModel}, device_type) =
     IOM.get_expression(container, BThetaBranchFlow, device_type)
 _phase_flows(

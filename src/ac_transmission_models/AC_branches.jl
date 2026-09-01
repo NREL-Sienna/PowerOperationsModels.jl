@@ -197,7 +197,7 @@ function _branch_variable_bounds(
 end
 
 _branch_variable_bounds(
-    ::_CONTROL_VARS,
+    ::Type{TapRatioVariable},
     rep::RepresentativeBranch,
     ::DeviceModel{<:PSY.ACTransmission, <:AbstractBranchFormulation},
     ::NetworkModel,
@@ -784,12 +784,6 @@ function add_expressions!(
 
     ptdf = get_network_matrix(network_model)
     nodal_balance_expressions = get_expression(container, ActivePowerBalance, PSY.ACBus)
-    phase_var =
-        if has_container_key(container, PhaseShifterAngle, B)
-            get_variable(container, PhaseShifterAngle, B)
-        else
-            nothing
-        end
     tasks = map(branches) do rep
         # ptdf[arc, :] is a KLU solve; libklu is not concurrency safe, so this
         # happens in the main thread.
@@ -801,7 +795,7 @@ function add_expressions!(
                     time_steps,
                     ptdf_col,
                     nodal_balance_expressions.data,
-                    phase_var,
+                    get_variable(container, PhaseShifterAngle, B),
                 )
             else
                 _ptdf_branch_flow(
@@ -1412,6 +1406,47 @@ function _tapped_admittance(adm, tap)
     )
 end
 
+# One (branch, time step) rectangular-form flow equality. Split out so the tap-controlled
+# and fixed-tap loops below each specialize on a single concrete admittance type: with a
+# variable tap the `_tapped_admittance` fields are nonlinear expressions, with a fixed tap
+# they are `Float64`, and a shared loop would union the two.
+function _add_rectangular_flow_equalities!(
+    cons,
+    flows,
+    jump_model,
+    y,
+    vp,
+    slacks,
+    name::String,
+    t::Int,
+)
+    cons.pft[name, t] = JuMP.@constraint(
+        jump_model,
+        flows.pft[name, t] ==
+        y.g11 * vp.v2_fr[t] + y.g12 * vp.vv_cos[t] + y.b12 * vp.vv_sin[t] +
+        _slack_term(slacks.p_ft, name, t)
+    )
+    cons.ptf[name, t] = JuMP.@constraint(
+        jump_model,
+        flows.ptf[name, t] ==
+        y.g22 * vp.v2_to[t] + y.g21 * vp.vv_cos[t] - y.b21 * vp.vv_sin[t] +
+        _slack_term(slacks.p_tf, name, t),
+    )
+    cons.qft[name, t] = JuMP.@constraint(
+        jump_model,
+        flows.qft[name, t] ==
+        -y.b11 * vp.v2_fr[t] - y.b12 * vp.vv_cos[t] + y.g12 * vp.vv_sin[t] +
+        _slack_term(slacks.q_ft, name, t),
+    )
+    cons.qtf[name, t] = JuMP.@constraint(
+        jump_model,
+        flows.qtf[name, t] ==
+        -y.b22 * vp.v2_to[t] - y.b21 * vp.vv_cos[t] - y.g21 * vp.vv_sin[t] +
+        _slack_term(slacks.q_tf, name, t),
+    )
+    return
+end
+
 function add_constraints!(
     container::OptimizationContainer,
     sys::PSY.System,
@@ -1439,12 +1474,8 @@ function add_constraints!(
         _add_flow_constraint_containers!(container, T, _branch_names(reps))
     jump_model = get_jump_model(container)
     slacks = _flow_equality_slacks(container, device_model, T)
-    tap_var =
-        if has_container_key(container, TapRatioVariable, T)
-            get_variable(container, TapRatioVariable, T)
-        else
-            nothing
-        end
+    cons = (pft = cons_pft, ptf = cons_ptf, qft = cons_qft, qtf = cons_qtf)
+    flows = (pft = pft, ptf = ptf, qft = qft, qtf = qtf)
 
     _foreach_branch(reps) do rep
         name = rep.name
@@ -1453,71 +1484,71 @@ function add_constraints!(
         to_bus = _to_name(rep)
 
         vp = _voltage_products(container, network_model, T, name, from_bus, to_bus)
-        tap_controlled = _tap_controlled(rep, device_model, network_model)
-        static_y = _tapped_admittance(adm, adm.tap)
-        for t in time_steps
-            y = tap_controlled ? _tapped_admittance(adm, tap_var[name, t]) : static_y
-
-            cons_pft[name, t] = JuMP.@constraint(
-                jump_model,
-                pft[name, t] ==
-                y.g11 * vp.v2_fr[t] + y.g12 * vp.vv_cos[t] + y.b12 * vp.vv_sin[t] +
-                _slack_term(slacks.p_ft, name, t)
-            )
-            cons_ptf[name, t] = JuMP.@constraint(
-                jump_model,
-                ptf[name, t] ==
-                y.g22 * vp.v2_to[t] + y.g21 * vp.vv_cos[t] - y.b21 * vp.vv_sin[t] +
-                _slack_term(slacks.p_tf, name, t),
-            )
-            cons_qft[name, t] = JuMP.@constraint(
-                jump_model,
-                qft[name, t] ==
-                -y.b11 * vp.v2_fr[t] - y.b12 * vp.vv_cos[t] + y.g12 * vp.vv_sin[t] +
-                _slack_term(slacks.q_ft, name, t),
-            )
-            cons_qtf[name, t] = JuMP.@constraint(
-                jump_model,
-                qtf[name, t] ==
-                -y.b22 * vp.v2_to[t] - y.b21 * vp.vv_cos[t] - y.g21 * vp.vv_sin[t] +
-                _slack_term(slacks.q_tf, name, t),
-            )
+        if _tap_controlled(rep, device_model, network_model)
+            tap_var = get_variable(container, TapRatioVariable, T)
+            for t in time_steps
+                _add_rectangular_flow_equalities!(
+                    cons,
+                    flows,
+                    jump_model,
+                    _tapped_admittance(adm, tap_var[name, t]),
+                    vp,
+                    slacks,
+                    name,
+                    t,
+                )
+            end
+        else
+            y = _tapped_admittance(adm, adm.tap)
+            for t in time_steps
+                _add_rectangular_flow_equalities!(
+                    cons,
+                    flows,
+                    jump_model,
+                    y,
+                    vp,
+                    slacks,
+                    name,
+                    t,
+                )
+            end
         end
     end
     return
 end
 
-_branch_uses_control(
+function _branch_uses_control(
     ::Type{VoltageControlConstraint},
     branch,
     device_model::DeviceModel,
     network_model::NetworkModel,
-) =
-    _supports_tap_control(network_model) &&
-    _control_objective(branch, device_model) === _VOLTAGE_CONTROL
-_branch_uses_control(
+)
+    return _supports_tap_control(network_model) &&
+           _control_objective(branch, device_model) === _VOLTAGE_CONTROL
+end
+
+function _branch_uses_control(
     ::Type{ReactivePowerFlowControlConstraint},
     branch,
     device_model::DeviceModel,
     network_model::NetworkModel,
-) =
-    _supports_tap_control(network_model) &&
-    _control_objective(branch, device_model) === _REACTIVE_CONTROL
-_branch_uses_control(
+)
+    return _supports_tap_control(network_model) &&
+           _control_objective(branch, device_model) === _REACTIVE_CONTROL
+end
+
+function _branch_uses_control(
     ::Type{ActivePowerFlowControlConstraint},
     branch,
     device_model::DeviceModel,
     network_model::NetworkModel,
-) =
-    _supports_phase_control(network_model) &&
-    _control_objective(branch, device_model) === _ACTIVE_CONTROL
+)
+    return _supports_phase_control(network_model) &&
+           _control_objective(branch, device_model) === _ACTIVE_CONTROL
+end
 
 function _branches_for_cons(
-    C::Union{
-        Type{VoltageControlConstraint},
-        Type{ReactivePowerFlowControlConstraint},
-        Type{ActivePowerFlowControlConstraint},
-    },
+    C::Type{<:TransformerControlConstraint},
     device_model::DeviceModel{T},
     network_model::NetworkModel,
 ) where {T}
@@ -1614,12 +1645,6 @@ _flow_array(
 _flow_array(
     container::OptimizationContainer,
     ::Type{ActivePowerFlowControlConstraint},
-    ::DeviceModel{T, StaticBranchBounds},
-    ::NetworkModel{DCPNetworkModel},
-) where {T <: _TRANSFORMERS} = get_variable(container, FlowActivePowerVariable, T)
-_flow_array(
-    container::OptimizationContainer,
-    ::Type{ActivePowerFlowControlConstraint},
     ::DeviceModel{T, <:Union{StaticBranch, StaticBranchBounds}},
     ::NetworkModel{DCPLLNetworkModel},
 ) where {T <: _TRANSFORMERS} =
@@ -1634,7 +1659,7 @@ _flow_array(
     container::OptimizationContainer,
     ::Type{ActivePowerFlowControlConstraint},
     ::DeviceModel{T, StaticBranchBounds},
-    ::NetworkModel{<:AbstractPTDFNetworkModel},
+    ::NetworkModel{<:Union{DCPNetworkModel, AbstractPTDFNetworkModel}},
 ) where {T <: _TRANSFORMERS} = get_variable(container, FlowActivePowerVariable, T)
 
 function _add_flow_control_constraints!(
@@ -2109,6 +2134,20 @@ function add_constraints!(
     return
 end
 
+# The DC phase-shift term for one (branch, time step): the `PhaseShifterAngle` variable when
+# the circuit is under active-power control, else the branch's fixed shift. `static` is built
+# once per branch by the caller, so the uncontrolled path allocates nothing per time step.
+function _shift_term(
+    container::OptimizationContainer,
+    ::Type{T},
+    phase_controlled::Bool,
+    name::String,
+    t::Int,
+    static::JuMP.AffExpr,
+) where {T <: PSY.ACTransmission}
+    phase_controlled || return static
+    return JuMP.AffExpr(0.0, get_variable(container, PhaseShifterAngle, T)[name, t] => 1.0)
+end
 function add_constraints!(
     container::OptimizationContainer,
     sys::PSY.System,
@@ -2135,18 +2174,12 @@ function add_constraints!(
         slack_ub = get_variable(container, FlowActivePowerSlackUpperBound, T)
         slack_lb = get_variable(container, FlowActivePowerSlackLowerBound, T)
     end
-    phase_var =
-        if has_container_key(container, PhaseShifterAngle, T)
-            get_variable(container, PhaseShifterAngle, T)
-        else
-            nothing
-        end
 
     jump_model = get_jump_model(container)
     _foreach_branch(reps) do rep
         name = rep.name
         b = _dc_susceptance(rep)
-        dc_shift = _dc_shift(rep)
+        static_shift = JuMP.AffExpr(_dc_shift(rep))
         from_name = _from_name(rep)
         to_name = _to_name(rep)
         phase_controlled = _phase_controlled(rep, device_model, network_model)
@@ -2160,11 +2193,7 @@ function add_constraints!(
                 else
                     p[name, t]
                 end
-            shift = if phase_controlled
-                JuMP.AffExpr(0.0, phase_var[rep.name, t] => 1.0)
-            else
-                JuMP.AffExpr(dc_shift)
-            end
+            shift = _shift_term(container, T, phase_controlled, rep.name, t, static_shift)
             cons[name, t] = JuMP.@constraint(
                 jump_model,
                 flow == b * (va[from_name, t] - va[to_name, t] - shift)
@@ -2202,17 +2231,11 @@ function add_expressions!(
     bfe =
         add_expression_container!(container, BThetaBranchFlow, T, branch_names, time_steps)
     nodal_expr = get_expression(container, ActivePowerBalance, PSY.ACBus)
-    phase_var =
-        if has_container_key(container, PhaseShifterAngle, T)
-            get_variable(container, PhaseShifterAngle, T)
-        else
-            nothing
-        end
     jump_model = get_jump_model(container)
 
     _foreach_branch(reps) do rep
         b = _dc_susceptance(rep)
-        dc_shift = _dc_shift(rep)
+        static_shift = JuMP.AffExpr(_dc_shift(rep))
         from_name = _from_name(rep)
         to_name = _to_name(rep)
         from_no = _from_number(rep)
@@ -2220,11 +2243,7 @@ function add_expressions!(
 
         phase_controlled = _phase_controlled(rep, device_model, network_model)
         for t in time_steps
-            shift = if phase_controlled
-                JuMP.AffExpr(0.0, phase_var[rep.name, t] => 1.0)
-            else
-                JuMP.AffExpr(dc_shift)
-            end
+            shift = _shift_term(container, T, phase_controlled, rep.name, t, static_shift)
             flow = JuMP.@expression(
                 jump_model,
                 b * (va[from_name, t] - va[to_name, t] - shift)
@@ -2550,26 +2569,16 @@ function add_constraints!(
     cons = add_constraints_container!(
         container, NetworkFlowConstraint, T, branch_names, time_steps,
     )
-    phase_var =
-        if has_container_key(container, PhaseShifterAngle, T)
-            get_variable(container, PhaseShifterAngle, T)
-        else
-            nothing
-        end
 
     jump_model = get_jump_model(container)
     _foreach_branch(reps) do rep
         b = _dc_susceptance(rep)
-        dc_shift = _dc_shift(rep)
+        static_shift = JuMP.AffExpr(_dc_shift(rep))
         from_name = _from_name(rep)
         to_name = _to_name(rep)
         phase_controlled = _phase_controlled(rep, device_model, network_model)
         for t in time_steps
-            shift = if phase_controlled
-                JuMP.AffExpr(0.0, phase_var[rep.name, t] => 1.0)
-            else
-                JuMP.AffExpr(dc_shift)
-            end
+            shift = _shift_term(container, T, phase_controlled, rep.name, t, static_shift)
             cons[rep.name, t] = JuMP.@constraint(
                 jump_model,
                 pft[rep.name, t] == b * (va[from_name, t] - va[to_name, t] - shift),

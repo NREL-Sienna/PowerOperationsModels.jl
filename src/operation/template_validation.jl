@@ -111,11 +111,13 @@ function validate_template_impl!(model::IOM.AbstractOptimizationModel)
     _check_security_constrained_three_winding_transformer(template.branches)
     _check_security_constrained_network(template.branches, network_model)
     _check_security_constrained_phase_control(template.branches, network_model)
-    _check_monitored_components(template.branches)
     _check_voltage_regulation_conflicts!(template, system, network_model)
     _check_branch_rating_time_series_formulation!(template.branches, system)
     validate_network_model(network_model, unmodeled_branch_types, model_has_branch_filters)
     _build_device_model_outages!(template, system)
+    # Must follow `_build_device_model_outages!`: that call is what fills the per-type
+    # monitored-name maps this check reads.
+    _check_monitored_components(template.branches, system)
     return
 end
 
@@ -341,7 +343,7 @@ function _phase_controlled_circuit_names(
 )
     names = String[]
     _control_enabled(device_model) || return names
-    _supports_phase(network_model) || return names
+    _supports_phase_control(network_model) || return names
     for transformer in get_device_cache(device_model)
         circuits = PSY.get_circuits(transformer)
         for (i, circuit) in enumerate(circuits)
@@ -429,6 +431,7 @@ function _check_monitored_components(
         <:PSY.ACTransmission,
         <:AbstractSecurityConstrainedStaticBranch,
     },
+    sys::PSY.System,
 )
     for (uuid, per_type) in get_outages(branch_model)
         for (T, names) in per_type
@@ -445,11 +448,14 @@ function _check_monitored_components(
     return
 end
 
-_check_monitored_components(::DeviceModel) = nothing
+_check_monitored_components(::DeviceModel, ::PSY.System) = nothing
 
-function _check_monitored_components(branch_models::IOM.BranchModelContainer)
+function _check_monitored_components(
+    branch_models::IOM.BranchModelContainer,
+    sys::PSY.System,
+)
     for branch_model in values(branch_models)
-        _check_monitored_components(branch_model)
+        _check_monitored_components(branch_model, sys)
     end
     return
 end

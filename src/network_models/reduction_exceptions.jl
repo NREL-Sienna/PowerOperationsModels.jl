@@ -161,8 +161,6 @@ _warn_circuit(o, m) =
     @warn "Circuit has control $o enabled but $m. This control will be ignored, and the \
            circuit and its regulated bus may be reduced." maxlog = 5
 
-const _IMPLEMENTED_CONTROLS = _TAP_CONTROLS
-
 # A transformer circuit with a bus-based control objective on a transformer
 # with controls enabled must not be reduced away, nor can its regulated bus.
 function _pin_transformer_controls!(

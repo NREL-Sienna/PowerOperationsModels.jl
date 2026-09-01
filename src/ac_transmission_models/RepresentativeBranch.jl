@@ -207,17 +207,23 @@ _control_objective(c::PSY.TransformerCircuit, d::DeviceModel) =
 _control_objective(rep::RepresentativeBranch, d::DeviceModel) =
     _control_objective(_get_circuit(rep.branch), d)
 
-_tap_controlled(
+function _tap_controlled(
     rep::RepresentativeBranch,
     d::DeviceModel,
     network_model::NetworkModel,
-) = _supports_tap_control(network_model) && _control_objective(rep, d) in _TAP_CONTROLS
+)
+    return _supports_tap_control(network_model) &&
+           _control_objective(rep, d) in _TAP_CONTROLS
+end
 
-_phase_controlled(
+function _phase_controlled(
     rep::RepresentativeBranch,
     d::DeviceModel,
     network_model::NetworkModel,
-) = _supports_phase_control(network_model) && _control_objective(rep, d) in _PHASE_CONTROLS
+)
+    return _supports_phase_control(network_model) &&
+           _control_objective(rep, d) in _PHASE_CONTROLS
+end
 
 function _controlled_circuit_names(
     branch::Union{PSY.ACTransmission, PNM.ThreeWindingTransformerCircuit},
