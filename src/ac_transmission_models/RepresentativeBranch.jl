@@ -5,7 +5,7 @@ const _NO_BUS_NAMES = Dict{Int, String}()
 """
 One branch as the reduction-aware builders see it. Build with
 [`_representative_branches`](@ref) (one per arc, for constraint rows) or
-[`_all_branches`](@ref) (one per arc, for variable container axes), and iterate with
+[`_all_branches`](@ref) (one per reporting row, for variables), and iterate with
 [`_foreach_branch`](@ref).
 
 `B` is either a PSY.Device, a PNM.AbstractReductionAggregate, or a
@@ -91,8 +91,10 @@ function _representative_branches(
 end
 
 """
-One entry per reduced arc, for variable container axes. A component absorbed into an arc is
-not an axis key; reach its arc with [`_representative_branch`](@ref), which redirects.
+One entry per reporting row, for variable container axes: every segment of a series chain
+gets its own row, because a lossless chain carries the same flow in each, while a parallel
+group gets one row at whatever depth it sits. A parallel member is therefore not an axis key
+-- reach its row with [`_representative_branch`](@ref), which redirects.
 """
 function _all_branches(
     network_model::NetworkModel,
