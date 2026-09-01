@@ -14,7 +14,7 @@ function add_mbc_inner!(
         error("At least one of incr_curve or decr_curve must be provided")
     end
     mbc = MarketBidCost(;
-        no_load_cost = LinearCurve(0.0),
+        minimum_energy_offer = LinearCurve(0.0),
         start_up = (hot = 0.0, warm = 0.0, cold = 0.0),
         shut_down = LinearCurve(0.0),
     )
@@ -123,7 +123,7 @@ function extend_mbc!(
         end
 
         # Capture baseline scalar fields from the static MBC to preserve in the TS MBC.
-        old_no_load = get_proportional_term(get_no_load_cost(op_cost))
+        old_no_load = get_proportional_term(get_minimum_energy_offer(op_cost))
         old_start_up = get_start_up(op_cost)
         old_shut_down = get_proportional_term(get_shut_down(op_cost))
 
@@ -188,7 +188,7 @@ function extend_mbc!(
         end
 
         new_cost = MarketBidTimeSeriesCost(;
-            no_load_cost = TimeSeriesLinearCurve(nl_key),
+            minimum_energy_offer = TimeSeriesLinearCurve(nl_key),
             start_up = su_key,
             shut_down = TimeSeriesLinearCurve(sd_key),
             incremental_offer_curves = ts_curves["incremental"],

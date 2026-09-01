@@ -38,7 +38,7 @@ function _build_mbtsc_thermal_system(;
     bus = _add_simple_bus!(sys)
     # Placeholder static MBC; replaced once TS are attached.
     static_mbc = PSY.MarketBidCost(;
-        no_load_cost = PSY.LinearCurve(0.0),
+        minimum_energy_offer = PSY.LinearCurve(0.0),
         start_up = (hot = 0.0, warm = 0.0, cold = 0.0),
         shut_down = PSY.LinearCurve(0.0),
         incremental_offer_curves = PSY.CostCurve(
@@ -75,7 +75,7 @@ function _build_mbtsc_thermal_system(;
     pwl_decr_key = add_time_series!(sys, gen, decr_pwl_ts)
 
     new_cost = PSY.MarketBidTimeSeriesCost(;
-        no_load_cost = PSY.TimeSeriesLinearCurve(nl_key),
+        minimum_energy_offer = PSY.TimeSeriesLinearCurve(nl_key),
         start_up = su_key,
         shut_down = PSY.TimeSeriesLinearCurve(sd_key),
         incremental_offer_curves = PSY.make_market_bid_ts_curve(pwl_incr_key, ii_incr_key),
@@ -221,7 +221,7 @@ end
     bus2 = _add_simple_bus!(sys; number = 2, name = "bus2",
         bustype = PSY.ACBusTypes.PQ)
     static_mbc = PSY.MarketBidCost(;
-        no_load_cost = PSY.LinearCurve(0.0),
+        minimum_energy_offer = PSY.LinearCurve(0.0),
         start_up = (hot = 999.0, warm = 999.0, cold = 999.0),
         shut_down = PSY.LinearCurve(999.0),
         incremental_offer_curves = PSY.CostCurve(
@@ -329,7 +329,7 @@ end
     # catch any future caller that bypasses the filter. This test confirms they actually
     # fire instead of error-ing later with a confusing MethodError in a PSY accessor.
     static_mbc = PSY.MarketBidCost(;
-        no_load_cost = PSY.LinearCurve(0.0),
+        minimum_energy_offer = PSY.LinearCurve(0.0),
         start_up = (hot = 100.0, warm = 150.0, cold = 200.0),
         shut_down = PSY.LinearCurve(50.0),
         incremental_offer_curves = PSY.CostCurve(
