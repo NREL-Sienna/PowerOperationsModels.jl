@@ -61,12 +61,11 @@ function _add_feedforward_slack_variables!(
 }
     time_steps = get_time_steps(container)
     jump_model = get_jump_model(container)
+    devices_names = PSY.get_name.(devices)
     for var in get_affected_values(ff)
         affected_variable = get_variable(container, var)
-        device_name_set, set_time = JuMP.axes(affected_variable)
-        devices_names = PSY.get_name.(devices)
-        @assert issetequal(device_name_set, devices_names)
-        IS.@assert_op set_time == time_steps
+        device_name_set =
+            _check_device_time_axes(affected_variable, devices_names, time_steps)
 
         var_type = get_entry_type(var)
         variable = add_variable_container!(
@@ -93,9 +92,6 @@ function _add_feedforward_slack_variables!(
     return
 end
 
-_slack_for_feedforward(::Type{UpperBoundFeedforward}) = UpperBoundFeedForwardSlack
-_slack_for_feedforward(::Type{LowerBoundFeedforward}) = LowerBoundFeedForwardSlack
-
 function _add_feedforward_arguments!(
     container::OptimizationContainer,
     model::DeviceModel{T, U},
@@ -111,7 +107,7 @@ function _add_feedforward_arguments!(
     if get_slacks(ff)
         _add_feedforward_slack_variables!(
             container,
-            _slack_for_feedforward(FF),
+            _feedforward_slack_type(_bound_direction(FF)),
             ff,
             model,
             devices,

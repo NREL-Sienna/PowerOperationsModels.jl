@@ -35,11 +35,51 @@ function get_feedforward_meta(ff::AbstractAffectFeedforward)
     return get_optimization_container_key(ff).meta
 end
 
+# Which affected-value types a feedforward accepts is dispatch on the feedforward type,
+# not a runtime `<:`/`isa` branch. `FixValueFeedforward` adds a `ParameterType` method
+# next to its struct definition below.
+_valid_affected_type(::Type{<:AbstractAffectFeedforward}, ::Type{<:VariableType}) = true
+_valid_affected_type(::Type{<:AbstractAffectFeedforward}, ::Type) = false
+_affected_type_description(::Type{<:AbstractAffectFeedforward}) = "VariableType"
+
+function _affected_values_vector(
+    ::Type{FF},
+    affected_values::Vector{DataType},
+    component_type::Type{<:PSY.Component},
+    meta,
+) where {FF <: AbstractAffectFeedforward}
+    values_vector = Vector{OptimizationContainerKey}(undef, length(affected_values))
+    for (ix, v) in enumerate(affected_values)
+        if !_valid_affected_type(FF, v)
+            error(
+                "$FF is only compatible with $(_affected_type_description(FF)) affected " *
+                "values; got $v",
+            )
+        end
+        values_vector[ix] = get_optimization_container_key(v, component_type, meta)
+    end
+    return values_vector
+end
+
+# Shared by `feedforward_arguments.jl` and `feedforward_constraints.jl`: every
+# feedforward-affected-variable container is asserted to share the device fleet's names
+# and the container's time steps before it is used. Returns the variable's own name axis,
+# which subsequent loops index by (its order need not match `devices_names`).
+function _check_device_time_axes(variable, devices_names, time_steps)
+    device_name_set, set_time = JuMP.axes(variable)
+    @assert issetequal(device_name_set, devices_names)
+    IS.@assert_op set_time == time_steps
+    return device_name_set
+end
+
 """
-Attach a feedforward to a `DeviceModel`. Attaching the same feedforward type with
-the same source key twice is a no-op, so a template can be built up incrementally
-without duplicating containers. Attaching a second, differing `SemiContinuousFeedforward`
-for the same component type errors: only one can supply the `OnStatusParameter` container.
+Attach a feedforward to a `DeviceModel`. Attaching a field-for-field identical feedforward
+twice is a no-op, so a template can be built up incrementally without duplicating
+containers. Attaching a second feedforward that shares a source key with an attached one but
+differs in any other field errors, naming the conflicting fields. Attaching a second,
+differing `SemiContinuousFeedforward` for the same component type also errors: only one can
+supply the `OnStatusParameter` container. Likewise, only one `UpperBoundFeedforward` and one
+`LowerBoundFeedforward` per device model are supported today (see `_check_bound_conflict`).
 """
 function attach_feedforward!(
     model::DeviceModel,
@@ -48,17 +88,41 @@ function attach_feedforward!(
     for attached in model.feedforwards
         _duplicate_feedforward(attached, ff) && return
         _check_semicontinuous_conflict(attached, ff)
+        _check_bound_conflict(attached, ff)
     end
     push!(model.feedforwards, ff)
     return
 end
 
-# Same concrete type and same source key means the same container would be built twice.
+# Fields that differ between two feedforwards of the same concrete type, compared
+# generically so no per-type field list needs maintaining as new feedforward types appear.
+function _differing_fieldnames(a::T, b::T) where {T <: AbstractAffectFeedforward}
+    return [f for f in fieldnames(T) if getfield(a, f) != getfield(b, f)]
+end
+
+# Same concrete type and same source key means the same container would otherwise be built
+# twice. A field-for-field identical attachment is a silent no-op; one that shares the
+# source key but differs elsewhere (e.g. `affected_values`, `add_slacks`) would silently
+# drop the difference if treated as a no-op, so it errors instead.
 function _duplicate_feedforward(
     a::T,
     b::T,
 )::Bool where {T <: AbstractAffectFeedforward}
-    return get_optimization_container_key(a) == get_optimization_container_key(b)
+    if get_optimization_container_key(a) != get_optimization_container_key(b)
+        return false
+    end
+    conflicting_fields = _differing_fieldnames(a, b)
+    if isempty(conflicting_fields)
+        return true
+    end
+    throw(
+        ArgumentError(
+            "Cannot attach $T for component type $(get_component_type(b)): a feedforward " *
+            "with the same source key ($(get_optimization_container_key(b))) is already " *
+            "attached, but field(s) $(conflicting_fields) differ. Detach the existing " *
+            "feedforward first, or make the two definitions identical.",
+        ),
+    )
 end
 
 function _duplicate_feedforward(
@@ -72,6 +136,16 @@ end
 # file, but `attach_feedforward!` above needs to dispatch on it. The fallback method is
 # added here; the concrete-type method is added next to `SemiContinuousFeedforward`.
 function _check_semicontinuous_conflict(
+    ::AbstractAffectFeedforward,
+    ::AbstractAffectFeedforward,
+)
+    return
+end
+
+# Forward-declared for the same reason as `_check_semicontinuous_conflict` above:
+# `UpperBoundFeedforward`/`LowerBoundFeedforward` aren't defined until further down this
+# file. The concrete-type method is added below `_bound_direction`.
+function _check_bound_conflict(
     ::AbstractAffectFeedforward,
     ::AbstractAffectFeedforward,
 )
@@ -117,17 +191,13 @@ struct UpperBoundFeedforward <: AbstractAffectFeedforward
         add_slacks::Bool = false,
         meta = IOM.CONTAINER_KEY_EMPTY_META,
     ) where {T}
-        values_vector = Vector{VariableKey}(undef, length(affected_values))
-        for (ix, v) in enumerate(affected_values)
-            if v <: VariableType
-                values_vector[ix] =
-                    get_optimization_container_key(v, component_type, meta)
-            else
-                error(
-                    "UpperBoundFeedforward is only compatible with VariableType affected values",
-                )
-            end
-        end
+        values_vector =
+            _affected_values_vector(
+                UpperBoundFeedforward,
+                affected_values,
+                component_type,
+                meta,
+            )
         new(
             get_optimization_container_key(T, component_type, meta),
             values_vector,
@@ -169,17 +239,13 @@ struct LowerBoundFeedforward <: AbstractAffectFeedforward
         add_slacks::Bool = false,
         meta = IOM.CONTAINER_KEY_EMPTY_META,
     ) where {T}
-        values_vector = Vector{VariableKey}(undef, length(affected_values))
-        for (ix, v) in enumerate(affected_values)
-            if v <: VariableType
-                values_vector[ix] =
-                    get_optimization_container_key(v, component_type, meta)
-            else
-                error(
-                    "LowerBoundFeedforward is only compatible with VariableType affected values",
-                )
-            end
-        end
+        values_vector =
+            _affected_values_vector(
+                LowerBoundFeedforward,
+                affected_values,
+                component_type,
+                meta,
+            )
         new(
             get_optimization_container_key(T, component_type, meta),
             values_vector,
@@ -191,6 +257,31 @@ end
 get_default_parameter_type(::LowerBoundFeedforward, _) = LowerBoundValueParameter
 get_optimization_container_key(ff::LowerBoundFeedforward) = ff.optimization_container_key
 get_slacks(ff::LowerBoundFeedforward) = ff.add_slacks
+
+# Bridges the feedforward type to `IOM.BoundDirection` so `_add_feedforward_slack_variables!`
+# can key off `feedforward_constraints.jl`'s single `_feedforward_slack_type` table instead
+# of keeping a second, separately-maintained one.
+_bound_direction(::Type{UpperBoundFeedforward}) = IOM.UpperBound()
+_bound_direction(::Type{LowerBoundFeedforward}) = IOM.LowerBound()
+
+# `UpperBoundValueParameter`/`LowerBoundValueParameter` containers are keyed only by
+# parameter type and component type (see `common_models/add_parameters.jl`), not by source,
+# so two differing-source feedforwards of the same concrete bound type would collide on one
+# container deep inside argument construction. Reject the second one here instead. An
+# identical second attachment is caught by `_duplicate_feedforward` before this ever runs.
+function _check_bound_conflict(
+    a::T,
+    b::T,
+) where {T <: Union{UpperBoundFeedforward, LowerBoundFeedforward}}
+    throw(
+        ArgumentError(
+            "Cannot attach a second $T for component type $(get_component_type(b)): " *
+            "$(get_optimization_container_key(a)) is already attached; " *
+            "$(get_optimization_container_key(b)) would conflict. Only one $T per device " *
+            "model is supported today.",
+        ),
+    )
+end
 
 """
     SemiContinuousFeedforward(
@@ -220,17 +311,12 @@ struct SemiContinuousFeedforward <: AbstractAffectFeedforward
         affected_values::Vector{DataType},
         meta = IOM.CONTAINER_KEY_EMPTY_META,
     ) where {T}
-        values_vector = Vector{VariableKey}(undef, length(affected_values))
-        for (ix, v) in enumerate(affected_values)
-            if v <: VariableType
-                values_vector[ix] =
-                    get_optimization_container_key(v, component_type, meta)
-            else
-                error(
-                    "SemiContinuousFeedforward is only compatible with VariableType affected values",
-                )
-            end
-        end
+        values_vector = _affected_values_vector(
+            SemiContinuousFeedforward,
+            affected_values,
+            component_type,
+            meta,
+        )
         new(get_optimization_container_key(T, component_type, meta), values_vector)
     end
 end
@@ -295,11 +381,22 @@ end
 _is_semicontinuous(::AbstractAffectFeedforward)::Bool = false
 _is_semicontinuous(::SemiContinuousFeedforward)::Bool = true
 
+"""
+The variable a device formulation schedules power through. Most formulations schedule
+`ActivePowerVariable` directly; compact formulations schedule `PowerAboveMinimumVariable`
+instead, so a `SemiContinuousFeedforward` attached to one of those must be checked against
+`PowerAboveMinimumVariable`, not the default.
+"""
+_scheduled_power_variable(::Type{<:AbstractDeviceFormulation}) = ActivePowerVariable
+
 function has_semicontinuous_feedforward(
     model::DeviceModel,
     ::Type{T},
 )::Bool where {T <: Union{ActivePowerRangeExpressionUB, ActivePowerRangeExpressionLB}}
-    return has_semicontinuous_feedforward(model, ActivePowerVariable)
+    return has_semicontinuous_feedforward(
+        model,
+        _scheduled_power_variable(get_formulation(model)),
+    )
 end
 
 """
@@ -330,20 +427,18 @@ struct FixValueFeedforward <: AbstractAffectFeedforward
         affected_values::Vector{DataType},
         meta = IOM.CONTAINER_KEY_EMPTY_META,
     ) where {T}
-        values_vector = Vector{OptimizationContainerKey}(undef, length(affected_values))
-        for (ix, v) in enumerate(affected_values)
-            if v <: VariableType || v <: ParameterType
-                values_vector[ix] =
-                    get_optimization_container_key(v, component_type, meta)
-            else
-                error(
-                    "FixValueFeedforward is only compatible with VariableType or ParameterType affected values",
-                )
-            end
-        end
+        values_vector =
+            _affected_values_vector(
+                FixValueFeedforward,
+                affected_values,
+                component_type,
+                meta,
+            )
         new(get_optimization_container_key(T, component_type, meta), values_vector)
     end
 end
 
 get_default_parameter_type(::FixValueFeedforward, _) = FixValueParameter
 get_optimization_container_key(ff::FixValueFeedforward) = ff.optimization_container_key
+_valid_affected_type(::Type{FixValueFeedforward}, ::Type{<:ParameterType}) = true
+_affected_type_description(::Type{FixValueFeedforward}) = "VariableType or ParameterType"

@@ -151,6 +151,49 @@ end
     end
 end
 
+@testset "LowerBoundFeedforward slacks are wired in and penalized" begin
+    device_model = DeviceModel(PSY.ThermalStandard, ThermalStandardDispatch)
+    ff_lb = LowerBoundFeedforward(;
+        component_type = PSY.ThermalStandard,
+        source = ActivePowerVariable,
+        affected_values = [ActivePowerVariable],
+        add_slacks = true,
+    )
+    attach_feedforward!(device_model, ff_lb)
+
+    c_sys5 = PSB.build_system(PSITestSystems, "c_sys5")
+    model = DecisionModel(MockOperationProblem, DCPNetworkModel, c_sys5)
+    mock_construct_device!(model, device_model; built_for_recurrent_solves = true)
+
+    container = IOM.get_optimization_container(model)
+    con_lb = IOM.get_constraint(
+        container,
+        IOM.ConstraintKey(
+            FeedforwardLowerBoundConstraint,
+            PSY.ThermalStandard,
+            "$(ActivePowerVariable)lb",
+        ),
+    )
+    slack = IOM.get_variable(
+        container,
+        LowerBoundFeedForwardSlack,
+        PSY.ThermalStandard,
+        "$(ActivePowerVariable)",
+    )
+    names, time_steps = JuMP.axes(slack)
+    for name in names, t in time_steps
+        # p[n, t] + slack[n, t] - param[n, t] >= 0: a positive slack relaxes the bound.
+        @test JuMP.normalized_coefficient(con_lb[name, t], slack[name, t]) == 1.0
+        @test JuMP.lower_bound(slack[name, t]) == 0.0
+    end
+
+    # An unpenalized slack would make the bound vacuous; assert the objective cost.
+    obj = JuMP.objective_function(IOM.get_jump_model(container))
+    for name in names, t in time_steps
+        @test get(obj.terms, slack[name, t], 0.0) == POM.BALANCE_SLACK_COST
+    end
+end
+
 @testset "SemiContinuousFeedforward on ThermalStandardDispatch: expression coefficients" begin
     device_model = DeviceModel(PSY.ThermalStandard, ThermalStandardDispatch)
     ff_sc = SemiContinuousFeedforward(;
@@ -274,6 +317,196 @@ end
     end
 end
 
+@testset "SemiContinuousFeedforward on ThermalBasicUnitCommitment: native range constraints are suppressed" begin
+    ff_sc = SemiContinuousFeedforward(;
+        component_type = PSY.ThermalStandard,
+        source = OnVariable,
+        affected_values = [ActivePowerVariable],
+    )
+
+    c_sys5 = PSB.build_system(PSITestSystems, "c_sys5")
+    limits = _ff_limits(c_sys5)
+
+    # Without the feedforward the formulation builds its own range constraints.
+    plain_model = DeviceModel(PSY.ThermalStandard, ThermalBasicUnitCommitment)
+    plain = DecisionModel(MockOperationProblem, DCPNetworkModel, c_sys5)
+    mock_construct_device!(plain, plain_model; built_for_recurrent_solves = true)
+    plain_container = IOM.get_optimization_container(plain)
+    @test IOM.has_container_key(
+        plain_container,
+        ActivePowerVariableLimitsConstraint,
+        PSY.ThermalStandard,
+        "ub",
+    )
+
+    # With it, the semicontinuous constraints replace them. `AbstractThermalUnitCommitment`'s
+    # `add_constraints!` for `PowerVariableLimitsConstraint` called
+    # `add_semicontinuous_range_constraints!` unconditionally, unlike the dispatch-formulation
+    # methods, so the unit ended up double-constrained.
+    device_model = DeviceModel(PSY.ThermalStandard, ThermalBasicUnitCommitment)
+    attach_feedforward!(device_model, ff_sc)
+    model = DecisionModel(MockOperationProblem, DCPNetworkModel, c_sys5)
+    mock_construct_device!(model, device_model; built_for_recurrent_solves = true)
+    container = IOM.get_optimization_container(model)
+
+    @test !IOM.has_container_key(
+        container,
+        ActivePowerVariableLimitsConstraint,
+        PSY.ThermalStandard,
+        "ub",
+    )
+    @test !IOM.has_container_key(
+        container,
+        ActivePowerVariableLimitsConstraint,
+        PSY.ThermalStandard,
+        "lb",
+    )
+
+    param = IOM.get_parameter_array(container, OnStatusParameter, PSY.ThermalStandard)
+    var = IOM.get_variable(container, ActivePowerVariable, PSY.ThermalStandard)
+    con_ub = IOM.get_constraint(
+        container,
+        IOM.ConstraintKey(
+            FeedforwardSemiContinuousConstraint,
+            PSY.ThermalStandard,
+            "$(ActivePowerVariable)_ub",
+        ),
+    )
+    names, time_steps = JuMP.axes(var)
+    for name in names, t in time_steps
+        max_limit = limits[name].max
+        @test JuMP.normalized_coefficient(con_ub[name, t], var[name, t]) == 1.0
+        @test JuMP.normalized_coefficient(con_ub[name, t], param[name, t]) ≈ -max_limit
+    end
+end
+
+@testset "SemiContinuousFeedforward on HydroDispatch: expression coefficients" begin
+    # Regression: HydroGen is not a `PSY.ThermalGen`, so the argument-construct path
+    # routes the `OnStatusParameter` contribution through the generic (non-thermal)
+    # `add_to_expression!` method, not the thermal-specific one exercised by the
+    # ThermalStandardDispatch testset above.
+    device_model = DeviceModel(PSY.HydroDispatch, HydroDispatchRunOfRiver)
+    ff_sc = SemiContinuousFeedforward(;
+        component_type = PSY.HydroDispatch,
+        source = OnVariable,
+        affected_values = [ActivePowerVariable],
+    )
+    attach_feedforward!(device_model, ff_sc)
+
+    c_sys5_hy = PSB.build_system(PSITestSystems, "c_sys5_hy")
+    limits = Dict(
+        PSY.get_name(d) => PSY.get_active_power_limits(d, PSY.SU) for
+        d in PSY.get_components(PSY.HydroDispatch, c_sys5_hy)
+    )
+    model = DecisionModel(MockOperationProblem, DCPNetworkModel, c_sys5_hy)
+    mock_construct_device!(model, device_model; built_for_recurrent_solves = true)
+
+    container = IOM.get_optimization_container(model)
+    param = IOM.get_parameter_array(container, OnStatusParameter, PSY.HydroDispatch)
+    var = IOM.get_variable(container, ActivePowerVariable, PSY.HydroDispatch)
+    con_ub = IOM.get_constraint(
+        container,
+        IOM.ConstraintKey(
+            FeedforwardSemiContinuousConstraint,
+            PSY.HydroDispatch,
+            "$(ActivePowerVariable)_ub",
+        ),
+    )
+    con_lb = IOM.get_constraint(
+        container,
+        IOM.ConstraintKey(
+            FeedforwardSemiContinuousConstraint,
+            PSY.HydroDispatch,
+            "$(ActivePowerVariable)_lb",
+        ),
+    )
+
+    names, time_steps = JuMP.axes(var)
+    @test !isempty(names)
+    for name in names
+        # Same multiplier convention as the thermal case:
+        # `get_expression_multiplier(OnStatusParameter, ActivePowerRangeExpressionUB,
+        #  ::HydroGen, <:AbstractHydroFormulation) = active_power_limits.max`
+        max_limit = limits[name].max
+        min_limit = limits[name].min
+        for t in time_steps
+            # UB: p[n, t] - max * u[n, t] <= 0
+            @test JuMP.normalized_coefficient(con_ub[name, t], var[name, t]) == 1.0
+            @test JuMP.normalized_coefficient(con_ub[name, t], param[name, t]) ≈ -max_limit
+            # LB: p[n, t] - min * u[n, t] >= 0
+            @test JuMP.normalized_coefficient(con_lb[name, t], var[name, t]) == 1.0
+            @test JuMP.normalized_coefficient(con_lb[name, t], param[name, t]) ≈ -min_limit
+        end
+    end
+end
+
+@testset "SemiContinuousFeedforward on HydroCommitmentRunOfRiver: native range constraints are suppressed" begin
+    ff_sc = SemiContinuousFeedforward(;
+        component_type = PSY.HydroDispatch,
+        source = OnVariable,
+        affected_values = [ActivePowerVariable],
+    )
+
+    c_sys5_hy = PSB.build_system(PSITestSystems, "c_sys5_hy")
+    limits = Dict(
+        PSY.get_name(d) => PSY.get_active_power_limits(d, PSY.SU) for
+        d in PSY.get_components(PSY.HydroDispatch, c_sys5_hy)
+    )
+
+    # Without the feedforward the formulation builds its own semicontinuous range
+    # constraints keyed by its own `OnVariable`.
+    plain_model = DeviceModel(PSY.HydroDispatch, HydroCommitmentRunOfRiver)
+    plain = DecisionModel(MockOperationProblem, DCPNetworkModel, c_sys5_hy)
+    mock_construct_device!(plain, plain_model; built_for_recurrent_solves = true)
+    plain_container = IOM.get_optimization_container(plain)
+    @test IOM.has_container_key(
+        plain_container,
+        ActivePowerVariableLimitsConstraint,
+        PSY.HydroDispatch,
+        "ub",
+    )
+
+    # With it, the semicontinuous constraints replace them: `HydroCommitmentRunOfRiver`'s
+    # `add_constraints!` for `ActivePowerVariableLimitsConstraint` called
+    # `add_semicontinuous_range_constraints!` unconditionally, the same missing-gate shape
+    # as the thermal unit commitment bug above.
+    device_model = DeviceModel(PSY.HydroDispatch, HydroCommitmentRunOfRiver)
+    attach_feedforward!(device_model, ff_sc)
+    model = DecisionModel(MockOperationProblem, DCPNetworkModel, c_sys5_hy)
+    mock_construct_device!(model, device_model; built_for_recurrent_solves = true)
+    container = IOM.get_optimization_container(model)
+
+    @test !IOM.has_container_key(
+        container,
+        ActivePowerVariableLimitsConstraint,
+        PSY.HydroDispatch,
+        "ub",
+    )
+    @test !IOM.has_container_key(
+        container,
+        ActivePowerVariableLimitsConstraint,
+        PSY.HydroDispatch,
+        "lb",
+    )
+
+    param = IOM.get_parameter_array(container, OnStatusParameter, PSY.HydroDispatch)
+    var = IOM.get_variable(container, ActivePowerVariable, PSY.HydroDispatch)
+    con_ub = IOM.get_constraint(
+        container,
+        IOM.ConstraintKey(
+            FeedforwardSemiContinuousConstraint,
+            PSY.HydroDispatch,
+            "$(ActivePowerVariable)_ub",
+        ),
+    )
+    names, time_steps = JuMP.axes(var)
+    for name in names, t in time_steps
+        max_limit = limits[name].max
+        @test JuMP.normalized_coefficient(con_ub[name, t], var[name, t]) == 1.0
+        @test JuMP.normalized_coefficient(con_ub[name, t], param[name, t]) ≈ -max_limit
+    end
+end
+
 @testset "SemiContinuousFeedforward skips must-run thermal units" begin
     c_sys5 = PSB.build_system(PSITestSystems, "c_sys5")
     must_run_unit = first(PSY.get_components(PSY.ThermalStandard, c_sys5))
@@ -343,6 +576,77 @@ end
     PSY.set_must_run!(must_run_unit, false)
 end
 
+@testset "must-run unit under SemiContinuousFeedforward keeps its ActivePowerBalance contribution (ThermalCompactDispatch)" begin
+    # `ThermalCompactDispatch`'s `ArgumentConstructStage` unconditionally routes
+    # `OnStatusParameter` into `ActivePowerBalance` via
+    # `_add_onstatus_parameter_to_balance!`. A must-run unit is absent from the
+    # `OnStatusParameter` container, so reading it there must take the constant
+    # (must-run) branch instead of a `KeyError`-throwing parameter lookup.
+    c_sys5 = PSB.build_system(PSITestSystems, "c_sys5")
+    must_run_unit = first(PSY.get_components(PSY.ThermalStandard, c_sys5))
+    must_run_name = PSY.get_name(must_run_unit)
+    PSY.set_must_run!(must_run_unit, true)
+    min_limit = PSY.get_active_power_limits(must_run_unit, PSY.SU).min
+    bus_no = PSY.get_number(PSY.get_bus(must_run_unit))
+
+    device_model = DeviceModel(PSY.ThermalStandard, ThermalCompactDispatch)
+    ff_sc = SemiContinuousFeedforward(;
+        component_type = PSY.ThermalStandard,
+        source = OnVariable,
+        affected_values = [PowerAboveMinimumVariable],
+    )
+    attach_feedforward!(device_model, ff_sc)
+    model = DecisionModel(MockOperationProblem, DCPNetworkModel, c_sys5)
+    mock_construct_device!(model, device_model; built_for_recurrent_solves = true)
+    container = IOM.get_optimization_container(model)
+
+    param = IOM.get_parameter_array(container, OnStatusParameter, PSY.ThermalStandard)
+    @test must_run_name ∉ JuMP.axes(param)[1]
+
+    balance = IOM.get_expression(container, ActivePowerBalance, PSY.ACBus)
+    time_steps = JuMP.axes(balance)[2]
+    for t in time_steps
+        # The must-run branch adds the constant `min_limit * 1.0`, not a parameter term.
+        @test JuMP.constant(balance[bus_no, t]) == min_limit
+    end
+
+    PSY.set_must_run!(must_run_unit, false)
+end
+
+@testset "Non-semicontinuous feedforward on ThermalCompactDispatch keeps the float OnStatusParameter container" begin
+    # Regression: a prior guard (`!isempty(get_feedforwards(model))`) skipped building
+    # the float-valued `OnStatusParameter` container whenever *any* feedforward was
+    # attached, not just a `SemiContinuousFeedforward`. That silently dropped the
+    # container the compact formulation's own balance/cost expressions read.
+    device_model = DeviceModel(PSY.ThermalStandard, ThermalCompactDispatch)
+    ff_ub = UpperBoundFeedforward(;
+        component_type = PSY.ThermalStandard,
+        source = ActivePowerVariable,
+        affected_values = [PowerAboveMinimumVariable],
+    )
+    attach_feedforward!(device_model, ff_ub)
+
+    c_sys5 = PSB.build_system(PSITestSystems, "c_sys5")
+    model = DecisionModel(MockOperationProblem, DCPNetworkModel, c_sys5)
+    mock_construct_device!(model, device_model; built_for_recurrent_solves = true)
+
+    container = IOM.get_optimization_container(model)
+    @test IOM.has_container_key(container, OnStatusParameter, PSY.ThermalStandard)
+    param = IOM.get_parameter_array(container, OnStatusParameter, PSY.ThermalStandard)
+    mult = IOM.get_parameter_multiplier_array(
+        container,
+        OnStatusParameter,
+        PSY.ThermalStandard,
+    )
+    names, time_steps = JuMP.axes(param)
+    @test !isempty(names)
+    for name in names, t in time_steps
+        # `get_initial_parameter_value(<:VariableValueParameter, ::ThermalGen, ...) = 1.0`
+        @test JuMP.fix_value(param[name, t]) == 1.0
+        @test mult[name, t] == 1.0
+    end
+end
+
 @testset "FixValueFeedforward pins the affected variable to the parameter" begin
     device_model = DeviceModel(PSY.ThermalStandard, ThermalStandardDispatch)
     ff_fix = FixValueFeedforward(;
@@ -401,6 +705,57 @@ end
     @test IOM.VariableKey(ActivePowerVariable, PSY.ThermalStandard) ∈ attrs.affected_keys
 end
 
+@testset "FixValueFeedforward with an AuxVariableType source pins the affected variable" begin
+    # Regression: the `AuxVarKey` write path (`_add_parameters!` for an aux-variable
+    # source) stored the parameter container under the empty meta, while the read path
+    # (`add_feedforward_constraints!`) always looks it up under `"$(source_type)"`. That
+    # mismatch made `get_parameter_array` fail to find the container.
+    device_model = DeviceModel(PSY.ThermalStandard, ThermalStandardDispatch)
+    ff_fix = FixValueFeedforward(;
+        component_type = PSY.ThermalStandard,
+        source = POM.PowerOutput,
+        affected_values = [ActivePowerVariable],
+    )
+    attach_feedforward!(device_model, ff_fix)
+
+    c_sys5 = PSB.build_system(PSITestSystems, "c_sys5")
+    model = DecisionModel(MockOperationProblem, DCPNetworkModel, c_sys5)
+    mock_construct_device!(model, device_model; built_for_recurrent_solves = true)
+
+    container = IOM.get_optimization_container(model)
+    var = IOM.get_variable(container, ActivePowerVariable, PSY.ThermalStandard)
+    param = IOM.get_parameter_array(
+        container,
+        FixValueParameter,
+        PSY.ThermalStandard,
+        "$(POM.PowerOutput)",
+    )
+    con = IOM.get_constraint(
+        container,
+        IOM.ConstraintKey(
+            FeedforwardFixValueConstraint,
+            PSY.ThermalStandard,
+            "$(ActivePowerVariable)",
+        ),
+    )
+
+    names, time_steps = JuMP.axes(var)
+    for name in names, t in time_steps
+        @test JuMP.normalized_coefficient(con[name, t], var[name, t]) == 1.0
+        @test JuMP.constraint_object(con[name, t]).set isa MOI.EqualTo
+    end
+
+    attrs = IOM.get_parameter_attributes(
+        container,
+        IOM.ParameterKey(
+            FixValueParameter,
+            PSY.ThermalStandard,
+            "$(POM.PowerOutput)",
+        ),
+    )
+    @test IOM.VariableKey(ActivePowerVariable, PSY.ThermalStandard) ∈ attrs.affected_keys
+end
+
 @testset "attach_feedforward! is idempotent and rejects ServiceModel" begin
     device_model = DeviceModel(PSY.ThermalStandard, ThermalStandardDispatch)
     ff = UpperBoundFeedforward(;
@@ -414,6 +769,75 @@ end
 
     service_model = ServiceModel(OnlineReserve{ReserveUp}, RangeReserve)
     @test_throws ErrorException attach_feedforward!(service_model, ff)
+end
+
+@testset "attach_feedforward! rejects a differing feedforward with the same source key" begin
+    device_model = DeviceModel(PSY.ThermalStandard, ThermalStandardDispatch)
+    ff1 = UpperBoundFeedforward(;
+        component_type = PSY.ThermalStandard,
+        source = ActivePowerVariable,
+        affected_values = [ActivePowerVariable],
+    )
+    attach_feedforward!(device_model, ff1)
+
+    # Same source key (ActivePowerVariable, ThermalStandard) but `add_slacks` differs: a
+    # silent no-op here would drop the slack request instead of building the right
+    # containers, so this must error rather than match `_duplicate_feedforward`.
+    ff2 = UpperBoundFeedforward(;
+        component_type = PSY.ThermalStandard,
+        source = ActivePowerVariable,
+        affected_values = [ActivePowerVariable],
+        add_slacks = true,
+    )
+    @test_throws ArgumentError attach_feedforward!(device_model, ff2)
+    @test length(IOM.get_feedforwards(device_model)) == 1
+
+    # Field-for-field identical to an attached feedforward is still a silent no-op.
+    attach_feedforward!(device_model, ff1)
+    @test length(IOM.get_feedforwards(device_model)) == 1
+end
+
+@testset "attach_feedforward! rejects a second Upper/LowerBoundFeedforward with a different source" begin
+    ub_model = DeviceModel(PSY.ThermalStandard, ThermalStandardDispatch)
+    attach_feedforward!(
+        ub_model,
+        UpperBoundFeedforward(;
+            component_type = PSY.ThermalStandard,
+            source = ActivePowerVariable,
+            affected_values = [ActivePowerVariable],
+        ),
+    )
+    # `UpperBoundValueParameter` is keyed only by parameter type and component type, so a
+    # second `UpperBoundFeedforward` with a different source would collide on that single
+    # container; it must be rejected here instead of failing deep in argument construction.
+    @test_throws ArgumentError attach_feedforward!(
+        ub_model,
+        UpperBoundFeedforward(;
+            component_type = PSY.ThermalStandard,
+            source = PowerAboveMinimumVariable,
+            affected_values = [ActivePowerVariable],
+        ),
+    )
+    @test length(IOM.get_feedforwards(ub_model)) == 1
+
+    lb_model = DeviceModel(PSY.ThermalStandard, ThermalStandardDispatch)
+    attach_feedforward!(
+        lb_model,
+        LowerBoundFeedforward(;
+            component_type = PSY.ThermalStandard,
+            source = ActivePowerVariable,
+            affected_values = [ActivePowerVariable],
+        ),
+    )
+    @test_throws ArgumentError attach_feedforward!(
+        lb_model,
+        LowerBoundFeedforward(;
+            component_type = PSY.ThermalStandard,
+            source = PowerAboveMinimumVariable,
+            affected_values = [ActivePowerVariable],
+        ),
+    )
+    @test length(IOM.get_feedforwards(lb_model)) == 1
 end
 
 @testset "attach_feedforward! rejects a second differing SemiContinuousFeedforward" begin
@@ -498,5 +922,15 @@ end
         component_type = PSY.ThermalStandard,
         source = OnVariable,
         affected_values = [OnStatusParameter],
+    )
+    @test_throws ErrorException LowerBoundFeedforward(;
+        component_type = PSY.ThermalStandard,
+        source = ActivePowerVariable,
+        affected_values = [ActivePowerRangeExpressionUB],
+    )
+    @test_throws ErrorException FixValueFeedforward(;
+        component_type = PSY.ThermalStandard,
+        source = ActivePowerVariable,
+        affected_values = [ActivePowerRangeExpressionUB],
     )
 end

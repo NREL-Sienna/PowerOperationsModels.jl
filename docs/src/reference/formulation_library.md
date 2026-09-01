@@ -631,9 +631,12 @@ no semicontinuous constraints.
 !!! warning "Service feedforwards are not implemented"
     
     Feedforwards can only be attached to a `DeviceModel`. `attach_feedforward!` on a `ServiceModel`
-    throws. Per-type service models key their reserve variables by `(service_name, device_name, time)`, while the feedforward parameter path is keyed `(device_name, time)`; the two are
-    dimensionally inconsistent until the service `VariableValueParameter` path is re-keyed by
-    `(service, device)`.
+    throws, and so does `set_service_model!` when a `ServiceModel` is constructed with a non-empty
+    `feedforwards` kwarg — IOM's `ServiceModel` constructor still accepts it, so POM rejects it at
+    template definition instead of letting it reach `build!`. Per-type service models key their
+    reserve variables by `(service_name, device_name, time)`, while the feedforward parameter path
+    is keyed `(device_name, time)`; the two are dimensionally inconsistent until the service
+    `VariableValueParameter` path is re-keyed by `(service, device)`.
 
 ## [Piecewise-linear cost](@id pwl_cost)
 

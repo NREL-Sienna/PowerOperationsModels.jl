@@ -48,12 +48,21 @@ _is_must_run(d::PSY.HydroPumpTurbine)::Bool = PSY.get_must_run(d)
 # constraint is IOM's `add_range_bound_constraint!`, and the direction is IOM's `BoundDirection`.
 # Named apart from IOM's own `_bound_range_with_parameter!`, which this deliberately does not
 # call.
+#
+# `param_multiplier` also accepts a scalar (every device/time shares one value, e.g. the
+# semicontinuous path's zero) or a `Dict` keyed by device name (constant across time, e.g. a
+# variable's own bound) so neither caller has to materialize a dense device x time matrix
+# just to read it back once per entry.
+_multiplier_at(m::JuMPFloatArray, name, t) = m[name, t]
+_multiplier_at(m::Real, ::Any, ::Any) = m
+_multiplier_at(m::AbstractDict, name, ::Any) = m[name]
+
 function _feedforward_bound_range_with_parameter!(
     dir::IOM.BoundDirection,
     jump_model::JuMP.Model,
     constraint_container::JuMPConstraintArray,
     lhs_array,
-    param_multiplier::JuMPFloatArray,
+    param_multiplier::Union{JuMPFloatArray, Real, AbstractDict},
     param_array::Union{JuMPVariableArray, JuMPFloatArray},
     devices::Union{Vector{V}, IS.FlattenIteratorWrapper{V}},
 ) where {V <: PSY.Component}
@@ -69,7 +78,7 @@ function _feedforward_bound_range_with_parameter!(
                 name,
                 t,
                 lhs_array[name, t],
-                param_multiplier[name, t],
+                _multiplier_at(param_multiplier, name, t),
                 param_array[name, t],
             )
         end
@@ -97,8 +106,7 @@ function _add_sc_feedforward_constraints!(
     jump_model = get_jump_model(container)
     # The commitment status already entered through the range expressions (see
     # `_add_feedforward_arguments!`), so the parameter adds nothing on the right-hand side.
-    zero_multiplier =
-        DenseAxisArray(zeros(length(names), time_steps[end]), names, time_steps)
+    zero_multiplier = 0.0
     for (dir, expression_type) in (
         (IOM.UpperBound(), ActivePowerRangeExpressionUB),
         (IOM.LowerBound(), ActivePowerRangeExpressionLB),
@@ -144,7 +152,7 @@ function _add_sc_feedforward_constraints!(
     parameter = get_parameter_array(container, P, V)
     upper_bounds = [get_variable_upper_bound(U, d, W) for d in devices]
     lower_bounds = [get_variable_lower_bound(U, d, W) for d in devices]
-    if any(isnothing.(upper_bounds)) || any(isnothing.(lower_bounds))
+    if any(isnothing, upper_bounds) || any(isnothing, lower_bounds)
         throw(IS.InvalidValueError("Bounds for variable $U $V not defined correctly"))
     end
     jump_model = get_jump_model(container)
@@ -158,8 +166,9 @@ function _add_sc_feedforward_constraints!(
             time_steps;
             meta = "$(U)_$(IOM.constraint_meta(dir))",
         )
-        multiplier =
-            DenseAxisArray(repeat(bound_values, 1, time_steps[end]), names, time_steps)
+        # The bound is constant across time for a given device, so a `Dict` keyed by name
+        # stands in for the multiplier without repeating it into a device x time matrix.
+        multiplier = Dict(zip(names, bound_values))
         _feedforward_bound_range_with_parameter!(
             dir,
             jump_model,
@@ -181,11 +190,10 @@ function add_feedforward_constraints!(
 ) where {T <: PSY.Component}
     parameter_type = get_default_parameter_type(ff, T)
     time_steps = get_time_steps(container)
+    devices_names = PSY.get_name.(devices)
     for var in get_affected_values(ff)
         variable = get_variable(container, var)
-        var_axes = JuMP.axes(variable)
-        @assert issetequal(var_axes[1], PSY.get_name.(devices))
-        IS.@assert_op var_axes[2] == time_steps
+        _check_device_time_axes(variable, devices_names, time_steps)
         # A non-zero lower bound left on the variable would fight the semicontinuous
         # constraint and can make the model infeasible when the unit is off. A must-run
         # unit keeps its own lower bound instead: it is never turned off, and
@@ -239,11 +247,10 @@ function _add_bound_feedforward_constraints!(
     multiplier = get_parameter_multiplier_array(container, parameter_type, T)
     jump_model = get_jump_model(container)
     use_slacks = get_slacks(ff)
+    devices_names = PSY.get_name.(devices)
     for var in get_affected_values(ff)
         variable = get_variable(container, var)
-        device_name_set, set_time = JuMP.axes(variable)
-        @assert issetequal(device_name_set, PSY.get_name.(devices))
-        IS.@assert_op set_time == time_steps
+        device_name_set = _check_device_time_axes(variable, devices_names, time_steps)
 
         var_type = get_entry_type(var)
         constraint = add_constraints_container!(
@@ -254,36 +261,28 @@ function _add_bound_feedforward_constraints!(
             time_steps;
             meta = "$(var_type)$(IOM.constraint_meta(dir))",
         )
+        # NOTE (deviation from PowerSimulations): PSI allocates the slack when
+        # `add_slacks = true` but never references it in this constraint, so the slack
+        # has no effect there. POM wires it in.
         if use_slacks
-            # NOTE (deviation from PowerSimulations): PSI allocates the slack when
-            # `add_slacks = true` but never references it in this constraint, so the slack
-            # has no effect there. POM wires it in.
             slack = get_variable(container, _feedforward_slack_type(dir), T, "$(var_type)")
-            for t in time_steps, name in device_name_set
-                IOM.add_range_bound_constraint!(
-                    dir,
-                    jump_model,
-                    constraint,
-                    name,
-                    t,
-                    _slack_adjusted(dir, variable[name, t], slack[name, t]),
-                    multiplier[name, t],
-                    param[name, t],
-                )
+        end
+        for t in time_steps, name in device_name_set
+            if use_slacks
+                lhs = _slack_adjusted(dir, variable[name, t], slack[name, t])
+            else
+                lhs = variable[name, t]
             end
-        else
-            for t in time_steps, name in device_name_set
-                IOM.add_range_bound_constraint!(
-                    dir,
-                    jump_model,
-                    constraint,
-                    name,
-                    t,
-                    variable[name, t],
-                    multiplier[name, t],
-                    param[name, t],
-                )
-            end
+            IOM.add_range_bound_constraint!(
+                dir,
+                jump_model,
+                constraint,
+                name,
+                t,
+                lhs,
+                multiplier[name, t],
+                param[name, t],
+            )
         end
     end
     return
@@ -355,6 +354,7 @@ function add_feedforward_constraints!(
     param = get_parameter_array(container, parameter_type, T, "$var_type")
     multiplier = get_parameter_multiplier_array(container, parameter_type, T, "$var_type")
     jump_model = get_jump_model(container)
+    devices_names = PSY.get_name.(devices)
     for var in get_affected_values(ff)
         # `FixValueFeedforward` accepts a `ParameterType` affected value so the service-side
         # path can use one later, but there is no device-side parameter-target
@@ -367,9 +367,7 @@ function add_feedforward_constraints!(
             )
         end
         variable = get_variable(container, var)
-        device_name_set, set_time = JuMP.axes(variable)
-        @assert issetequal(device_name_set, PSY.get_name.(devices))
-        IS.@assert_op set_time == time_steps
+        device_name_set = _check_device_time_axes(variable, devices_names, time_steps)
 
         affected_var_type = get_entry_type(var)
         con = add_constraints_container!(

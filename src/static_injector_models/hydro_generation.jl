@@ -635,7 +635,9 @@ function add_constraints!(
     model::DeviceModel{V, W},
     ::NetworkModel{X},
 ) where {V <: PSY.HydroGen, W <: HydroCommitmentRunOfRiver, X <: AbstractNetworkModel}
-    add_semicontinuous_range_constraints!(container, T, U, devices, model, X)
+    if !has_semicontinuous_feedforward(model, U)
+        add_semicontinuous_range_constraints!(container, T, U, devices, model, X)
+    end
     return
 end
 
@@ -647,7 +649,9 @@ function add_constraints!(
     model::DeviceModel{V, W},
     ::NetworkModel{X},
 ) where {V <: PSY.HydroGen, W <: HydroCommitmentRunOfRiver, X <: AbstractNetworkModel}
-    add_semicontinuous_range_constraints!(container, T, U, devices, model, X)
+    if !has_semicontinuous_feedforward(model, U)
+        add_semicontinuous_range_constraints!(container, T, U, devices, model, X)
+    end
     add_parameterized_upper_bound_range_constraints(
         container,
         ActivePowerVariableTimeSeriesLimitsConstraint,
@@ -673,7 +677,9 @@ function add_constraints!(
     W <: HydroTurbineEnergyCommitment,
     X <: AbstractNetworkModel,
 }
-    add_semicontinuous_range_constraints!(container, T, U, devices, model, X)
+    if !has_semicontinuous_feedforward(model, U)
+        add_semicontinuous_range_constraints!(container, T, U, devices, model, X)
+    end
     return
 end
 
@@ -692,7 +698,9 @@ function add_constraints!(
     W <: HydroTurbineWaterLinearCommitment,
     X <: AbstractNetworkModel,
 }
-    add_semicontinuous_range_constraints!(container, T, U, devices, model, X)
+    if !has_semicontinuous_feedforward(model, U)
+        add_semicontinuous_range_constraints!(container, T, U, devices, model, X)
+    end
     return
 end
 
@@ -794,7 +802,9 @@ function add_constraints!(
     model::DeviceModel{V, W},
     ::NetworkModel{X},
 ) where {V <: PSY.HydroGen, W <: AbstractHydroUnitCommitment, X <: AbstractNetworkModel}
-    add_semicontinuous_range_constraints!(container, T, U, devices, model, X)
+    if !has_semicontinuous_feedforward(model, U)
+        add_semicontinuous_range_constraints!(container, T, U, devices, model, X)
+    end
     return
 end
 

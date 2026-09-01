@@ -1102,6 +1102,44 @@ function _add_parameters!(
     return
 end
 
+# An `AuxVariableType` source (e.g. a `FixValueFeedforward` pinned to another model's
+# aux variable) must store under the same "$U" meta as the `VariableKey` method above --
+# `add_feedforward_constraints!` always reads the parameter back under that meta,
+# regardless of whether the source was a variable or an aux variable.
+function _add_parameters!(
+    container::OptimizationContainer,
+    ::Type{T},
+    key::AuxVarKey{U, D},
+    model::DeviceModel{D, W},
+    devices::V,
+) where {
+    T <: FixValueParameter,
+    U <: AuxVariableType,
+    V <: Union{Vector{D}, IS.FlattenIteratorWrapper{D}},
+    W <: AbstractDeviceFormulation,
+} where {D <: PSY.Component}
+    @debug "adding" T D U _group = IOM.LOG_GROUP_OPTIMIZATION_CONTAINER
+    names = [PSY.get_name(device) for device in devices]
+    time_steps = get_time_steps(container)
+    parameter_container =
+        add_param_container!(container, T, D, key, names, time_steps; meta = "$U")
+    jump_model = get_jump_model(container)
+    parent_mult = IOM.get_multiplier_array_data(parameter_container)
+    parent_param = IOM.get_parameter_array_data(parameter_container)
+    for (i, d) in enumerate(devices)
+        IOM._set_multiplier_at!(
+            parent_mult,
+            get_parameter_multiplier(T, d, W),
+            i,
+        )
+        ini_val = get_initial_parameter_value(T, d, W)
+        for t in time_steps
+            IOM._set_parameter_at!(parent_param, jump_model, ini_val, i, t)
+        end
+    end
+    return
+end
+
 #################################################################################
 # _add_parameters! for AuxVarKey VariableValueParameter
 #################################################################################
