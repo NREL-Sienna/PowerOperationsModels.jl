@@ -988,7 +988,7 @@ end
         # Empty bid: a zero-valued cost curve → UnofferedDispatch.
         PSY.set_operation_cost!(
             load,
-            PSY.LoadCost(; variable = zero(PSY.CostCurve), fixed = 0.0),
+            PSY.LoadCost(; variable_operation_cost = zero(PSY.CostCurve), fixed = 0.0),
         )
         @test POM.get_dispatch_basis(PSY.get_operation_cost(load)) isa POM.UnofferedDispatch
 
@@ -1034,7 +1034,7 @@ end
     load = get_component(InterruptiblePowerLoad, sys, "IloadBus4")
     PSY.set_operation_cost!(
         load,
-        PSY.LoadCost(; variable = zero(PSY.CostCurve), fixed = 0.0),
+        PSY.LoadCost(; variable_operation_cost = zero(PSY.CostCurve), fixed = 0.0),
     )
     template = get_thermal_dispatch_template_network()
     set_device_model!(template, InterruptiblePowerLoad, PowerLoadDispatch)

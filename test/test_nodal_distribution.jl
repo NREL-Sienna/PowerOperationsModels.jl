@@ -375,8 +375,8 @@ function _promote_spread_bid_to_ts!(sys, bid, x_coords, slopes)
             ("initial_input incremental", 0.0),
             ("variable_cost decremental", inert),
             ("initial_input decremental", 0.0),
-            ("minimum_energy_offer", 0.0),
-            ("shut_down", 0.0),
+            ("minimum_energy_offer", IS.LinearFunctionData(0.0, 0.0)),
+            ("shut_down", IS.LinearFunctionData(0.0, 0.0)),
             ("start_up", (0.0, 0.0, 0.0)),
         ),
     )

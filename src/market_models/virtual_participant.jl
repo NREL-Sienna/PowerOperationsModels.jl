@@ -70,10 +70,11 @@ and VARIABLE's shared variable both scale (see [`_validate_block_bid_span!`](@re
 """
 _block_bid_offer_span(curve::IS.CostCurve{IS.PiecewiseIncrementalCurve}) =
     last(IS.get_x_coords(IS.get_function_data(IS.get_value_curve(curve))))
-_block_bid_offer_span(curve::IS.CostCurve{<:IS.TimeSeriesPiecewiseIncrementalCurve}) = error(
-    "Time-series-backed offer curves are not yet supported for FIXED/VARIABLE block bids " *
-    "(their envelope-vs-curve span cannot be validated at build time).",
-)
+_block_bid_offer_span(curve::IS.CostCurve{<:IS.TimeSeriesPiecewiseIncrementalCurve}) =
+    error(
+        "Time-series-backed offer curves are not yet supported for FIXED/VARIABLE block bids " *
+        "(their envelope-vs-curve span cannot be validated at build time).",
+    )
 
 """
 FIXED/VARIABLE block bids settle at the envelope (`max_supply`/`max_demand`,
