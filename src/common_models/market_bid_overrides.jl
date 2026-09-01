@@ -132,9 +132,9 @@ function IOM.validate_occ_component(
     ::Type{IncrementalCostAtMinParameter},
     device::Union{PSY.RenewableDispatch, PSY.Storage},
 )
-    x = _scalar_if_static(PSY.get_no_load_cost(PSY.get_operation_cost(device)))
+    x = _scalar_if_static(PSY.get_minimum_energy_offer(PSY.get_operation_cost(device)))
     if !isnothing(x) && x != 0.0
-        @warn "Nonzero no-load cost detected for renewable generation or storage device $(get_name(device))."
+        @warn "Nonzero minimum-energy offer detected for renewable generation or storage device $(get_name(device))."
     end
 end
 
@@ -142,9 +142,9 @@ function IOM.validate_occ_component(
     ::Type{DecrementalCostAtMinParameter},
     device::PSY.Storage,
 )
-    x = _scalar_if_static(PSY.get_no_load_cost(PSY.get_operation_cost(device)))
+    x = _scalar_if_static(PSY.get_minimum_energy_offer(PSY.get_operation_cost(device)))
     if !isnothing(x) && x != 0.0
-        @warn "Nonzero no-load cost detected for storage device $(get_name(device))."
+        @warn "Nonzero minimum-energy offer detected for storage device $(get_name(device))."
     end
 end
 

@@ -23,7 +23,7 @@ function _build_converter_sys(;
     for g in get_components(ThermalStandard, sys)
         endswith(get_name(g), "-2") || continue
         op_cost = get_operation_cost(g)
-        val_curve = get_value_curve(PSY.get_variable(op_cost))
+        val_curve = get_value_curve(PSY.get_variable_operation_cost(op_cost))
         new_op_cost = ThermalGenerationCost(
             CostCurve(
                 QuadraticCurve(
@@ -31,8 +31,8 @@ function _build_converter_sys(;
                     2.0 * get_proportional_term(val_curve),
                     get_constant_term(val_curve),
                 ),
-                get_power_units(PSY.get_variable(op_cost)),
-                get_vom_cost(PSY.get_variable(op_cost)),
+                get_power_units(PSY.get_variable_operation_cost(op_cost)),
+                get_vom_cost(PSY.get_variable_operation_cost(op_cost)),
             ),
             get_fixed(op_cost),
             get_start_up(op_cost),

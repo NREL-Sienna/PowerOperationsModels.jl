@@ -31,12 +31,12 @@ function add_device_reserve_offers!(
         # Keep the unit's own marginal energy cost: read the proportional (linear) term of its
         # existing variable cost before overwriting, and use it as the single-block energy offer.
         energy_slope = PSY.get_proportional_term(
-            PSY.get_value_curve(PSY.get_variable(get_operation_cost(g))),
+            PSY.get_value_curve(PSY.get_variable_operation_cost(get_operation_cost(g))),
         )
         set_operation_cost!(
             g,
             MarketBidCost(;
-                no_load_cost = LinearCurve(0.0),
+                minimum_energy_offer = LinearCurve(0.0),
                 start_up = (hot = 0.0, warm = 0.0, cold = 0.0),
                 shut_down = LinearCurve(0.0),
                 incremental_offer_curves = make_market_bid_curve(
@@ -177,11 +177,11 @@ function add_per_hour_reserve_offer!(
 )
     pmax = PSY.get_max_active_power(g, PSY.NU)
     energy_slope = PSY.get_proportional_term(
-        PSY.get_value_curve(PSY.get_variable(get_operation_cost(g))))
+        PSY.get_value_curve(PSY.get_variable_operation_cost(get_operation_cost(g))))
     set_operation_cost!(
         g,
         MarketBidCost(;
-            no_load_cost = LinearCurve(0.0),
+            minimum_energy_offer = LinearCurve(0.0),
             start_up = (hot = 0.0, warm = 0.0, cold = 0.0),
             shut_down = LinearCurve(0.0),
             incremental_offer_curves = make_market_bid_curve(
@@ -312,7 +312,7 @@ end
 
     # A MarketBidCost carrying the reserve in its offers is still recognized as offering.
     mbc = MarketBidCost(;
-        no_load_cost = LinearCurve(0.0),
+        minimum_energy_offer = LinearCurve(0.0),
         start_up = (hot = 0.0, warm = 0.0, cold = 0.0),
         shut_down = LinearCurve(0.0),
     )
@@ -377,12 +377,12 @@ function build_reserve_market_system(; load_offer_mw = 10.0, load_offer_price = 
     for (i, g) in enumerate(thermals)
         pmax = PSY.get_max_active_power(g, PSY.NU)
         energy_slope = PSY.get_proportional_term(
-            PSY.get_value_curve(PSY.get_variable(get_operation_cost(g))),
+            PSY.get_value_curve(PSY.get_variable_operation_cost(get_operation_cost(g))),
         )
         set_operation_cost!(
             g,
             MarketBidCost(;
-                no_load_cost = LinearCurve(0.0),
+                minimum_energy_offer = LinearCurve(0.0),
                 start_up = (hot = 0.0, warm = 0.0, cold = 0.0),
                 shut_down = LinearCurve(0.0),
                 incremental_offer_curves = _mkt_curve([0.0, pmax], [energy_slope]),
@@ -409,7 +409,7 @@ function build_reserve_market_system(; load_offer_mw = 10.0, load_offer_price = 
     set_operation_cost!(
         il,
         MarketBidCost(;
-            no_load_cost = LinearCurve(0.0),
+            minimum_energy_offer = LinearCurve(0.0),
             start_up = (hot = 0.0, warm = 0.0, cold = 0.0),
             shut_down = LinearCurve(0.0),
             decremental_offer_curves = _mkt_curve([0.0, pmax_il], [5000.0]),
@@ -560,13 +560,13 @@ function _offline_ordc_uc_system()
             1.0e4
         else
             PSY.get_proportional_term(
-                PSY.get_value_curve(PSY.get_variable(get_operation_cost(g))),
+                PSY.get_value_curve(PSY.get_variable_operation_cost(get_operation_cost(g))),
             )
         end
         PSY.set_operation_cost!(
             g,
             MarketBidCost(;
-                no_load_cost = LinearCurve(0.0),
+                minimum_energy_offer = LinearCurve(0.0),
                 start_up = (
                     hot = g === offunit ? 1.0e5 : 0.0,
                     warm = g === offunit ? 1.0e5 : 0.0,
@@ -831,7 +831,7 @@ end
         PSY.set_operation_cost!(
             g,
             MarketBidCost(;
-                no_load_cost = LinearCurve(0.0),
+                minimum_energy_offer = LinearCurve(0.0),
                 start_up = (hot = 0.0, warm = 0.0, cold = 0.0),
                 shut_down = LinearCurve(0.0),
                 incremental_offer_curves = _mkt_curve([0.0, pmax], [25.0]),
@@ -1124,7 +1124,7 @@ end
     set_operation_cost!(
         il,
         MarketBidCost(;
-            no_load_cost = LinearCurve(0.0),
+            minimum_energy_offer = LinearCurve(0.0),
             start_up = (hot = 0.0, warm = 0.0, cold = 0.0),
             shut_down = LinearCurve(0.0),
             decremental_offer_curves = make_market_bid_curve(

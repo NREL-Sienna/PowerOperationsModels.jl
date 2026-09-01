@@ -126,7 +126,7 @@ function _sys5_with_3w()
                 reactive_power_limits = (min = -0.3, max = 0.3),
                 ramp_limits = (up = 0.5, down = 0.5),
                 operation_cost = PSY.ThermalGenerationCost(;
-                    variable = PSY.CostCurve(PSY.LinearCurve(0.0)),
+                    variable_operation_cost = PSY.CostCurve(PSY.LinearCurve(0.0)),
                     start_up = 0.0,
                     shut_down = 0.0,
                     fixed = 0.0,

@@ -34,8 +34,8 @@ get_variable_binary(::Type{ShiftDownActivePowerVariable}, ::Type{<:PSY.ElectricL
 get_variable_lower_bound(::Type{ShiftDownActivePowerVariable}, d::PSY.ElectricLoad, ::Type{PowerLoadShift}) = 0.0
 get_variable_upper_bound(::Type{ShiftDownActivePowerVariable}, d::PSY.ElectricLoad, ::Type{PowerLoadShift}) = nothing # Unbounded above by default, but can be limited by time series parameters
 
-variable_cost(cost::PSY.OperationalCost, ::Type{ShiftUpActivePowerVariable}, ::PSY.ElectricLoad, ::Type{<:AbstractControllablePowerLoadFormulation})=PSY.get_variable(cost)
-variable_cost(cost::PSY.OperationalCost, ::Type{ShiftDownActivePowerVariable}, ::PSY.ElectricLoad, ::Type{<:AbstractControllablePowerLoadFormulation})=PSY.get_variable(cost)
+variable_cost(cost::PSY.OperationalCost, ::Type{ShiftUpActivePowerVariable}, ::PSY.ElectricLoad, ::Type{<:AbstractControllablePowerLoadFormulation})=PSY.get_variable_operation_cost(cost)
+variable_cost(cost::PSY.OperationalCost, ::Type{ShiftDownActivePowerVariable}, ::PSY.ElectricLoad, ::Type{<:AbstractControllablePowerLoadFormulation})=PSY.get_variable_operation_cost(cost)
 
 ########################### Reserve provision, ElectricLoad ################################
 # The inverse of a generator: up reserve is shed (P - r_up >= 0), down reserve is extra
@@ -550,7 +550,8 @@ function add_constraints!(
 end
 
 # Is this cost curve zero-valued, i.e. it puts no price on the device's dispatch?
-_is_costless_offer(cost::PSY.LoadCost) = PSY.get_variable(cost) == zero(PSY.CostCurve)
+_is_costless_offer(cost::PSY.LoadCost) =
+    PSY.get_variable_operation_cost(cost) == zero(PSY.CostCurve)
 _is_costless_offer(cost::PSY.MarketBidCost) =
     !IOM.is_nontrivial_offer(get_input_offer_curves(cost))
 # A real (non-placeholder) time-series key means a genuine decremental offer is attached;
@@ -608,7 +609,7 @@ function proportional_cost(
     t::Int,
 )
     return onvar_cost(container, cost, S, T, U, t) +
-           PSY.get_constant_term(PSY.get_vom_cost(PSY.get_variable(cost))) +
+           PSY.get_constant_term(PSY.get_vom_cost(PSY.get_variable_operation_cost(cost))) +
            PSY.get_fixed(cost)
 end
 
@@ -620,7 +621,7 @@ function onvar_cost(
     ::Type{PowerLoadInterruption},
     t::Int,
 )
-    return _onvar_cost(container, PSY.get_variable(cost), d, t)
+    return _onvar_cost(container, PSY.get_variable_operation_cost(cost), d, t)
 end
 
 # LoadCost has no FuelCurve-backed `_onvar_cost` path; the OnVariable proportional

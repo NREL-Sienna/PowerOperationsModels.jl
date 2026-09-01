@@ -299,8 +299,18 @@ function _add_onstatus_parameter_to_balance!(
     time_steps = get_time_steps(container)
     for d in devices
         targets = _balance_expression_targets(container, T, network_model, d)
-        name = PSY.get_name(d)
         multiplier = get_expression_multiplier(U, T, d, W)
+        # A must-run unit is absent from the feedforward-built parameter container -- it
+        # keeps its native bounds and its commitment is fixed at 1. The minimum-power term
+        # still belongs in the balance, so it enters as that constant instead of as a
+        # parameter lookup that would throw a KeyError.
+        if _is_must_run(d)
+            for t in time_steps
+                _apply_term_to_targets!(targets, 1.0, multiplier, t)
+            end
+            continue
+        end
+        name = PSY.get_name(d)
         for t in time_steps
             _apply_term_to_targets!(targets, parameter[name, t], multiplier, t)
         end
@@ -2508,7 +2518,6 @@ function add_to_expression!(
                 expression[name, t],
                 parameter_array[name, t],
                 -mult,
-                mult,
             )
         end
     end

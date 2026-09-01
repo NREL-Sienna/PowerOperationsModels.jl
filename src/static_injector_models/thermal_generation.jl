@@ -13,12 +13,15 @@ function create_temporary_cost_function_in_system_per_unit(
     original_cost_function::PSY.FuelCurve,
     new_data::PSY.PiecewiseLinearData,
 )
-    return PSY.FuelCurve(
-        PSY.PiecewisePointCurve(new_data),
-        PSY.SU,
-        PSY.get_fuel_cost(original_cost_function),
-        IS.LinearCurve(0.0),  # setting fuel offtake cost to default value of 0
-        PSY.get_vom_cost(original_cost_function),
+    # Keyword form: the fixed and time-series fuel cost are separate, mutually
+    # exclusive fields, so carry both through unchanged.
+    return PSY.FuelCurve(;
+        value_curve = PSY.PiecewisePointCurve(new_data),
+        power_units = PSY.SU,
+        fuel_cost = PSY.get_fuel_cost(original_cost_function),
+        fuel_cost_time_series = IS.get_fuel_cost_time_series(original_cost_function),
+        startup_fuel_offtake = IS.LinearCurve(0.0),  # default of 0
+        vom_cost = PSY.get_vom_cost(original_cost_function),
     )
 end
 
@@ -116,7 +119,7 @@ initial_condition_variable(::InitialTimeDurationOff, d::PSY.ThermalGen, ::Abstra
 ########################Objective Function##################################################
 # TODO: Decide what is the cost for OnVariable, if fixed or constant term in variable
 function proportional_cost(container::OptimizationContainer, cost::PSY.ThermalGenerationCost, S::Type{OnVariable}, T::PSY.ThermalGen, U::Type{<:AbstractThermalFormulation}, t::Int)
-    return onvar_cost(container, cost, S, T, U, t) + PSY.get_constant_term(PSY.get_vom_cost(PSY.get_variable(cost))) + PSY.get_fixed(cost)
+    return onvar_cost(container, cost, S, T, U, t) + PSY.get_constant_term(PSY.get_vom_cost(PSY.get_variable_operation_cost(cost))) + PSY.get_fixed(cost)
 end
 # Is the OnVariable proportional term's *rate* time-varying? For ThermalGenerationCost
 # that rate is `onvar_cost + vom_constant + fixed`; only `onvar_cost` can vary, and
@@ -124,7 +127,7 @@ end
 # `constant_term * fuel_cost_at_t`. PWL FuelCurves have `onvar_cost ≡ 0`, and
 # CostCurves have no `_onvar_cost` overload — both statically invariant here.
 IOM.is_time_variant_proportional(cost::PSY.ThermalGenerationCost) =
-    _onvar_is_time_variant(PSY.get_variable(cost))
+    _onvar_is_time_variant(PSY.get_variable_operation_cost(cost))
 
 _onvar_is_time_variant(::PSY.ProductionVariableCostCurve) = false
 _onvar_is_time_variant(
@@ -180,7 +183,7 @@ uses_compact_power(::PSY.ThermalGen, ::ThermalCompactDispatch)=true
 Theoretical Cost at power output zero. Mathematically is the intercept with the y-axis
 """
 function onvar_cost(container::OptimizationContainer, cost::PSY.ThermalGenerationCost, ::Type{OnVariable}, d::PSY.ThermalGen, ::Type{<:AbstractThermalFormulation}, t::Int)
-    return _onvar_cost(container, PSY.get_variable(cost), d, t)
+    return _onvar_cost(container, PSY.get_variable_operation_cost(cost), d, t)
 end
 
 function _onvar_cost(::OptimizationContainer, cost_function::PSY.FuelCurve{PSY.PiecewisePointCurve}, d::PSY.ThermalGen, ::Int)
@@ -200,15 +203,14 @@ function _onvar_cost(container::OptimizationContainer, cost_function::Union{PSY.
     cost_component = PSY.get_function_data(value_curve)
     # In Unit/h
     constant_term = PSY.get_constant_term(cost_component)
-    fuel_cost = PSY.get_fuel_cost(cost_function)
-    if typeof(fuel_cost) <: Float64
-        return constant_term * fuel_cost
-    else
+    if IS.is_time_series_backed(cost_function)
         parameter_array = get_parameter_array(container, FuelCostParameter, T)
         parameter_multiplier =
             get_parameter_multiplier_array(container, FuelCostParameter, T)
         name = PSY.get_name(d)
         return constant_term * parameter_array[name, t] * parameter_multiplier[name, t]
+    else
+        return constant_term * PSY.get_fuel_cost(cost_function)
     end
 end
 
@@ -326,6 +328,15 @@ function get_min_max_limits(
 end
 
 """
+Compact formulations schedule `PowerAboveMinimumVariable` rather than
+`ActivePowerVariable`, so `has_semicontinuous_feedforward` must check a `SemiContinuousFeedforward`
+against that variable instead of the default.
+"""
+_scheduled_power_variable(::Type{<:ThermalCompactDispatch}) = PowerAboveMinimumVariable
+_scheduled_power_variable(::Type{<:AbstractCompactUnitCommitment}) =
+    PowerAboveMinimumVariable
+
+"""
 Semicontinuous range constraints for thermal dispatch formulations
 """
 function add_constraints!(
@@ -423,7 +434,9 @@ function add_constraints!(
     W <: AbstractThermalUnitCommitment,
     X <: AbstractNetworkModel,
 }
-    add_semicontinuous_range_constraints!(container, T, U, devices, model, X)
+    if !has_semicontinuous_feedforward(model, U)
+        add_semicontinuous_range_constraints!(container, T, U, devices, model, X)
+    end
     return
 end
 

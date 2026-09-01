@@ -277,7 +277,7 @@ _branch_rating(rep::RepresentativeBranch, model::DeviceModel) =
     _branch_rating(rep.branch, model)
 
 """
-[`_branch_rating`](@ref) with a zero guard, for the flow limits that would otherwise pin
+`_branch_rating` with a zero guard, for the flow limits that would otherwise pin
 the arc to zero flow.
 """
 function _directional_flow_rating(rep::RepresentativeBranch, model::DeviceModel)
