@@ -5,13 +5,16 @@ import PowerNetworkMatrices as PNM
 #   - radial:            "1-8-i_1" absorbed entirely (bus 8 -> 1), no arc entry
 #   - series chain:      arc (1,2) = "1-6-i_1" + "6-7-i_1" + "7-2-i_1"
 #   - cross-type chain:  arc (1,5) = Line "1-9-i_1" + TwoWindingTransformer "9-5-i_1"
-#   - parallel:          arc (1,4) = "1-4-i_1" ∥ "1-4-i_2" -> entry "parallel_1_4"
-#   - parallel-in-chain: arc (2,3) = "10-3-i_1" + ("2-10-i_1" ∥ "2-10-i_2" -> "parallel_2_10")
-#
-# Entry names for composites now derive from the arc (`parallel_<from>_<to>`), but the
-# reporting shape is unchanged: a chain reports one row per segment under the segment's own
-# component name, a parallel group reports once, at whatever depth it sits.
+#   - parallel:          arc (1,4) = "1-4-i_1" ∥ "1-4-i_2" -> "1_4_double_circuit"
+#   - parallel-in-chain: arc (2,3) = "10-3-i_1" + ("2-10-i_1" ∥ "2-10-i_2"
+#                                                  -> "2_10_double_circuit")
 #   - direct:            arc (4,5) = "4-5-i_1"
+#
+# A composite's name derives from its arc, `<from>_<to>_double_circuit`; the suffix marks the
+# row as a total across the members. The reporting shape is unchanged: a chain reports one row
+# per segment under the segment's own component name, because each segment carries the arc's
+# flow, while a parallel group reports once at whatever depth it sits.
+#
 # Distinct reduced arcs across both branch types: (1,2), (1,4), (1,5), (2,3), (3,4), (4,5).
 const CASE11_DISTINCT_REDUCED_ARCS = 6
 
@@ -107,7 +110,7 @@ end
     chain_names_present =
         count(in(axes(bfe_line)[1]), ("1-6-i_1", "6-7-i_1", "7-2-i_1"))
     @test chain_names_present == 1
-    @test "parallel_1_4" in axes(bfe_line)[1]
+    @test "1_4_double_circuit" in axes(bfe_line)[1]
     @test !("1-4-i_1" in axes(bfe_line)[1])
     # Cross-type chain (1,5): the arc is claimed by exactly one branch type, so its name
     # appears in exactly one of the two containers, never both.
@@ -205,7 +208,7 @@ end
     @test !("1-8-i_1" in axes(pft_line)[1])
     @test pft_line["1-6-i_1", t1] === pft_line["6-7-i_1", t1]
     @test pft_line["6-7-i_1", t1] === pft_line["7-2-i_1", t1]
-    @test "parallel_1_4" in axes(pft_line)[1]
+    @test "1_4_double_circuit" in axes(pft_line)[1]
     pft_xfmr =
         IOM.get_variable(container, FlowActivePowerFromToVariable, TwoWindingTransformer)
     @test pft_line["1-9-i_1", t1] === pft_xfmr["9-5-i_1", t1]
@@ -284,7 +287,7 @@ end
     t1 = first(IOM.get_time_steps(container))
     @test pvar_line["1-6-i_1", t1] === pvar_line["6-7-i_1", t1]
     @test pvar_line["6-7-i_1", t1] === pvar_line["7-2-i_1", t1]
-    @test "parallel_1_4" in axes(pvar_line)[1]
+    @test "1_4_double_circuit" in axes(pvar_line)[1]
 end
 
 @testset "native DCPLL reduction: one corridor per reduced arc, build and solve" begin
@@ -327,7 +330,7 @@ end
     t1 = first(IOM.get_time_steps(container))
     @test pft_line["1-6-i_1", t1] === pft_line["6-7-i_1", t1]
     @test pft_line["6-7-i_1", t1] === pft_line["7-2-i_1", t1]
-    @test "parallel_1_4" in axes(pft_line)[1]
+    @test "1_4_double_circuit" in axes(pft_line)[1]
     pft_xfmr =
         IOM.get_variable(container, FlowActivePowerFromToVariable, TwoWindingTransformer)
     @test pft_line["1-9-i_1", t1] === pft_xfmr["9-5-i_1", t1]

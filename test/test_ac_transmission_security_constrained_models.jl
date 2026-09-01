@@ -556,7 +556,7 @@ end
     net_reduction_data = POM.get_branch_catalog(network_model)
 
     # Derive the representative name from the reduction map (PNM names it after the arc,
-    # e.g. "parallel_<from>_<to>"; not hard-coded so the test tracks PNM naming).
+    # e.g. "<from>_<to>_double_circuit"; not hard-coded so the test tracks PNM naming).
     c2r = PNM.get_component_to_reduction_name_map(net_reduction_data)
     @test haskey(c2r, PSY.Line)
     representative_name = c2r[PSY.Line][parallel_line_name]
