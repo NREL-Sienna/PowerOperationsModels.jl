@@ -19,16 +19,19 @@ function check_branch_rating_time_series_flows!(
     add_parallel_line_name::Union{Nothing, AbstractString} = nothing,
 )
     container = IOM.get_optimization_container(model)
+    # Entry names are derived from the arc, so a member's container key cannot be spelled
+    # from its own name. Ask the catalog which entry represents it; that redirect is exactly
+    # what it is for, and it keeps this helper independent of PNM's naming convention.
+    catalog = POM.get_branch_catalog(
+        IOM.get_network_model(POM.get_template(model)),
+    )
     for branch_name in branches_with_rating_ts
         branch = get_component(PSY.ACTransmission, sys, branch_name)
         is_parallel_group_flow =
             !isnothing(add_parallel_line_name) &&
             contains(branch_name, add_parallel_line_name)
-        col_key = if is_parallel_group_flow
-            replace(branch_name, "_copy" => "") * "double_circuit"
-        else
-            branch_name
-        end
+        redirects = PNM.get_component_to_reduction_name_map(catalog, typeof(branch))
+        col_key = get(redirects, branch_name, branch_name)
 
         static_rating = branch_rating_su(branch) * PSY.get_base_power(sys, PSY.NU)
         if is_parallel_group_flow

@@ -149,12 +149,12 @@ function _branches_for_var(
 ) where {T}
     members = RepresentativeBranch[]
     _foreach_branch(_all_branches(network_model, T)) do branch
-        if branch.reduction !== DIRECT_BRANCH_MAP
+        if !(_provenance(branch) isa PNM.DirectArc)
             names = _controlled_circuit_names(branch, device_model)
             isempty(names) && return
             error(
                 "Controlled transformer circuit $(join(names, ", ")) was merged into the \
-                 reduced arc $(branch.name) ($(branch.reduction)). Either remove the parallel \
+                 reduced arc $(branch.name) ($(_reduction_label(branch))). Either remove the parallel \
                  branch or disable control for this circuit.",
             )
         end
@@ -308,7 +308,7 @@ function add_variables!(
             for t in time_steps
                 var = JuMP.@variable(
                     jump_model,
-                    base_name = "$(nameof(V))_$(nameof(T))_$(branch.reduction)_{$(branch.name), $(t)}",
+                    base_name = "$(nameof(V))_$(nameof(T))_$(_reduction_label(branch))_{$(branch.name), $(t)}",
                 )
                 lb !== nothing && JuMP.set_lower_bound(var, lb)
                 ub !== nothing && JuMP.set_upper_bound(var, ub)
@@ -728,7 +728,7 @@ function add_expressions!(
     # exception — the default error handler shows only the wrapping
     # `TaskFailedException`, which makes spawn-task failures undebuggable.
     tasks = map(name_to_arc_map) do pair
-        (name, (arc, _)) = pair
+        (name, arc) = pair
         ptdf_col = ptdf[arc, :]
         Threads.@spawn try
             _make_flow_expressions!(

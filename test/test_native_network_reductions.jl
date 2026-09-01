@@ -3,13 +3,26 @@ import PowerNetworkMatrices as PNM
 # `case11_network_reductions` under RadialReduction + DegreeTwoReduction exercises every
 # reduction shape the native formulations must handle:
 #   - radial:            "1-8-i_1" absorbed entirely (bus 8 -> 1), no arc entry
-#   - series chain:      arc (1,2) = "1-6-i_1" + "6-7-i_1" + "7-2-i_1"
+#   - series chain:      arc (1,2) = "1-6-i_1" + "6-7-i_1" + "7-2-i_1"      -> "series_1_2"
 #   - cross-type chain:  arc (1,5) = Line "1-9-i_1" + TwoWindingTransformer "9-5-i_1"
-#   - parallel:          arc (1,4) = "1-4-i_1" ∥ "1-4-i_2" -> entry "1-4-i_double_circuit"
-#   - parallel-in-chain: arc (2,3) = "10-3-i_1" + ("2-10-i_1" ∥ "2-10-i_2")
-#   - direct:            arc (4,5) = "4-5-i_1"
+#                                                                           -> "series_1_5"
+#   - parallel:          arc (1,4) = "1-4-i_1" ∥ "1-4-i_2"                  -> "parallel_1_4"
+#   - parallel-in-chain: arc (2,3) = "10-3-i_1" + ("2-10-i_1" ∥ "2-10-i_2") -> "series_2_3"
+#   - direct:            arc (4,5) = "4-5-i_1"                              -> "4-5-i_1"
+#
+# Entry names are the arc, not the members: a composite is `parallel_<from>_<to>` or
+# `series_<from>_<to>`, and a direct arc keeps its component's name. A folded chain is ONE
+# entry, so a segment name like "1-6-i_1" is a component, never a container axis key --
+# reach it through `get_component_to_reduction_name_map` instead.
 # Distinct reduced arcs across both branch types: (1,2), (1,4), (1,5), (2,3), (3,4), (4,5).
 const CASE11_DISTINCT_REDUCED_ARCS = 6
+
+# Under an active reduction a container axis carries one key per reduced arc, so a member's
+# own component name is never an axis key -- it redirects to its arc's entry name.
+function _entry_key(model, ::Type{T}, name::AbstractString) where {T <: PSY.ACTransmission}
+    catalog = POM.get_branch_catalog(get_network_model(get_template(model)))
+    return PNM.get_component_to_reduction_name_map(catalog, T)[name]
+end
 
 function _case11_with_forecast()
     sys = PSB.build_system(PSITestSystems, "case11_network_reductions")
@@ -100,16 +113,17 @@ end
     # The series chain (1,2) and the parallel group (1,4) collapse to ONE representative
     # name each — only one of the chain's three member names is a valid axis key.
     t1 = first(IOM.get_time_steps(container))
-    chain_names_present =
-        count(in(axes(bfe_line)[1]), ("1-6-i_1", "6-7-i_1", "7-2-i_1"))
-    @test chain_names_present == 1
-    @test "1-4-i_double_circuit" in axes(bfe_line)[1]
+    chain_members = ("1-6-i_1", "6-7-i_1", "7-2-i_1")
+    @test Set(_entry_key(model_red, Line, n) for n in chain_members) == Set(["series_1_2"])
+    @test count(in(axes(bfe_line)[1]), chain_members) == 0
+    @test "series_1_2" in axes(bfe_line)[1]
+    @test "parallel_1_4" in axes(bfe_line)[1]
     @test !("1-4-i_1" in axes(bfe_line)[1])
     # Cross-type chain (1,5): the arc is claimed by exactly one branch type, so its name
     # appears in exactly one of the two containers, never both.
     cross_type_owners =
-        count(in(axes(bfe_line)[1]), ("1-9-i_1",)) +
-        count(in(axes(bfe_xfmr)[1]), ("9-5-i_1",))
+        count(in(axes(bfe_line)[1]), ("series_1_5",)) +
+        count(in(axes(bfe_xfmr)[1]), ("series_1_5",))
     @test cross_type_owners == 1
 
     model_full, status_full =
@@ -161,9 +175,8 @@ end
     container_deg = IOM.get_optimization_container(model_deg)
     bfe_deg = IOM.get_expression(container_deg, BThetaBranchFlow, Line)
     @test "1-8-i_1" in axes(bfe_deg)[1]
-    chain_names_present_deg =
-        count(in(axes(bfe_deg)[1]), ("1-6-i_1", "6-7-i_1", "7-2-i_1"))
-    @test chain_names_present_deg == 1
+    @test count(in(axes(bfe_deg)[1]), ("1-6-i_1", "6-7-i_1", "7-2-i_1")) == 0
+    @test "series_1_2" in axes(bfe_deg)[1]
 end
 
 @testset "native ACP reduction: one corridor per reduced arc, exact parity" begin
@@ -199,12 +212,14 @@ end
     t1 = first(IOM.get_time_steps(container))
     pft_line = IOM.get_variable(container, FlowActivePowerFromToVariable, Line)
     @test !("1-8-i_1" in axes(pft_line)[1])
-    @test pft_line["1-6-i_1", t1] === pft_line["6-7-i_1", t1]
-    @test pft_line["6-7-i_1", t1] === pft_line["7-2-i_1", t1]
-    @test "1-4-i_double_circuit" in axes(pft_line)[1]
+    line_key(name) = _entry_key(model_red, Line, name)
+    @test pft_line[line_key("1-6-i_1"), t1] === pft_line[line_key("6-7-i_1"), t1]
+    @test pft_line[line_key("6-7-i_1"), t1] === pft_line[line_key("7-2-i_1"), t1]
+    @test "parallel_1_4" in axes(pft_line)[1]
     pft_xfmr =
         IOM.get_variable(container, FlowActivePowerFromToVariable, TwoWindingTransformer)
-    @test pft_line["1-9-i_1", t1] === pft_xfmr["9-5-i_1", t1]
+    @test pft_line[line_key("1-9-i_1"), t1] ===
+          pft_xfmr[_entry_key(model_red, TwoWindingTransformer, "9-5-i_1"), t1]
 
     # The PNM series/parallel equivalents are exact two-port reductions, so the AC
     # solution (and objective) must match the unreduced problem.
@@ -278,9 +293,10 @@ end
     pvar_line = IOM.get_variable(container, FlowActivePowerVariable, Line)
     @test !("1-8-i_1" in axes(pvar_line)[1])
     t1 = first(IOM.get_time_steps(container))
-    @test pvar_line["1-6-i_1", t1] === pvar_line["6-7-i_1", t1]
-    @test pvar_line["6-7-i_1", t1] === pvar_line["7-2-i_1", t1]
-    @test "1-4-i_double_circuit" in axes(pvar_line)[1]
+    line_key(name) = _entry_key(model_red, Line, name)
+    @test pvar_line[line_key("1-6-i_1"), t1] === pvar_line[line_key("6-7-i_1"), t1]
+    @test pvar_line[line_key("6-7-i_1"), t1] === pvar_line[line_key("7-2-i_1"), t1]
+    @test "parallel_1_4" in axes(pvar_line)[1]
 end
 
 @testset "native DCPLL reduction: one corridor per reduced arc, build and solve" begin
@@ -321,12 +337,14 @@ end
     pft_line = IOM.get_variable(container, FlowActivePowerFromToVariable, Line)
     @test !("1-8-i_1" in axes(pft_line)[1])
     t1 = first(IOM.get_time_steps(container))
-    @test pft_line["1-6-i_1", t1] === pft_line["6-7-i_1", t1]
-    @test pft_line["6-7-i_1", t1] === pft_line["7-2-i_1", t1]
-    @test "1-4-i_double_circuit" in axes(pft_line)[1]
+    line_key(name) = _entry_key(model_red, Line, name)
+    @test pft_line[line_key("1-6-i_1"), t1] === pft_line[line_key("6-7-i_1"), t1]
+    @test pft_line[line_key("6-7-i_1"), t1] === pft_line[line_key("7-2-i_1"), t1]
+    @test "parallel_1_4" in axes(pft_line)[1]
     pft_xfmr =
         IOM.get_variable(container, FlowActivePowerFromToVariable, TwoWindingTransformer)
-    @test pft_line["1-9-i_1", t1] === pft_xfmr["9-5-i_1", t1]
+    @test pft_line[line_key("1-9-i_1"), t1] ===
+          pft_xfmr[_entry_key(model_red, TwoWindingTransformer, "9-5-i_1"), t1]
 end
 
 @testset "voltage-coupled device at a reduction-absorbed bus fails with a clear error" begin
@@ -545,21 +563,27 @@ end
     objective = JuMP.objective_function(IOM.get_jump_model(container))
     time_steps = IOM.get_time_steps(container)
 
-    # The Ohm's-law equality is written once per reduced arc under its representative name;
-    # the constraint axis is the per-arc claim set — a strict subset of the variable axis,
-    # which lists every arc member. The flow-definition slacks must be keyed on exactly that
-    # constraint axis, so no slack is created (and priced) without entering a row.
+    # The Ohm's-law equality is written once per reduced arc, on the per-arc claim set —
+    # a subset of the variable axis, which can be larger when another branch type has not
+    # claimed a shared arc. The flow-definition slacks must be keyed on exactly that
+    # constraint axis, so no slack is created (and priced) without entering a row, and no
+    # component absorbed into an arc gets a column of its own.
     constraint_names = collect(axes(cons["p_ft"])[1])
     constraint_set = Set(constraint_names)
     @test !isempty(constraint_names)
     @test issubset(constraint_set, variable_set)
-    non_representative = setdiff(variable_set, constraint_set)
-    @test !isempty(non_representative)   # the reduction genuinely merges arc members
+    absorbed = Set(
+        component for (component, entry) in
+        PNM.get_component_to_reduction_name_map(catalog, PSY.Line)
+        if component != entry
+    )
+    @test !isempty(absorbed)             # the reduction genuinely merges arc members
+    @test isdisjoint(absorbed, variable_set)
     for m in metas
         @test Set(axes(slack_up[m])[1]) == constraint_set
         @test Set(axes(slack_lo[m])[1]) == constraint_set
-        # No slack container entry exists for a non-representative arc member.
-        for name in non_representative
+        # No slack container entry exists for a component absorbed into a reduced arc.
+        for name in absorbed
             @test !(name in axes(slack_up[m])[1])
             @test !(name in axes(slack_lo[m])[1])
         end
@@ -610,10 +634,9 @@ end
     # Directional flow variables carry hard ±(equivalent rating) box bounds, and every
     # slack column is priced. The equivalent rating is read from the reduction entry (the
     # PNM series/parallel aggregate reached exactly as `branch_rate_bounds!` does).
-    all_maps = PNM.get_all_branch_maps_by_type(catalog)
     device_model = get_model(get_template(model), PSY.Line)
-    for (name, (arc, reduction)) in line_entries
-        entry = all_maps[reduction][PSY.Line][arc]
+    for (name, arc) in line_entries
+        entry = PNM.get_reduction_entry(catalog, arc)
         rating = POM._branch_rating(entry, device_model)
         for t in time_steps
             for var in (pft, ptf, qft, qtf)
@@ -638,17 +661,17 @@ end
         end
     end
 
-    # Non-triviality: the tightened member sits inside the (1,2) series chain whose
-    # representative row is "1-6-i_1". The bound on that representative equals the chain's
-    # equivalent rating (the min = the tightened value), strictly below the representative
-    # segment's own raw rating — so the bound is driven by the PNM reduction entry.
-    (arc_12, red_12) = line_entries["1-6-i_1"]
-    entry_12 = all_maps[red_12][PSY.Line][arc_12]
+    # Non-triviality: the tightened member sits inside the (1,2) series chain, whose single
+    # row is "series_1_2". The bound on that row equals the chain's equivalent rating (the
+    # min = the tightened value), strictly below any one segment's own raw rating — so the
+    # bound is driven by the PNM reduction entry, not by a member device.
+    arc_12 = line_entries["series_1_2"]
+    entry_12 = PNM.get_reduction_entry(catalog, arc_12)
     @test PNM.get_equivalent_rating(entry_12) == tightened_rating
-    representative_raw =
+    segment_raw =
         PSY.get_rating(PSY.get_component(PSY.Line, sys, "1-6-i_1"), PSY.SU)
-    @test tightened_rating < representative_raw
-    @test JuMP.upper_bound(pft["1-6-i_1", first(time_steps)]) == tightened_rating
+    @test tightened_rating < segment_raw
+    @test JuMP.upper_bound(pft["series_1_2", first(time_steps)]) == tightened_rating
 end
 
 @testset "Reduction flags map to the same PNM reductions everywhere" begin

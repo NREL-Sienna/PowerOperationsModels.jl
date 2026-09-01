@@ -56,7 +56,9 @@ PowerDynamicsOpenAPIModels = {url = "https://github.com/Sienna-Platform/PowerOpe
 PowerFlowFileParser = {rev = "psy6", url = "https://github.com/Sienna-Platform/PowerFlowFileParser.jl"}
 PowerFlows = {rev = "psy6", url = "https://github.com/Sienna-Platform/PowerFlows.jl"}
 PowerInvestmentsOpenAPIModels = {url = "https://github.com/Sienna-Platform/PowerOpenAPIModels.git", rev = "main", subdir = "PowerInvestmentsOpenAPIModels.jl"}
-PowerNetworkMatrices = {rev = "psy6", url = "https://github.com/Sienna-Platform/PowerNetworkMatrices.jl"}
+# TEMPORARY: pinned to the arc-keyed-catalog branch (PNM #356 + #357) until they merge to
+# psy6. Revert to `rev = "psy6"` once they land.
+PowerNetworkMatrices = {rev = "lk/arc-keyed-catalog", url = "https://github.com/Sienna-Platform/PowerNetworkMatrices.jl"}
 PowerOpenAPIModels = {url = "https://github.com/Sienna-Platform/PowerOpenAPIModels.git", rev = "main", subdir = "PowerOpenAPIModels.jl"}
 PowerOperationsOpenAPIModels = {url = "https://github.com/Sienna-Platform/PowerOpenAPIModels.git", rev = "main", subdir = "PowerOperationsOpenAPIModels.jl"}
 PowerTableDataParser = {rev = "psy6", url = "https://github.com/NREL-Sienna/PowerTableDataParser.jl"}
