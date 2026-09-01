@@ -183,7 +183,7 @@ const _UNDEFINED_CONTROL = PSY.TransformerControlObjective.UNDEFINED
 const _TAP_CONTROLS = (_VOLTAGE_CONTROL, _REACTIVE_CONTROL)
 const _PHASE_CONTROLS = (_ACTIVE_CONTROL,)
 
-_supports_tap_control(::NetworkModel{NativeACNetworkModel}) = true
+_supports_tap_control(::NetworkModel{<:NativeACNetworkModel}) = true
 _supports_tap_control(::NetworkModel) = false
 
 _supports_phase_control(::NetworkModel{<:Union{DCPNetworkModel, AbstractDCPLLNetworkModel, AbstractPTDFNetworkModel}}) = true
@@ -212,7 +212,7 @@ _tap_controlled(
 _phase_controlled(
     rep::RepresentativeBranch,
     d::DeviceModel,
-    ::NetworkModel,
+    network_model::NetworkModel,
 ) = _supports_phase_control(network_model) && _control_objective(rep, d) in _PHASE_CONTROLS
 
 function _controlled_circuit_names(

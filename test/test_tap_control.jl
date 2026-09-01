@@ -134,7 +134,7 @@ end
         @test !_has_control_constraints(container)
 
         log = read(joinpath(output_dir, "operation_problem.log"), String)
-        @test occursin("tap control is only supported", log)
+        @test occursin("tap control is not supported", log)
     end
 end
 
@@ -295,7 +295,6 @@ end
         @test isapprox(complex(y.g22, y.b22), Y22; rtol = 1e-10, atol = 1e-12)
     end
 
-    model = JuMP.Model()
     sys = PSB.build_system(PSITestSystems, "c_sys14")
     for br in Iterators.flatten((
         PSY.get_components(PSY.Line, sys),
@@ -303,7 +302,7 @@ end
     ))
         adm = PNM.branch_admittance(br)
         check_terms(
-            POM._tapped_admittance(model, adm, adm.tap),
+            POM._tapped_admittance(adm, adm.tap),
             PNM.ybus_branch_entries(br),
         )
     end
@@ -317,7 +316,7 @@ end
         for tap in (0.9, 1.0, 1.1, 1.25)
             PSY.set_tap!(circuit, tap)
             check_terms(
-                POM._tapped_admittance(model, adm, tap),
+                POM._tapped_admittance(adm, tap),
                 PNM.ybus_branch_entries(tr),
             )
         end
@@ -331,7 +330,7 @@ end
         winding = PNM.ThreeWindingTransformerCircuit(tr3w, index)
         adm = PNM.branch_admittance(winding)
         check_terms(
-            POM._tapped_admittance(model, adm, adm.tap),
+            POM._tapped_admittance(adm, adm.tap),
             PNM.ybus_branch_entries(winding),
         )
 
@@ -342,7 +341,7 @@ end
             for tap in (0.9, 1.0, 1.1, 1.25)
                 PSY.set_tap!(star_leg, tap)
                 check_terms(
-                    POM._tapped_admittance(model, adm, tap),
+                    POM._tapped_admittance(adm, tap),
                     PNM.ybus_branch_entries(winding),
                 )
             end

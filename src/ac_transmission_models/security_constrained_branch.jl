@@ -242,7 +242,7 @@ function _resolve_monitored_branches(
         for (T, names) in per_type
             seen = Set{Tuple{Int, Int}}()
             for name in sort!(collect(names))
-                rep = _representative_branch(network_model, T, entry_name)
+                rep = _representative_branch(network_model, T, name)
                 rep.arc in seen && continue
                 push!(seen, rep.arc)
                 push!(kept, rep)
@@ -463,8 +463,6 @@ function _build_post_contingency_flow_expressions_for_outage(
             time_steps,
             modf_cols[(outage_id, rep.arc)],
             nodal_balance_expressions,
-            nothing,
-            false,
         )
         results[i] = (rep.name, expressions)
     end

@@ -93,9 +93,6 @@ function build!(
     IOM.add_recorders!(model, recorders)
     IOM.register_recorders!(model, file_mode)
     logger = IS.configure_logging(get_internal(model), IOM.PROBLEM_LOG_FILENAME, file_mode)
-    if store_system_in_results
-        @warn "store_system_in_results is set to true. This will do nothing unless a Simulation is being built."
-    end
     try
         Logging.with_logger(logger) do
             try
@@ -177,9 +174,6 @@ function solve!(
     store_system_in_results = true,
     kwargs...,
 )
-    if store_system_in_results
-        @warn "store_system_in_results is set to true. This will do nothing unless a Simulation is being built."
-    end
     build_if_not_already_built!(
         model;
         console_level = console_level,

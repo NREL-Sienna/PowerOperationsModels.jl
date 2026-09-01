@@ -111,7 +111,7 @@ function validate_template_impl!(model::IOM.AbstractOptimizationModel)
     _check_security_constrained_three_winding_transformer(template.branches)
     _check_security_constrained_network(template.branches, network_model)
     _check_security_constrained_phase_control(template.branches, network_model)
-    _check_monitored_components(template.branches, network_model)
+    _check_monitored_components(template.branches)
     _check_voltage_regulation_conflicts!(template, system, network_model)
     _check_branch_rating_time_series_formulation!(template.branches, system)
     validate_network_model(network_model, unmodeled_branch_types, model_has_branch_filters)
@@ -185,7 +185,7 @@ function _check_branch_rating_time_series_formulation!(
     return
 end
 
-function _check_security_constrained_three_winding_transformer(branch_model::DeviceModel{PSY.ThreeWindingTransformer, AbstractSecurityConstrainedStaticBranch})
+function _check_security_constrained_three_winding_transformer(branch_model::DeviceModel{PSY.ThreeWindingTransformer, <:AbstractSecurityConstrainedStaticBranch})
     throw(
         IS.ConflictingInputsError(
             "Security-constrained branch formulations are not implemented \
@@ -194,10 +194,10 @@ function _check_security_constrained_three_winding_transformer(branch_model::Dev
     )
 end
 
-function _check_security_constrained_three_winding_transformer(::DeviceModel) = nothing
+_check_security_constrained_three_winding_transformer(::DeviceModel) = nothing
 
 function _check_security_constrained_three_winding_transformer(branch_models::IOM.BranchModelContainer)
-    for (_, device_model) in branch_models
+    for device_model in values(branch_models)
         _check_security_constrained_three_winding_transformer(device_model)
     end
     return
@@ -351,7 +351,7 @@ end
 
 _phase_controlled_circuit_names(::DeviceModel, ::NetworkModel) = String[]
 
-_is_security_constrained(::DeviceModel{PSY.ACTransmission, AbstractSecurityConstrainedStaticBranch}) = true
+_is_security_constrained(::DeviceModel{<:PSY.ACTransmission, <:AbstractSecurityConstrainedStaticBranch}) = true
 _is_security_constrained(::DeviceModel) = false
 
 # `_build_post_contingency_flow_expressions_for_outage` builds every post-contingency flow
@@ -384,7 +384,7 @@ function _check_security_constrained_phase_control(
     )
 end
 
-function _check_security_constrained_network(branch_model::DeviceModel{PSY.ACTransmission, B}, network_model::NetworkModel) where {B <: AbstractSecurityConstrainedStaticBranch}
+function _check_security_constrained_network(branch_model::DeviceModel{<:PSY.ACTransmission, B}, network_model::NetworkModel) where {B <: AbstractSecurityConstrainedStaticBranch}
     _sc_branch_network_supported(network_model) || throw(
         IS.ConflictingInputsError(
             "$(B) is not supported with network model \
@@ -407,12 +407,12 @@ function _check_security_constrained_network(
     network_model::NetworkModel,
 )
     for device_model in values(branch_models)
-        _check_security_constrained_network(device_model)
+        _check_security_constrained_network(device_model, network_model)
     end
     return
 end
 
-function _check_monitored_components(branch_model::DeviceModel{<:PSY.ACTransmission, AbstractSecurityConstrainedStaticBranch})
+function _check_monitored_components(branch_model::DeviceModel{<:PSY.ACTransmission, <:AbstractSecurityConstrainedStaticBranch})
     for (uuid, per_type) in get_outages(branch_model)
         for (T, names) in per_type
             for name in names
@@ -466,7 +466,7 @@ function _voltage_regulated_buses(
     for d in get_available_components(device_model, sys)
         for (i, circuit) in enumerate(PSY.get_circuits(d))
             PSY.get_control_objective(circuit) === _VOLTAGE_CONTROL || continue
-            _supports_tap(network_model) || continue
+            _supports_tap_control(network_model) || continue
             bus = PSY.get_bus(sys, PSY.get_regulated_bus_number(circuit))
             name = "$(PSY.get_name(d))_winding_$i"
             if isnothing(bus)

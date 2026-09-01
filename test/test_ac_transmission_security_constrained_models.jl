@@ -266,7 +266,7 @@ end
     branch_models = IOM.BranchModelContainer()
     branch_models[nameof(PSY.ThreeWindingTransformer)] =
         DeviceModel(PSY.ThreeWindingTransformer, POM.SecurityConstrainedStaticBranch)
-    @test_throws IS.ConflictingInputsError POM._check_security_constrained_three_winding_transformer!(
+    @test_throws IS.ConflictingInputsError POM._check_security_constrained_three_winding_transformer(
         branch_models,
     )
 
@@ -277,7 +277,7 @@ end
     ok_models[nameof(PSY.Line)] =
         DeviceModel(PSY.Line, POM.SecurityConstrainedStaticBranch)
     @test isnothing(
-        POM._check_security_constrained_three_winding_transformer!(ok_models),
+        POM._check_security_constrained_three_winding_transformer(ok_models),
     )
 end
 

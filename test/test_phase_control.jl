@@ -160,7 +160,7 @@ end
 
         # Build warnings go to the build's own log, not to the caller's logger.
         log = read(joinpath(output_dir, "operation_problem.log"), String)
-        @test occursin("phase control is only supported on", log)
+        @test occursin("phase control is not supported on", log)
     end
 end
 

@@ -356,9 +356,9 @@ end
 function _add_transformer_control_variables!(
     container::OptimizationContainer,
     devices::IS.FlattenIteratorWrapper{T},
-    device_model::DeviceModel,
+    device_model::DeviceModel{T},
     network_model::NetworkModel,
-)
+) where {T <: PSY.ACTransmission}
     _control_enabled(device_model) || return
     if _supports_tap_control(network_model)
         add_variables!(container, TapRatioVariable, devices, device_model, network_model)
@@ -808,7 +808,7 @@ function add_expressions!(
                     rep,
                     time_steps,
                     ptdf_col,
-                    nodal_balance_expressios.data,
+                    nodal_balance_expressions.data,
                 )
             end
         catch e
@@ -1396,16 +1396,17 @@ end
 
 # PNM.ybus_branch_entries-adjacent: supports variable tap, separates
 # condutance and susceptance.
-function _tapped_admittance(jump_model, adm, tap)
+function _tapped_admittance(adm, tap)
     g_cos, g_sin = adm.g * cos(adm.shift), adm.g * sin(adm.shift)
     b_cos, b_sin = adm.b * cos(adm.shift), adm.b * sin(adm.shift)
+    tap2 = tap^2
     return (
-        g11 = JuMP.@expression(jump_model, adm.g / tap^2 + adm.g_fr),
-        b11 = JuMP.@expression(jump_model, adm.b / tap^2 + adm.b_fr),
-        g12 = JuMP.@expression(jump_model, (-g_cos + b_sin) / tap),
-        b12 = JuMP.@expression(jump_model, (-b_cos - g_sin) / tap),
-        g21 = JuMP.@expression(jump_model, (-g_cos - b_sin) / tap),
-        b21 = JuMP.@expression(jump_model, (g_sin - b_cos) / tap),
+        g11 = (adm.g / tap2) + adm.g_fr,
+        b11 = (adm.b / tap2) + adm.b_fr,
+        g12 = (-g_cos + b_sin) / tap,
+        b12 = (-b_cos - g_sin) / tap,
+        g21 = (-g_cos - b_sin) / tap,
+        b21 = (g_sin - b_cos) / tap,
         g22 = adm.g + adm.g_to,
         b22 = adm.b + adm.b_to,
     )
@@ -1453,9 +1454,9 @@ function add_constraints!(
 
         vp = _voltage_products(container, network_model, T, name, from_bus, to_bus)
         tap_controlled = _tap_controlled(rep, device_model, network_model)
+        static_y = _tapped_admittance(adm, adm.tap)
         for t in time_steps
-            tap = tap_controlled ? JuMP.AffExpr(0.0, tap_var[name, t] => 1.0) : JuMP.AffExpr(adm.tap)
-            y = _tapped_admittance(jump_model, adm, tap)
+            y = tap_controlled ? _tapped_admittance(adm, tap_var[name, t]) : static_y
 
             cons_pft[name, t] = JuMP.@constraint(
                 jump_model,
@@ -1548,8 +1549,8 @@ function _add_voltage_control_constraints!(
     container::OptimizationContainer,
     sys::PSY.System,
     devices::IS.FlattenIteratorWrapper{T},
-    device_model::DeviceModel{T, <:_CONTROL_FORMULATIONS},
-    network_model::NetworkModel},
+    device_model::DeviceModel{T},
+    network_model::NetworkModel,
 ) where {T <: _TRANSFORMERS}
     _control_enabled(device_model) || return
 
@@ -1596,7 +1597,7 @@ _flow_array(
     container::OptimizationContainer,
     ::Type{ReactivePowerFlowControlConstraint},
     ::DeviceModel{T, <:_CONTROL_FORMULATIONS},
-    ::NetworkModel},
+    ::NetworkModel,
 ) where {T <: _TRANSFORMERS} = get_variable(container, FlowReactivePowerFromToVariable, T)
 _flow_array(
     container::OptimizationContainer,
@@ -1634,7 +1635,7 @@ function _add_flow_control_constraints!(
     container::OptimizationContainer,
     ::Type{C},
     devices::IS.FlattenIteratorWrapper{T},
-    device_model::DeviceModel{T, <:_CONTROL_FORMULATIONS},
+    device_model::DeviceModel{T},
     network_model::NetworkModel,
 ) where {
     C <: Union{ReactivePowerFlowControlConstraint, ActivePowerFlowControlConstraint},
@@ -1672,22 +1673,13 @@ function _add_flow_control_constraints!(
     return
 end
 
-# No-op for any (constraint, device, network) triple `_flow_array` has no method for.
-_add_flow_control_constraints!(
-    ::OptimizationContainer,
-    ::Type{<:ConstraintType},
-    ::IS.FlattenIteratorWrapper{T},
-    ::DeviceModel{T},
-    ::NetworkModel,
-) where {T <: PSY.ACTransmission} = nothing
-
 function _add_transformer_control_constraints!(
     container::OptimizationContainer,
     sys::PSY.System,
     devices::IS.FlattenIteratorWrapper{T},
-    device_model::DeviceModel,
+    device_model::DeviceModel{T},
     network_model::NetworkModel,
-)
+) where {T <: PSY.ACTransmission}
     _control_enabled(device_model) || return
     if _supports_tap_control(network_model)
         _add_voltage_control_constraints!(container, sys, devices, device_model, network_model)
@@ -2152,7 +2144,7 @@ function add_constraints!(
                 else
                     p[name, t]
                 end
-            shift = phase_controlled ? JuMP.AffExpr(0.0, phase_var[rep.name, t] => 1.0) : JuMP.AffExpr(df_shift)
+            shift = phase_controlled ? JuMP.AffExpr(0.0, phase_var[rep.name, t] => 1.0) : JuMP.AffExpr(dc_shift)
             cons[name, t] = JuMP.@constraint(
                 jump_model,
                 flow == b * (va[from_name, t] - va[to_name, t] - shift)
@@ -2208,7 +2200,7 @@ function add_expressions!(
 
         phase_controlled = _phase_controlled(rep, device_model, network_model)
         for t in time_steps
-            shift = phase_controlled ? JuMP.AffExpr(0.0, phase_var[rep.name, t] => 1.0) : JuMP.AffExpr(df_shift)
+            shift = phase_controlled ? JuMP.AffExpr(0.0, phase_var[rep.name, t] => 1.0) : JuMP.AffExpr(dc_shift)
             flow = JuMP.@expression(
                 jump_model,
                 b * (va[from_name, t] - va[to_name, t] - shift)
@@ -2549,7 +2541,7 @@ function add_constraints!(
         to_name = _to_name(rep)
         phase_controlled = _phase_controlled(rep, device_model, network_model)
         for t in time_steps
-            shift = phase_controlled ? JuMP.AffExpr(0.0, phase_var[rep.name, t] => 1.0) : JuMP.AffExpr(df_shift)
+            shift = phase_controlled ? JuMP.AffExpr(0.0, phase_var[rep.name, t] => 1.0) : JuMP.AffExpr(dc_shift)
             cons[rep.name, t] = JuMP.@constraint(
                 jump_model,
                 pft[rep.name, t] == b * (va[from_name, t] - va[to_name, t] - shift),
