@@ -130,6 +130,10 @@ get_variable_upper_bound(::Type{HydroEnergyShortageVariable}, d::PSY.HydroReserv
 get_variable_binary(::Type{HydroWaterShortageVariable}, ::Type{<:PSY.HydroReservoir}, ::Type{HydroWaterModelReservoir}) = false
 get_variable_lower_bound(::Type{HydroWaterShortageVariable}, d::PSY.HydroReservoir, ::Type{HydroWaterModelReservoir}) = 0.0
 get_variable_upper_bound(::Type{HydroWaterShortageVariable}, d::PSY.HydroReservoir, ::Type{HydroWaterModelReservoir}) = PSY.get_storage_level_limits(d).max
+# `ReservoirTargetFeedforward` adds this slack for `HydroWaterModelReservoir` too (it is not
+# formulation-specific like `HydroWaterShortageVariable`); bounds mirror that variable's.
+get_variable_lower_bound(::Type{HydroEnergyShortageVariable}, d::PSY.HydroReservoir, ::Type{HydroWaterModelReservoir}) = 0.0
+get_variable_upper_bound(::Type{HydroEnergyShortageVariable}, d::PSY.HydroReservoir, ::Type{HydroWaterModelReservoir}) = PSY.get_storage_level_limits(d).max
 
 ############## HydroEnergySurplusVariable, HydroReservoir ####################
 get_variable_binary(::Type{HydroEnergySurplusVariable}, ::Type{<:PSY.HydroReservoir}, ::Type{HydroEnergyModelReservoir}) = false
@@ -218,6 +222,10 @@ get_multiplier_value(::Type{<:AbstractPiecewiseLinearBreakpointParameter}, d::PS
 get_multiplier_value(::Type{<:AbstractPiecewiseLinearBreakpointParameter}, d::PSY.HydroGen, ::Type{<:AbstractHydroFormulation}) = 1.0
 
 get_parameter_multiplier(::Type{<:VariableValueParameter}, d::PSY.HydroGen, ::Type{<:AbstractHydroFormulation}) = 1.0
+# `ReservoirTargetFeedforward`/`ReservoirLimitFeedforward` build `ReservoirTargetParameter`/
+# `ReservoirLimitParameter` (both `VariableValueParameter`) against `HydroReservoir` through
+# the generic feedforward path in `common_models/add_parameters.jl`, which reads this.
+get_parameter_multiplier(::Type{<:VariableValueParameter}, d::PSY.HydroReservoir, ::Type{<:AbstractHydroFormulation}) = 1.0
 get_initial_parameter_value(::Type{<:VariableValueParameter}, d::PSY.HydroGen, ::Type{<:AbstractHydroFormulation}) = 1.0
 get_initial_parameter_value(::Type{HydroUsageLimitParameter}, d::PSY.HydroGen, ::Type{<:AbstractHydroFormulation}) = 1e6 #unbounded
 get_initial_parameter_value(::Type{WaterLevelBudgetParameter}, d::PSY.HydroReservoir, ::Type{<:AbstractHydroFormulation}) = 1e6 #unbounded

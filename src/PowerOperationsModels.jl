@@ -587,6 +587,9 @@ export LowerBoundFeedforward
 export SemiContinuousFeedforward
 export FixValueFeedforward
 export WaterLevelBudgetFeedforward
+export ReservoirTargetFeedforward
+export ReservoirLimitFeedforward
+export HydroUsageLimitFeedforward
 export attach_feedforward!
 export FeedforwardUpperBoundConstraint
 export FeedforwardLowerBoundConstraint
@@ -685,6 +688,9 @@ export TurbinePowerOutputConstraint
 export ReservoirHeadToVolumeConstraint
 export ReservoirInventoryConstraint
 export FeedForwardWaterLevelBudgetConstraint
+export FeedforwardEnergyTargetConstraint
+export FeedforwardIntegralLimitConstraint
+export FeedForwardHydroUsageLimitConstraint
 
 ####### Hydro Expressions ########
 export HydroServedReserveUpExpression

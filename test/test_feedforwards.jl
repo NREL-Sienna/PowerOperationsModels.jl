@@ -1024,3 +1024,281 @@ end
         end
     end
 end
+
+#################################################################################
+# ReservoirTargetFeedforward / ReservoirLimitFeedforward / HydroUsageLimitFeedforward
+#
+# Ported from HydroPowerSimulations.jl/src/feedforwards.jl. `LevelTargetFeedforward` was
+# deliberately not ported: it is a struct-and-constructor stub upstream with no
+# `get_default_parameter_type`, no argument/constraint methods, not exported, and not
+# tested there.
+#################################################################################
+
+@testset "ReservoirTargetFeedforward rejects a non-VariableType affected value" begin
+    @test_throws ErrorException ReservoirTargetFeedforward(;
+        component_type = HydroReservoir,
+        source = HydroReservoirVolumeVariable,
+        affected_values = [ReservoirTargetParameter],
+        target_period = 1,
+        penalty_cost = 1e5,
+    )
+end
+
+@testset "ReservoirTargetFeedforward attaches to a HydroReservoir DeviceModel" begin
+    reservoir_model = DeviceModel(HydroReservoir, HydroWaterModelReservoir)
+    ff = ReservoirTargetFeedforward(;
+        component_type = HydroReservoir,
+        source = HydroReservoirVolumeVariable,
+        affected_values = [HydroReservoirVolumeVariable],
+        target_period = 1,
+        penalty_cost = 1e5,
+    )
+    attach_feedforward!(reservoir_model, ff)
+    @test length(IOM.get_feedforwards(reservoir_model)) == 1
+end
+
+@testset "attach_feedforward! rejects a second differing ReservoirTargetFeedforward" begin
+    reservoir_model = DeviceModel(HydroReservoir, HydroWaterModelReservoir)
+    attach_feedforward!(
+        reservoir_model,
+        ReservoirTargetFeedforward(;
+            component_type = HydroReservoir,
+            source = HydroReservoirVolumeVariable,
+            affected_values = [HydroReservoirVolumeVariable],
+            target_period = 1,
+            penalty_cost = 1e5,
+        ),
+    )
+    # `ReservoirTargetParameter` is keyed only by parameter type and component type, so a
+    # second `ReservoirTargetFeedforward` with a different source would collide on that
+    # single container; it must be rejected here instead of failing deep in argument
+    # construction.
+    @test_throws ArgumentError attach_feedforward!(
+        reservoir_model,
+        ReservoirTargetFeedforward(;
+            component_type = HydroReservoir,
+            source = HydroReservoirHeadVariable,
+            affected_values = [HydroReservoirVolumeVariable],
+            target_period = 1,
+            penalty_cost = 1e5,
+        ),
+    )
+    @test length(IOM.get_feedforwards(reservoir_model)) == 1
+end
+
+@testset "ReservoirTargetFeedforward builds the target constraint and penalizes the shortage slack" begin
+    c_sys5_hy = PSB.build_system(PSITestSystems, "c_sys5_hy_turbine_head")
+    reservoir_model = DeviceModel(HydroReservoir, HydroWaterModelReservoir)
+    penalty_cost = 5e4
+    attach_feedforward!(
+        reservoir_model,
+        ReservoirTargetFeedforward(;
+            component_type = HydroReservoir,
+            source = HydroReservoirVolumeVariable,
+            affected_values = [HydroReservoirVolumeVariable],
+            target_period = 1,
+            penalty_cost = penalty_cost,
+        ),
+    )
+    turbine_model = DeviceModel(HydroTurbine, HydroTurbineWaterLinearCommitment)
+
+    model = DecisionModel(MockOperationProblem, DCPNetworkModel, c_sys5_hy)
+    mock_construct_devices!(
+        model,
+        (reservoir_model, turbine_model);
+        built_for_recurrent_solves = true,
+    )
+    container = IOM.get_optimization_container(model)
+
+    con = IOM.get_constraint(
+        container,
+        IOM.ConstraintKey(
+            FeedforwardEnergyTargetConstraint,
+            HydroReservoir,
+            "$(HydroReservoirVolumeVariable)target",
+        ),
+    )
+    var = IOM.get_variable(container, HydroReservoirVolumeVariable, HydroReservoir)
+    slack = IOM.get_variable(container, HydroEnergyShortageVariable, HydroReservoir)
+    param = IOM.get_parameter_array(container, ReservoirTargetParameter, HydroReservoir)
+
+    names = JuMP.axes(con)[1]
+    @test !isempty(names)
+    @test JuMP.axes(con)[2] == ["horizon"]
+    obj = JuMP.objective_function(IOM.get_jump_model(container))
+    for name in names
+        # var[name, 1] + slack[name, 1] - param[name, 1] >= 0
+        con_obj = JuMP.constraint_object(con[name, "horizon"])
+        @test con_obj.set isa MOI.GreaterThan
+        @test JuMP.normalized_coefficient(con[name, "horizon"], var[name, 1]) == 1.0
+        @test JuMP.normalized_coefficient(con[name, "horizon"], slack[name, 1]) == 1.0
+        @test JuMP.normalized_coefficient(con[name, "horizon"], param[name, 1]) == -1.0
+        # An unpenalized slack would make the target vacuous.
+        @test get(obj.terms, slack[name, 1], 0.0) == penalty_cost
+    end
+end
+
+@testset "ReservoirLimitFeedforward attaches to a HydroReservoir DeviceModel" begin
+    reservoir_model = DeviceModel(HydroReservoir, HydroWaterModelReservoir)
+    ff = ReservoirLimitFeedforward(;
+        component_type = HydroReservoir,
+        source = HydroReservoirVolumeVariable,
+        affected_values = [HydroReservoirVolumeVariable],
+        number_of_periods = 1,
+    )
+    attach_feedforward!(reservoir_model, ff)
+    @test length(IOM.get_feedforwards(reservoir_model)) == 1
+end
+
+@testset "ReservoirLimitFeedforward rejects a non-VariableType affected value" begin
+    @test_throws ErrorException ReservoirLimitFeedforward(;
+        component_type = HydroReservoir,
+        source = HydroReservoirVolumeVariable,
+        affected_values = [ReservoirLimitParameter],
+        number_of_periods = 1,
+    )
+end
+
+@testset "ReservoirLimitFeedforward builds the integral limit constraint" begin
+    c_sys5_hy = PSB.build_system(PSITestSystems, "c_sys5_hy_turbine_head")
+    reservoir_model = DeviceModel(HydroReservoir, HydroWaterModelReservoir)
+    attach_feedforward!(
+        reservoir_model,
+        ReservoirLimitFeedforward(;
+            component_type = HydroReservoir,
+            source = HydroReservoirVolumeVariable,
+            affected_values = [HydroReservoirVolumeVariable],
+            number_of_periods = 1,
+        ),
+    )
+    turbine_model = DeviceModel(HydroTurbine, HydroTurbineWaterLinearCommitment)
+
+    model = DecisionModel(MockOperationProblem, DCPNetworkModel, c_sys5_hy)
+    mock_construct_devices!(
+        model,
+        (reservoir_model, turbine_model);
+        built_for_recurrent_solves = true,
+    )
+    container = IOM.get_optimization_container(model)
+
+    con = IOM.get_constraint(
+        container,
+        IOM.ConstraintKey(
+            FeedforwardIntegralLimitConstraint,
+            HydroReservoir,
+            "$(HydroReservoirVolumeVariable)integral",
+        ),
+    )
+    var = IOM.get_variable(container, HydroReservoirVolumeVariable, HydroReservoir)
+    param = IOM.get_parameter_array(container, ReservoirLimitParameter, HydroReservoir)
+
+    names, trenches = JuMP.axes(con)
+    @test !isempty(names)
+    # `number_of_periods = 1` means one trench per time step.
+    time_steps = JuMP.axes(var)[2]
+    @test collect(trenches) == collect(1:length(time_steps))
+    for name in names, (i, t) in enumerate(time_steps)
+        # var[name, t] - param[name, t] <= 0
+        con_obj = JuMP.constraint_object(con[name, i])
+        @test con_obj.set isa MOI.LessThan
+        @test JuMP.normalized_coefficient(con[name, i], var[name, t]) == 1.0
+        @test JuMP.normalized_coefficient(con[name, i], param[name, t]) == -1.0
+    end
+end
+
+@testset "HydroUsageLimitFeedforward rejects a VariableType affected value" begin
+    @test_throws ErrorException HydroUsageLimitFeedforward(;
+        component_type = PSY.HydroTurbine,
+        source = HydroEnergyOutput,
+        affected_values = [ActivePowerVariable],
+    )
+end
+
+@testset "HydroUsageLimitFeedforward attaches to a HydroTurbine DeviceModel" begin
+    turbine_model = DeviceModel(PSY.HydroTurbine, HydroTurbineWaterLinearCommitment)
+    ff = HydroUsageLimitFeedforward(;
+        component_type = PSY.HydroTurbine,
+        source = HydroEnergyOutput,
+        affected_values = [HydroUsageLimitParameter],
+    )
+    attach_feedforward!(turbine_model, ff)
+    @test length(IOM.get_feedforwards(turbine_model)) == 1
+end
+
+@testset "attach_feedforward! rejects a second differing HydroUsageLimitFeedforward" begin
+    turbine_model = DeviceModel(PSY.HydroTurbine, HydroTurbineWaterLinearCommitment)
+    attach_feedforward!(
+        turbine_model,
+        HydroUsageLimitFeedforward(;
+            component_type = PSY.HydroTurbine,
+            source = HydroEnergyOutput,
+            affected_values = [HydroUsageLimitParameter],
+        ),
+    )
+    # `HydroUsageLimitParameter` is keyed only by parameter type and component type, so a
+    # second `HydroUsageLimitFeedforward` with a different source would collide on that
+    # single container; it must be rejected here instead of failing deep in argument
+    # construction.
+    @test_throws ArgumentError attach_feedforward!(
+        turbine_model,
+        HydroUsageLimitFeedforward(;
+            component_type = PSY.HydroTurbine,
+            source = ActivePowerVariable,
+            affected_values = [HydroUsageLimitParameter],
+        ),
+    )
+    @test length(IOM.get_feedforwards(turbine_model)) == 1
+end
+
+@testset "HydroUsageLimitFeedforward builds the usage limit constraint" begin
+    c_sys5_hy = PSB.build_system(PSITestSystems, "c_sys5_hy_turbine_head")
+    reservoir_model = DeviceModel(HydroReservoir, HydroWaterModelReservoir)
+    turbine_model = DeviceModel(PSY.HydroTurbine, HydroTurbineWaterLinearCommitment)
+    attach_feedforward!(
+        turbine_model,
+        HydroUsageLimitFeedforward(;
+            component_type = PSY.HydroTurbine,
+            source = HydroEnergyOutput,
+            affected_values = [HydroUsageLimitParameter],
+        ),
+    )
+
+    model = DecisionModel(MockOperationProblem, DCPNetworkModel, c_sys5_hy)
+    mock_construct_devices!(
+        model,
+        (reservoir_model, turbine_model);
+        built_for_recurrent_solves = true,
+    )
+    container = IOM.get_optimization_container(model)
+
+    con =
+        IOM.get_constraint(
+            container,
+            FeedForwardHydroUsageLimitConstraint,
+            PSY.HydroTurbine,
+        )
+    power_var = IOM.get_variable(container, ActivePowerVariable, PSY.HydroTurbine)
+    param = IOM.get_parameter_array(container, HydroUsageLimitParameter, PSY.HydroTurbine)
+    resolution = IOM.get_resolution(container)
+    fraction_of_hour = Dates.value(Dates.Minute(resolution)) / POM.MINUTES_IN_HOUR
+
+    names = JuMP.axes(con)[1]
+    @test !isempty(names)
+    @test JuMP.axes(con)[2] == ["horizon"]
+    time_steps = JuMP.axes(power_var)[2]
+    param_time = JuMP.axes(param)[2]
+    @test only(param_time) == time_steps[end]
+    for name in names
+        # fraction_of_hour * sum(power_var[name, :]) - param[name, end] <= 0
+        con_obj = JuMP.constraint_object(con[name, "horizon"])
+        @test con_obj.set isa MOI.LessThan
+        for t in time_steps
+            @test JuMP.normalized_coefficient(con[name, "horizon"], power_var[name, t]) ==
+                  fraction_of_hour
+        end
+        @test JuMP.normalized_coefficient(
+            con[name, "horizon"],
+            param[name, time_steps[end]],
+        ) == -1.0
+    end
+end

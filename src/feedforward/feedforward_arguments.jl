@@ -133,6 +133,36 @@ function _add_feedforward_arguments!(
     return
 end
 
+# Enabling this feedforward requires an extra slack variable alongside the generic
+# `ReservoirTargetParameter` container: `HydroEnergyShortageVariable` relaxes the target
+# constraint built in `feedforward_constraints.jl`.
+function _add_feedforward_arguments!(
+    container::OptimizationContainer,
+    model::DeviceModel{T, U},
+    devices::Union{Vector{T}, IS.FlattenIteratorWrapper{T}},
+    ff::ReservoirTargetFeedforward,
+) where {T <: PSY.HydroReservoir, U <: AbstractDeviceFormulation}
+    parameter_type = get_default_parameter_type(ff, T)
+    add_parameters!(container, parameter_type, ff, model, devices)
+    add_variables!(container, HydroEnergyShortageVariable, devices, U)
+    return
+end
+
+# `HydroUsageLimitParameter`'s own `_add_parameters!` (hydro_generation.jl) derives the limit
+# from `get_initial_parameter_value` rather than the feedforward's source, the same shape as
+# `WaterLevelBudgetParameter` above, so this calls the plain, non-feedforward
+# `add_parameters!(container, T, devices, model)` dispatcher directly.
+function _add_feedforward_arguments!(
+    container::OptimizationContainer,
+    model::DeviceModel{T, U},
+    devices::Union{Vector{T}, IS.FlattenIteratorWrapper{T}},
+    ff::HydroUsageLimitFeedforward,
+) where {T <: PSY.HydroGen, U <: AbstractHydroFormulation}
+    parameter_type = get_default_parameter_type(ff, T)
+    add_parameters!(container, parameter_type, devices, model)
+    return
+end
+
 function _add_feedforward_arguments!(
     container::OptimizationContainer,
     model::DeviceModel{T, U},

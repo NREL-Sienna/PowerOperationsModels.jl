@@ -426,3 +426,160 @@ function add_feedforward_constraints!(
     end
     return
 end
+
+@doc raw"""
+Constructs a constraint holding a reservoir variable to a minimum target read from the
+system state at `target_period`, relaxed by a `HydroEnergyShortageVariable` slack penalized
+in the objective at `penalty_cost`.
+
+``` variable[name, target_period] + slack[name, target_period] >= param[name, target_period] * multiplier[name, target_period] ```
+"""
+function add_feedforward_constraints!(
+    container::OptimizationContainer,
+    ::DeviceModel{T, U},
+    devices::Union{Vector{T}, IS.FlattenIteratorWrapper{T}},
+    ff::ReservoirTargetFeedforward,
+) where {T <: PSY.HydroReservoir, U <: AbstractDeviceFormulation}
+    time_steps = get_time_steps(container)
+    parameter_type = get_default_parameter_type(ff, T)
+    param = get_parameter_array(container, parameter_type, T)
+    multiplier = get_parameter_multiplier_array(container, parameter_type, T)
+    target_period = get_target_period(ff)
+    penalty_cost = get_penalty_cost(ff)
+    jump_model = get_jump_model(container)
+    devices_names = PSY.get_name.(devices)
+    slack_var = get_variable(container, HydroEnergyShortageVariable, T)
+    for var in get_affected_values(ff)
+        variable = get_variable(container, var)
+        device_name_set = _check_device_time_axes(variable, devices_names, time_steps)
+
+        var_type = get_entry_type(var)
+        # A single value per device, at `target_period`; `["horizon"]` is the same degenerate
+        # second axis `WaterBudgetConstraint` uses, since IOM rejects 1D constraint containers.
+        con = add_constraints_container!(
+            container,
+            FeedforwardEnergyTargetConstraint,
+            T,
+            device_name_set,
+            ["horizon"];
+            meta = "$(var_type)target",
+        )
+        for name in device_name_set
+            con[name, "horizon"] = JuMP.@constraint(
+                jump_model,
+                variable[name, target_period] + slack_var[name, target_period] >=
+                param[name, target_period] * multiplier[name, target_period]
+            )
+            add_to_objective_invariant_expression!(
+                container,
+                slack_var[name, target_period] * penalty_cost,
+            )
+        end
+    end
+    return
+end
+
+@doc raw"""
+Constructs a constraint bounding the sum of a variable over consecutive blocks of
+`number_of_periods` time steps to a per-block limit read from the system state.
+
+``` sum(variable[name, t] for t in block) <= sum(param[name, t] * multiplier[name, t] for t in block) ```
+"""
+function add_feedforward_constraints!(
+    container::OptimizationContainer,
+    ::DeviceModel{T, U},
+    devices::Union{Vector{T}, IS.FlattenIteratorWrapper{T}},
+    ff::ReservoirLimitFeedforward,
+) where {T <: PSY.Component, U <: AbstractDeviceFormulation}
+    time_steps = get_time_steps(container)
+    parameter_type = get_default_parameter_type(ff, T)
+    param = get_parameter_array(container, parameter_type, T)
+    multiplier = get_parameter_multiplier_array(container, parameter_type, T)
+    affected_periods = get_number_of_periods(ff)
+    jump_model = get_jump_model(container)
+    devices_names = PSY.get_name.(devices)
+    for var in get_affected_values(ff)
+        variable = get_variable(container, var)
+        device_name_set = _check_device_time_axes(variable, devices_names, time_steps)
+
+        if affected_periods > time_steps[end]
+            error(
+                "The number of affected periods $affected_periods is larger than the " *
+                "periods available $(time_steps[end])",
+            )
+        end
+        no_trenches = time_steps[end] ÷ affected_periods
+        var_type = get_entry_type(var)
+        con = add_constraints_container!(
+            container,
+            FeedforwardIntegralLimitConstraint,
+            T,
+            device_name_set,
+            1:no_trenches;
+            meta = "$(var_type)integral",
+        )
+        for name in device_name_set, i in 1:no_trenches
+            block = (1 + (i - 1) * affected_periods):(i * affected_periods)
+            con[name, i] = JuMP.@constraint(
+                jump_model,
+                sum(variable[name, t] for t in block) <=
+                sum(param[name, t] * multiplier[name, t] for t in block)
+            )
+        end
+    end
+    return
+end
+
+@doc raw"""
+Constructs a constraint bounding a hydro unit's cumulative active power usage, summed over
+the full model horizon, to a hydro energy usage limit read from the system state.
+
+``` fraction_of_hour * sum(power[name, :]) <= param[name, end] ```
+"""
+function add_feedforward_constraints!(
+    container::OptimizationContainer,
+    model::DeviceModel{T, U},
+    devices::Union{Vector{T}, IS.FlattenIteratorWrapper{T}},
+    ::HydroUsageLimitFeedforward,
+) where {T <: PSY.HydroGen, U <: AbstractHydroFormulation}
+    time_steps = get_time_steps(container)
+    resolution = get_resolution(container)
+    fraction_of_hour = Dates.value(Dates.Minute(resolution)) / MINUTES_IN_HOUR
+    names = PSY.get_name.(devices)
+    power_var = get_variable(container, ActivePowerVariable, T)
+    param = get_parameter_array(container, HydroUsageLimitParameter, T)
+    jump_model = get_jump_model(container)
+    # A single value per device, summed over the whole horizon; `["horizon"]` is the same
+    # degenerate second axis `WaterBudgetConstraint` uses, since IOM rejects 1D constraint
+    # containers.
+    con = add_constraints_container!(
+        container,
+        FeedForwardHydroUsageLimitConstraint,
+        T,
+        names,
+        ["horizon"],
+    )
+    if built_for_recurrent_solves(container)
+        for name in names
+            param_value = param[name, time_steps[end]]
+            if has_service_model(model)
+                served_reg_dn =
+                    get_expression(container, HydroServedReserveDownExpression, T)
+                served_reg_up = get_expression(container, HydroServedReserveUpExpression, T)
+                con[name, "horizon"] = JuMP.@constraint(
+                    jump_model,
+                    fraction_of_hour * sum(
+                        power_var[name, t] + served_reg_up[name, t] -
+                        served_reg_dn[name, t] for t in time_steps
+                    ) <= param_value
+                )
+            else
+                con[name, "horizon"] = JuMP.@constraint(
+                    jump_model,
+                    fraction_of_hour * sum(power_var[name, :]) <= param_value
+                )
+            end
+        end
+    end
+    return
+end

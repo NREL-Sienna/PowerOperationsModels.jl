@@ -118,6 +118,7 @@ function attach_feedforward!(
         _duplicate_feedforward(attached, ff) && return
         _check_semicontinuous_conflict(attached, ff)
         _check_bound_conflict(attached, ff)
+        _check_hydro_feedforward_source_conflict(attached, ff)
     end
     push!(model.feedforwards, ff)
     return
@@ -175,6 +176,16 @@ end
 # `UpperBoundFeedforward`/`LowerBoundFeedforward` aren't defined until further down this
 # file. The concrete-type method is added below `_bound_direction`.
 function _check_bound_conflict(
+    ::AbstractAffectFeedforward,
+    ::AbstractAffectFeedforward,
+)
+    return
+end
+
+# Forward-declared for the same reason as `_check_bound_conflict` above:
+# `ReservoirTargetFeedforward`/`ReservoirLimitFeedforward`/`HydroUsageLimitFeedforward` aren't
+# defined until further down this file. The concrete-type method is added next to them.
+function _check_hydro_feedforward_source_conflict(
     ::AbstractAffectFeedforward,
     ::AbstractAffectFeedforward,
 )
@@ -515,5 +526,173 @@ function has_waterbudget_feedforward(model::DeviceModel)::Bool
     return any(
         ff -> _is_feedforward_type(ff, WaterLevelBudgetFeedforward),
         model.feedforwards,
+    )
+end
+
+"""
+    ReservoirTargetFeedforward(
+        component_type::Type{<:PSY.Component},
+        source::Type{T},
+        affected_values::Vector{DataType},
+        target_period::Int,
+        penalty_cost::Float64,
+        meta = CONTAINER_KEY_EMPTY_META
+    ) where {T}
+
+Holds a reservoir variable to a minimum target read from the system state at a single time
+step. The bound is relaxed by a `HydroEnergyShortageVariable` slack, penalized in the
+objective at `penalty_cost`, so the model stays feasible when the state's target cannot be
+reached exactly.
+
+# Arguments:
+
+  - `component_type::Type{<:PSY.Component}` : Specify the type of component on which the Feedforward will be applied
+  - `source::Type{T}` : The VariableType, ParameterType, or AuxVariableType naming the quantity in the system state that the Feedforward reads
+  - `affected_values::Vector{DataType}` : Specify the variable the reservoir target will be applied to
+  - `target_period::Int` : The time step at which the target is enforced
+  - `penalty_cost::Float64` : The objective penalty applied to the shortage slack
+"""
+struct ReservoirTargetFeedforward <: AbstractAffectFeedforward
+    optimization_container_key::OptimizationContainerKey
+    affected_values::Vector{<:OptimizationContainerKey}
+    target_period::Int
+    penalty_cost::Float64
+    function ReservoirTargetFeedforward(;
+        component_type::Type{<:PSY.Component},
+        source::Type{T},
+        affected_values::Vector{DataType},
+        target_period::Int,
+        penalty_cost::Float64,
+        meta = IOM.CONTAINER_KEY_EMPTY_META,
+    ) where {T}
+        key, values_vector = _feedforward_key_and_values(
+            ReservoirTargetFeedforward,
+            T,
+            component_type,
+            affected_values,
+            meta,
+        )
+        new(key, values_vector, target_period, penalty_cost)
+    end
+end
+
+get_default_parameter_type(::ReservoirTargetFeedforward, _) = ReservoirTargetParameter
+get_target_period(ff::ReservoirTargetFeedforward) = ff.target_period
+get_penalty_cost(ff::ReservoirTargetFeedforward) = ff.penalty_cost
+
+"""
+    ReservoirLimitFeedforward(
+        component_type::Type{<:PSY.Component},
+        source::Type{T},
+        affected_values::Vector{DataType},
+        number_of_periods::Int,
+        meta = CONTAINER_KEY_EMPTY_META
+    ) where {T}
+
+Bounds the sum of a variable over consecutive blocks of `number_of_periods` time steps to a
+per-block limit read from the system state. For example, in a 24-step model,
+`number_of_periods = 24` builds a single constraint over the whole horizon, while
+`number_of_periods = 12` builds two constraints, one per 12-step block.
+`number_of_periods` must divide the horizon length evenly.
+
+# Arguments:
+
+  - `component_type::Type{<:PSY.Component}` : Specify the type of component on which the Feedforward will be applied
+  - `source::Type{T}` : The VariableType, ParameterType, or AuxVariableType naming the quantity in the system state that the Feedforward reads
+  - `affected_values::Vector{DataType}` : Specify the variable the reservoir limit will be applied to
+  - `number_of_periods::Int` : The number of consecutive time steps each constraint sums over
+"""
+struct ReservoirLimitFeedforward <: AbstractAffectFeedforward
+    optimization_container_key::OptimizationContainerKey
+    affected_values::Vector{<:OptimizationContainerKey}
+    number_of_periods::Int
+    function ReservoirLimitFeedforward(;
+        component_type::Type{<:PSY.Component},
+        source::Type{T},
+        affected_values::Vector{DataType},
+        number_of_periods::Int,
+        meta = IOM.CONTAINER_KEY_EMPTY_META,
+    ) where {T}
+        key, values_vector = _feedforward_key_and_values(
+            ReservoirLimitFeedforward,
+            T,
+            component_type,
+            affected_values,
+            meta,
+        )
+        new(key, values_vector, number_of_periods)
+    end
+end
+
+get_default_parameter_type(::ReservoirLimitFeedforward, _) = ReservoirLimitParameter
+get_number_of_periods(ff::ReservoirLimitFeedforward) = ff.number_of_periods
+
+"""
+    HydroUsageLimitFeedforward(
+        component_type::Type{<:PSY.Component},
+        source::Type{T},
+        affected_values::Vector{DataType},
+        meta = CONTAINER_KEY_EMPTY_META
+    ) where {T}
+
+Bounds a hydro unit's cumulative active power usage, summed over the full model horizon, to
+a hydro energy usage limit read from the system state. The recommended source is the
+`HydroEnergyOutput` auxiliary variable.
+
+# Arguments:
+
+  - `component_type::Type{<:PSY.Component}` : Specify the type of component on which the Feedforward will be applied
+  - `source::Type{T}` : The VariableType, ParameterType, or AuxVariableType naming the quantity in the system state that the Feedforward reads
+  - `affected_values::Vector{DataType}` : Specify the `HydroUsageLimitParameter` container the limit is read into
+"""
+struct HydroUsageLimitFeedforward <: AbstractAffectFeedforward
+    optimization_container_key::OptimizationContainerKey
+    affected_values::Vector{<:OptimizationContainerKey}
+    function HydroUsageLimitFeedforward(;
+        component_type::Type{<:PSY.Component},
+        source::Type{T},
+        affected_values::Vector{DataType},
+        meta = IOM.CONTAINER_KEY_EMPTY_META,
+    ) where {T}
+        key, values_vector = _feedforward_key_and_values(
+            HydroUsageLimitFeedforward,
+            T,
+            component_type,
+            affected_values,
+            meta,
+        )
+        new(key, values_vector)
+    end
+end
+
+get_default_parameter_type(::HydroUsageLimitFeedforward, _) = HydroUsageLimitParameter
+_valid_affected_type(::Type{HydroUsageLimitFeedforward}, ::Type{<:VariableType}) = false
+_valid_affected_type(::Type{HydroUsageLimitFeedforward}, ::Type{<:ParameterType}) = true
+_affected_type_description(::Type{HydroUsageLimitFeedforward}) = "ParameterType"
+
+# `ReservoirTargetParameter`, `ReservoirLimitParameter`, and `HydroUsageLimitParameter`
+# containers are keyed only by parameter type and component type (the generic
+# `VariableValueParameter` feedforward path in `common_models/add_parameters.jl`), not by
+# source, so two differing-source feedforwards of the same concrete type would collide on one
+# container deep inside argument construction -- the same failure class `_check_bound_conflict`
+# guards against for the bound feedforwards. An identical second attachment is caught by
+# `_duplicate_feedforward` before this ever runs.
+function _check_hydro_feedforward_source_conflict(
+    a::T,
+    b::T,
+) where {
+    T <: Union{
+        ReservoirTargetFeedforward,
+        ReservoirLimitFeedforward,
+        HydroUsageLimitFeedforward,
+    },
+}
+    throw(
+        ArgumentError(
+            "Cannot attach a second $T for component type $(get_component_type(b)): " *
+            "$(get_optimization_container_key(a)) is already attached; " *
+            "$(get_optimization_container_key(b)) would conflict. Only one $T per device " *
+            "model is supported today.",
+        ),
     )
 end
