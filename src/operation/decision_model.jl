@@ -228,12 +228,11 @@ function solve!(
                             IOM.make_system_dirname(sys),
                         )
                         # Re-solving into an existing directory must not rewrite the system and its time series.
-                        # `unit_system = :device_base`, not the `:original` default: that one
-                        # reproduces the document a System was read from and needs the round-trip
-                        # ledger, which a model's system carries only when it was built from a
-                        # document. Device base is what PSY stores internally.
+                        # `power_units = :component_base` is what PSY stores internally, so the
+                        # write needs no unit conversion and no round-trip ledger — a model's
+                        # system carries one only when it was built from a document.
                         !ispath(sys_dir) &&
-                            PSY.to_file(sys, sys_dir; unit_system = :device_base)
+                            PSY.to_file(sys, sys_dir; power_units = :component_base)
                     end
                 end
                 @info "\n$(RUN_OPERATION_MODEL_TIMER)\n"

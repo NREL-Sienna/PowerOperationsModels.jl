@@ -159,7 +159,12 @@ import InfrastructureOptimizationModels:
     start_up_cost,
     _get_initial_condition_type,
     set_ic_quantity!,
-    update_container_parameter_values!
+    update_container_parameter_values!,
+    # Feedforwards machinery
+    AbstractAffectFeedforward,
+    get_feedforwards,
+    get_optimization_container_key,
+    get_component_type
 
 # Market bid cost: import IOM functions that POM extends with device-specific methods
 import InfrastructureOptimizationModels:
@@ -249,6 +254,7 @@ include("core/network_formulations.jl")
 include("core/branch_slack_specs.jl")
 include("core/problem_template.jl")
 include("core/feedforward_interface.jl")
+include("feedforward/feedforwards.jl")
 include("core/initial_conditions.jl")
 
 # Common models - expression infrastructure
@@ -260,6 +266,8 @@ include("common_models/add_to_expression.jl")
 include("common_models/objective_function.jl")
 # add_param_container.jl: moved into IOM
 include("common_models/add_parameters.jl")
+include("feedforward/feedforward_arguments.jl")
+include("feedforward/feedforward_constraints.jl")
 include("common_models/make_system_expressions.jl")
 include("common_models/reserve_range_constraints.jl")
 include("common_models/branch_rating_constraints.jl")
@@ -573,6 +581,21 @@ export FlowReactivePowerFromToVariable
 export FlowReactivePowerToFromVariable
 export PhaseShifterAngle
 
+# Feedforwards
+export UpperBoundFeedforward
+export LowerBoundFeedforward
+export SemiContinuousFeedforward
+export FixValueFeedforward
+export WaterLevelBudgetFeedforward
+export ReservoirTargetFeedforward
+export ReservoirLimitFeedforward
+export HydroUsageLimitFeedforward
+export attach_feedforward!
+export FeedforwardUpperBoundConstraint
+export FeedforwardLowerBoundConstraint
+export FeedforwardSemiContinuousConstraint
+export FeedforwardFixValueConstraint
+
 # Feedforward Slack Variables
 export UpperBoundFeedForwardSlack
 export LowerBoundFeedForwardSlack
@@ -665,6 +688,9 @@ export TurbinePowerOutputConstraint
 export ReservoirHeadToVolumeConstraint
 export ReservoirInventoryConstraint
 export FeedForwardWaterLevelBudgetConstraint
+export FeedforwardEnergyTargetConstraint
+export FeedforwardIntegralLimitConstraint
+export FeedForwardHydroUsageLimitConstraint
 
 ####### Hydro Expressions ########
 export HydroServedReserveUpExpression

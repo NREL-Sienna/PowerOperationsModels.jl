@@ -584,7 +584,7 @@ end
     set_operation_cost!(
         iloadbus4,
         MarketBidCost(;
-            no_load_cost = LinearCurve(0.0),
+            minimum_energy_offer = LinearCurve(0.0),
             start_up = (hot = 0.0, warm = 0.0, cold = 0.0),
             shut_down = LinearCurve(0.0),
             incremental_offer_curves = make_market_bid_curve(
@@ -608,7 +608,7 @@ end
     set_operation_cost!(
         iloadbus4,
         MarketBidCost(;
-            no_load_cost = LinearCurve(0.0),
+            minimum_energy_offer = LinearCurve(0.0),
             start_up = (hot = 0.0, warm = 0.0, cold = 0.0),
             shut_down = LinearCurve(0.0),
             decremental_offer_curves = make_market_bid_curve(
@@ -770,7 +770,7 @@ end
         base_power = PSY.get_base_power(il_load, PSY.NU),
         load_balance_time_horizon = 1,
         operation_cost = LoadCost(;
-            variable = CostCurve(
+            variable_operation_cost = CostCurve(
                 LinearCurve(0.0),
                 PSY.NU,
                 LinearCurve(1.0),
@@ -883,7 +883,7 @@ function _build_shiftable_load_system()
         base_power = PSY.get_base_power(il_load, PSY.NU),
         load_balance_time_horizon = 1,
         operation_cost = LoadCost(;
-            variable = CostCurve(
+            variable_operation_cost = CostCurve(
                 LinearCurve(0.0),
                 PSY.NU,
                 LinearCurve(1.0),
