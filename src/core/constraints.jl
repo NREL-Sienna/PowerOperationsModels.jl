@@ -197,7 +197,9 @@ The specified constraints are formulated as:
 struct HVDCPowerBalance <: ConstraintType end
 struct FrequencyResponseConstraint <: ConstraintType end
 """
-Struct to create the constraint the AC branch flows depending on the network model.
+Equality-constrains a branch's flow according to its network model. Under `StaticBranchBounds`
+flow is stored as a variable, for use in feed-forwards; under `StaticBranch` it is an expression
+(`BThetaBranchFlow` on DCP, `PTDFBranchFlow` on PTDF) and no such variable is created.
 For more information check [Branch Formulations](@ref PowerSystems.Branch-Formulations).
 
 The specified constraint depends on the network model chosen. The most common application is the StaticBranch in a PTDF Network Model:
@@ -227,15 +229,25 @@ struct ReferenceBusConstraint <: ConstraintType end
 """Rectangular-coordinate voltage magnitude bounds: vmin² ≤ vr² + vi² ≤ vmax²."""
 struct VoltageMagnitudeConstraint <: ConstraintType end
 """
+Supertype for the constraints a controlled transformer circuit imposes, one per
+`PSY.TransformerControlObjective` that POM models.
+"""
+abstract type TransformerControlConstraint <: ConstraintType end
+"""
 Imposed by transformer circuits with VOLTAGE control on a branch formulation
 with controls enabled.
 """
-struct VoltageControlConstraint <: ConstraintType end
+struct VoltageControlConstraint <: TransformerControlConstraint end
 """
 Imposed by transformer circuits with REACTIVE_POWER_FLOW control on a branch
 formulation with controls enabled.
 """
-struct ReactivePowerFlowControlConstraint <: ConstraintType end
+struct ReactivePowerFlowControlConstraint <: TransformerControlConstraint end
+"""
+Imposed by transformer circuits with ACTIVE_POWER_FLOW control on a branch
+formulation with controls enabled.
+"""
+struct ActivePowerFlowControlConstraint <: TransformerControlConstraint end
 """
 Ties a component-owned [`RegulatedVoltageMagnitude`](@ref) auxiliary variable to the
 rectangular voltage components at its regulated bus under ACR/IVR formulations. One
@@ -302,7 +314,7 @@ struct RampConstraint <: ConstraintType end
 struct RampLimitConstraint <: ConstraintType end
 struct RangeLimitConstraint <: ConstraintType end
 """
-Struct to create the constraint that set the AC flow limits through AC branches and HVDC two-terminal branches.
+Constrains the upper and lower bounds of a branch's flow, which is equality-constrained by NetworkFlowConstraints.
 
 For more information check [Branch Formulations](@ref PowerSystems.Branch-Formulations).
 

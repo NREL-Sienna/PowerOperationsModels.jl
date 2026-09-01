@@ -94,13 +94,22 @@ end
             @test JuMP.upper_bound(var) ≈ band.max
         end
 
-        cons = _control_constraints(container, _control_constraint(mode), case.device_type)
-        @test cons !== nothing
-        if cons !== nothing
-            @test unique(first(k) for k in keys(cons.data)) == [fixture.axis_name]
-            for side in 1:2, t in get_time_steps(container)
-                @test haskey(cons.data, (fixture.axis_name, side, t))
+        for other in TAP_CONTROLS
+            cons =
+                _control_constraints(
+                    container,
+                    _control_constraint(other),
+                    case.device_type,
+                )
+            if other !== mode
+                cons === nothing || @test isempty(axes(cons)[1])
+                continue
             end
+            @test cons !== nothing
+            cons === nothing && continue
+            @test axes(cons)[1] == [fixture.axis_name]
+            @test size(cons) == (1, 2, length(get_time_steps(container)))
+            @test all(isassigned(cons.data, i) for i in eachindex(cons.data))
         end
     end
 end
@@ -125,7 +134,7 @@ end
         @test !_has_control_constraints(container)
 
         log = read(joinpath(output_dir, "operation_problem.log"), String)
-        @test occursin("DC networks do not support variable-tap", log)
+        @test occursin("tap control is not supported", log)
     end
 end
 
@@ -286,7 +295,6 @@ end
         @test isapprox(complex(y.g22, y.b22), Y22; rtol = 1e-10, atol = 1e-12)
     end
 
-    model = JuMP.Model()
     sys = PSB.build_system(PSITestSystems, "c_sys14")
     for br in Iterators.flatten((
         PSY.get_components(PSY.Line, sys),
@@ -294,7 +302,7 @@ end
     ))
         adm = PNM.branch_admittance(br)
         check_terms(
-            POM._tapped_admittance(model, adm, adm.tap),
+            POM._tapped_admittance(adm, adm.tap),
             PNM.ybus_branch_entries(br),
         )
     end
@@ -308,7 +316,7 @@ end
         for tap in (0.9, 1.0, 1.1, 1.25)
             PSY.set_tap!(circuit, tap)
             check_terms(
-                POM._tapped_admittance(model, adm, tap),
+                POM._tapped_admittance(adm, tap),
                 PNM.ybus_branch_entries(tr),
             )
         end
@@ -322,7 +330,7 @@ end
         winding = PNM.ThreeWindingTransformerCircuit(tr3w, index)
         adm = PNM.branch_admittance(winding)
         check_terms(
-            POM._tapped_admittance(model, adm, adm.tap),
+            POM._tapped_admittance(adm, adm.tap),
             PNM.ybus_branch_entries(winding),
         )
 
@@ -333,7 +341,7 @@ end
             for tap in (0.9, 1.0, 1.1, 1.25)
                 PSY.set_tap!(star_leg, tap)
                 check_terms(
-                    POM._tapped_admittance(model, adm, tap),
+                    POM._tapped_admittance(adm, tap),
                     PNM.ybus_branch_entries(winding),
                 )
             end
@@ -430,30 +438,4 @@ function _build_log(sys, network_formulation, device_type; kwargs...)
         optimizer = ipopt_optimizer, output_dir = dir, kwargs...,
     )
     return read(joinpath(dir, "operation_problem.log"), String)
-end
-
-@testset "circuits with no control block draw no unimplemented-control warning" begin
-    for objective in (
-        PSY.TransformerControlObjective.UNDEFINED,
-        PSY.TransformerControlObjective.FIXED,
-        PSY.TransformerControlObjective.VOLTAGE_DISABLED,
-        PSY.TransformerControlObjective.REACTIVE_POWER_FLOW_DISABLED,
-    )
-        fixture = _controlled_sys14(objective)
-        log = _build_log(fixture.sys, ACPNetworkModel, PSY.TwoWindingTransformer)
-        @test !occursin("not yet implemented", log)
-    end
-end
-
-@testset "a positive control objective POM does not model warns once per circuit" begin
-    for objective in (
-        PSY.TransformerControlObjective.ACTIVE_POWER_FLOW,
-        PSY.TransformerControlObjective.CONTROL_OF_DC_LINE,
-        PSY.TransformerControlObjective.ASYMMETRIC_ACTIVE_POWER_FLOW,
-    )
-        fixture = _controlled_sys14(objective)
-        log = _build_log(fixture.sys, ACPNetworkModel, PSY.TwoWindingTransformer)
-        @test occursin("not yet implemented", log)
-        @test occursin(string(objective), log)
-    end
 end

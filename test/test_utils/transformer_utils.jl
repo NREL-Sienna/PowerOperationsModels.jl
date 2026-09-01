@@ -1,20 +1,40 @@
 const VOLTAGE_CONTROL = PSY.TransformerControlObjective.VOLTAGE
 const Q_FLOW_CONTROL = PSY.TransformerControlObjective.REACTIVE_POWER_FLOW
+const P_FLOW_CONTROL = PSY.TransformerControlObjective.ACTIVE_POWER_FLOW
 const TAP_CONTROLS = (VOLTAGE_CONTROL, Q_FLOW_CONTROL)
 
-const AC_NETWORKS =
-    (ACPNetworkModel, ACRNetworkModel, LPACCNetworkModel, IVRNetworkModel)
-const DC_NETWORKS = (DCPNetworkModel, DCPLLNetworkModel, PTDFNetworkModel)
+const VOLTAGE_NETWORKS = (ACPNetworkModel, ACRNetworkModel, LPACCNetworkModel)
+const AC_NETWORKS = (VOLTAGE_NETWORKS..., IVRNetworkModel)
+const DC_NETWORKS = (DCPNetworkModel, DCPLLNetworkModel)
+# The networks that build a PhaseShifterAngle. NFA is absent: it has no angles.
+const PHASE_NETWORKS = (DCPNetworkModel, DCPLLNetworkModel, PTDFNetworkModel)
 
 const CONTROL_FORMULATIONS = (StaticBranch, StaticBranchBounds)
 
 const TRANSFORMER_NAMES = ["Trans1", "Trans2", "Trans3", "Trans4"]
+# `Trans1` (bus 4 -> 9) closes a loop with `Trans3` (4 -> 7) and `Line16` (7 -> 9), so a
+# phase shift on it actually redistributes flow. `Trans4` (7 -> 8) is radial — its flow is
+# pinned by KCL and no phase control can move it.
+const MESHED_TRANSFORMER_INDEX = 1
 
 # A controlled-quantity band is objective-shaped: VOLTAGE bands are bus voltage magnitudes,
-# REACTIVE_POWER_FLOW bands are terminal flows in per-unit and have to fit inside the
-# circuit rating.
-_default_quantity_limits(objective) =
-    objective === Q_FLOW_CONTROL ? (min = -0.05, max = 0.05) : (min = 0.95, max = 1.05)
+# REACTIVE_POWER_FLOW and ACTIVE_POWER_FLOW bands are terminal flows in per-unit and have
+# to fit inside the circuit rating.
+function _default_quantity_limits(objective)
+    if objective === Q_FLOW_CONTROL
+        return (min = -0.05, max = 0.05)
+    elseif objective === P_FLOW_CONTROL
+        return (min = -1.0, max = 1.0)
+    else
+        return (min = 0.95, max = 1.05)
+    end
+end
+
+# `control_limits` is the free variable's own band: a tap ratio for the tap objectives, a
+# phase angle in radians for the active-power one, so the PSY default `(0.9, 1.1)` is
+# tap-shaped and unusable under a phase objective.
+_default_control_limits(objective) =
+    objective === P_FLOW_CONTROL ? (min = -0.3, max = 0.3) : (min = 0.9, max = 1.1)
 
 const T3W_NAME = "ThreeWindingTransformer_busD"
 const T3W_WINDINGS = ["$(T3W_NAME)_winding_$i" for i in 1:3]
@@ -28,12 +48,16 @@ function _controlled_sys14(
     circuit_index = 1,
     regulated = 9,
     quantity_limits = _default_quantity_limits(objective),
-    control_limits = (min = 0.9, max = 1.1),
+    control_limits = _default_control_limits(objective),
+    alpha = nothing,
 )
     sys = PSB.build_system(PSITestSystems, "c_sys14")
     name = TRANSFORMER_NAMES[circuit_index]
     transformer = PSY.get_component(PSY.TwoWindingTransformer, sys, name)
     circuit = PSY.get_circuit(transformer)
+    # PSB ships no phase shifter: every c_sys14 circuit has α = 0, so a fixture that needs
+    # a non-zero static shift has to set one.
+    isnothing(alpha) || PSY.set_α!(circuit, alpha)
     PSY.set_control_objective!(circuit, objective)
     PSY.set_regulated_bus_number!(circuit, regulated)
     PSY.set_controlled_quantity_limits!(circuit, quantity_limits)
@@ -166,11 +190,13 @@ function _controlled_sys3w(
     circuit_index = 1,
     regulated = nothing,
     quantity_limits = _default_quantity_limits(objective),
-    control_limits = (min = 0.9, max = 1.1),
+    control_limits = _default_control_limits(objective),
+    alpha = nothing,
 )
     sys = _sys5_with_3w()
     transformer = PSY.get_component(PSY.ThreeWindingTransformer, sys, T3W_NAME)
     circuit = PSY.get_circuits(transformer)[circuit_index]
+    isnothing(alpha) || PSY.set_α!(circuit, alpha)
     # Each winding arcs terminal -> star, so the from-bus is this winding's own terminal.
     number = if isnothing(regulated)
         PSY.get_number(PSY.get_from(PSY.get_arc(circuit)))

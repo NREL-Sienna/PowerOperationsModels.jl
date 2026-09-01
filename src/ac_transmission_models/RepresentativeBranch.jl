@@ -10,12 +10,10 @@ One branch as the reduction-aware builders see it. Build with
 [`_foreach_branch`](@ref).
 
 `B` is either a PSY.Device, a PNM.AbstractReductionAggregate, or a
-PNM.ThreeWindingTransformerCircuit. `component_type` is the PSY type the arc is registered
-under, i.e. the component type its optimization containers are keyed by.
+PNM.ThreeWindingTransformerCircuit.
 """
 struct RepresentativeBranch{B}
     name::String
-    component_type::DataType
     arc::Tuple{Int, Int}
     reduction::Symbol
     branch::B
@@ -47,7 +45,6 @@ function _make_representative_branch(
     (arc, reduction) = arc_map[name]
     return RepresentativeBranch(
         name,
-        T,
         arc,
         reduction,
         all_branch_maps_by_type[reduction][T][arc],
@@ -83,7 +80,7 @@ function _representative_branches(
 end
 
 """
-One entry per device regardless of reduction. Use for variable container axes.
+One entry per reduction catalog entry name. Arcs may appear multiple times.
 """
 function _all_branches(
     network_model::NetworkModel,
@@ -103,9 +100,9 @@ function _all_branches(
 end
 
 """
-The [`RepresentativeBranch`](@ref) carrying component `name` of type `T`, or `nothing` when
-the name belongs to no reduced arc. A component absorbed into a reduction is redirected to
-the entry that represents it.
+The [`RepresentativeBranch`](@ref) carrying component `name` of type `T`.
+A component absorbed into a reduction is redirected to the entry that
+represents it.
 """
 function _representative_branch(
     network_model::NetworkModel,
@@ -124,9 +121,9 @@ function _representative_branch(
             T,
             Dict{String, String}(),
         )
-        get(redirects, name, nothing)
+        get(redirects, name, string())
     end
-    isnothing(entry_name) && return nothing
+    isempty(entry_name) && error("$(T) \"$(name)\" does not exist in the reduction maps.")
     return _make_representative_branch(
         nr,
         PNM.get_all_branch_maps_by_type(catalog),
@@ -155,10 +152,6 @@ end
 _from_name(rep::RepresentativeBranch) = _bus_name(rep, _from_number(rep))
 _to_name(rep::RepresentativeBranch) = _bus_name(rep, _to_number(rep))
 
-_is_aggregate(::PNM.AbstractReductionAggregate) = true
-_is_aggregate(::PSY.ACTransmission) = false
-_is_aggregate(rep::RepresentativeBranch) = _is_aggregate(rep.branch)
-
 ################################## Electrical ##############################################
 
 _admittance(branch::PNM.AbstractReductionAggregate, nr::PNM.NetworkReductionData) =
@@ -182,11 +175,29 @@ _dc_shift_injection(rep::RepresentativeBranch) =
 
 ################################## Transformer control #####################################
 
+const _VOLTAGE_CONTROL = PSY.TransformerControlObjective.VOLTAGE
+const _REACTIVE_CONTROL = PSY.TransformerControlObjective.REACTIVE_POWER_FLOW
+const _ACTIVE_CONTROL = PSY.TransformerControlObjective.ACTIVE_POWER_FLOW
+const _UNDEFINED_CONTROL = PSY.TransformerControlObjective.UNDEFINED
+
+const _TAP_CONTROLS = (_VOLTAGE_CONTROL, _REACTIVE_CONTROL)
+const _PHASE_CONTROLS = (_ACTIVE_CONTROL,)
+
+_supports_tap_control(::NetworkModel{<:NativeACNetworkModel}) = true
+_supports_tap_control(::NetworkModel) = false
+
+_supports_phase_control(
+    ::NetworkModel{
+        <:Union{DCPNetworkModel, AbstractDCPLLNetworkModel, AbstractPTDFNetworkModel},
+    },
+) = true
+_supports_phase_control(::NetworkModel) = false
+
 _get_circuit(t::PSY.TwoWindingTransformer) = PSY.get_circuit(t)
 _get_circuit(t::PNM.ThreeWindingTransformerCircuit) = t.circuit
 _get_circuit(::Union{PSY.ACTransmission, PNM.AbstractReductionAggregate}) = nothing
 
-_control_objective(::Nothing, ::DeviceModel) = PSY.TransformerControlObjective.UNDEFINED
+_control_objective(::Nothing, ::DeviceModel) = _UNDEFINED_CONTROL
 _control_objective(c::PSY.TransformerCircuit, d::DeviceModel) =
     if PSY.get_available(c) && _control_enabled(d)
         PSY.get_control_objective(c)
@@ -196,41 +207,55 @@ _control_objective(c::PSY.TransformerCircuit, d::DeviceModel) =
 _control_objective(rep::RepresentativeBranch, d::DeviceModel) =
     _control_objective(_get_circuit(rep.branch), d)
 
-const _VOLTAGE_CONTROL = PSY.TransformerControlObjective.VOLTAGE
-const _REACTIVE_CONTROL = PSY.TransformerControlObjective.REACTIVE_POWER_FLOW
-const _TAP_CONTROLS = (_VOLTAGE_CONTROL, _REACTIVE_CONTROL)
-
-_voltage_controlled(rep::RepresentativeBranch, d::DeviceModel) =
-    _control_objective(rep, d) === _VOLTAGE_CONTROL
-_reactive_controlled(rep::RepresentativeBranch, d::DeviceModel) =
-    _control_objective(rep, d) === _REACTIVE_CONTROL
-_tap_controlled(
+function _tap_controlled(
     rep::RepresentativeBranch,
     d::DeviceModel,
-    ::NetworkModel{<:NativeACNetworkModel},
-) =
-    _control_objective(rep, d) in _TAP_CONTROLS
-_tap_controlled(::RepresentativeBranch, ::DeviceModel, ::NetworkModel) = false
+    network_model::NetworkModel,
+)
+    return _supports_tap_control(network_model) &&
+           _control_objective(rep, d) in _TAP_CONTROLS
+end
 
-_controlled_circuit_names(
+function _phase_controlled(
+    rep::RepresentativeBranch,
+    d::DeviceModel,
+    network_model::NetworkModel,
+)
+    return _supports_phase_control(network_model) &&
+           _control_objective(rep, d) in _PHASE_CONTROLS
+end
+
+function _controlled_circuit_names(
     branch::Union{PSY.ACTransmission, PNM.ThreeWindingTransformerCircuit},
     device_model::DeviceModel,
-) =
-    if _control_objective(_get_circuit(branch), device_model) in _TAP_CONTROLS
-        [PNM.get_name(branch)]
-    else
-        String[]
+    network_model::NetworkModel,
+)
+    objective = _control_objective(_get_circuit(branch), device_model)
+    modeled =
+        (objective in _TAP_CONTROLS && _supports_tap_control(network_model)) ||
+        (objective in _PHASE_CONTROLS && _supports_phase_control(network_model))
+    if modeled
+        return [PNM.get_name(branch)]
     end
+    return String[]
+end
 _controlled_circuit_names(
     entry::PNM.AbstractReductionAggregate,
     device_model::DeviceModel,
+    network_model::NetworkModel,
 ) = reduce(
     vcat,
-    (_controlled_circuit_names(member, device_model) for member in entry);
+    (
+        _controlled_circuit_names(member, device_model, network_model) for
+        member in entry
+    );
     init = String[],
 )
-_controlled_circuit_names(rep::RepresentativeBranch, device_model::DeviceModel) =
-    _controlled_circuit_names(rep.branch, device_model)
+_controlled_circuit_names(
+    rep::RepresentativeBranch,
+    device_model::DeviceModel,
+    network_model::NetworkModel,
+) = _controlled_circuit_names(rep.branch, device_model, network_model)
 
 _control_limits(::Nothing) = (min = -Inf, max = Inf)
 _control_limits(c::PSY.TransformerCircuit) = PSY.get_control_limits(c)
@@ -339,21 +364,21 @@ end
 
 _angle_limits(d::PSY.Line) = PSY.get_angle_limits(d)
 _angle_limits(d::PSY.MonitoredLine) = PSY.get_angle_limits(d)
-_angle_limits(::PSY.ACTransmission) = (min = -π / 2, max = π / 2)
-_angle_limits(rep::RepresentativeBranch) =
-    _is_aggregate(rep) ? (min = -π / 2, max = π / 2) : _angle_limits(rep.branch)
+_angle_limits(::Union{PSY.ACTransmission, PNM.AbstractReductionAggregate}) =
+    (min = -π / 2, max = π / 2)
+_angle_limits(rep::RepresentativeBranch) = _angle_limits(rep.branch)
 
 # A branch constrains the angle difference when it carries angle-limit data (only
 # Line / MonitoredLine do) narrower than the PSY default ±π window.
-_constrains_angle_difference(::PSY.ACTransmission) = false
+_is_binding_angle_window(lims) = !(lims.min ≈ -π && lims.max ≈ π)
+_constrains_angle_difference(::Union{PSY.ACTransmission, PNM.AbstractReductionAggregate}) =
+    false
 _constrains_angle_difference(d::PSY.Line) =
     _is_binding_angle_window(PSY.get_angle_limits(d))
 _constrains_angle_difference(d::PSY.MonitoredLine) =
     _is_binding_angle_window(PSY.get_angle_limits(d))
-_is_binding_angle_window(lims) = !(lims.min ≈ -π && lims.max ≈ π)
-
 _constrains_angle_difference(rep::RepresentativeBranch) =
-    !_is_aggregate(rep) && _constrains_angle_difference(rep.branch)
+    _constrains_angle_difference(rep.branch)
 
 # Widest angle excursion the arc allows, the `vad_max` of the LPAC cosine relaxation.
 function _max_angle_difference(rep::RepresentativeBranch)
