@@ -176,6 +176,7 @@ function _partition_by_curve_style(devices)
     return fixed, divisible
 end
 
+"Envelope MW a `VirtualParticipant`'s bid is capped at for the given offer direction."
 _bid_max_mw(::IOM.IncrementalOffer, d::PSY.VirtualParticipant) = PSY.get_max_supply(d)
 _bid_max_mw(::IOM.DecrementalOffer, d::PSY.VirtualParticipant) = PSY.get_max_demand(d)
 _bid_settlement_sign(::IOM.IncrementalOffer) = 1.0

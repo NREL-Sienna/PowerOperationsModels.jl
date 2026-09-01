@@ -31,7 +31,7 @@ function add_device_reserve_offers!(
         # Keep the unit's own marginal energy cost: read the proportional (linear) term of its
         # existing variable cost before overwriting, and use it as the single-block energy offer.
         energy_slope = PSY.get_proportional_term(
-            PSY.get_value_curve(PSY.get_variable(get_operation_cost(g))),
+            PSY.get_value_curve(PSY.get_variable_operation_cost(get_operation_cost(g))),
         )
         set_operation_cost!(
             g,
@@ -177,7 +177,7 @@ function add_per_hour_reserve_offer!(
 )
     pmax = PSY.get_max_active_power(g, PSY.NU)
     energy_slope = PSY.get_proportional_term(
-        PSY.get_value_curve(PSY.get_variable(get_operation_cost(g))))
+        PSY.get_value_curve(PSY.get_variable_operation_cost(get_operation_cost(g))))
     set_operation_cost!(
         g,
         MarketBidCost(;
@@ -377,7 +377,7 @@ function build_reserve_market_system(; load_offer_mw = 10.0, load_offer_price = 
     for (i, g) in enumerate(thermals)
         pmax = PSY.get_max_active_power(g, PSY.NU)
         energy_slope = PSY.get_proportional_term(
-            PSY.get_value_curve(PSY.get_variable(get_operation_cost(g))),
+            PSY.get_value_curve(PSY.get_variable_operation_cost(get_operation_cost(g))),
         )
         set_operation_cost!(
             g,
@@ -560,7 +560,7 @@ function _offline_ordc_uc_system()
             1.0e4
         else
             PSY.get_proportional_term(
-                PSY.get_value_curve(PSY.get_variable(get_operation_cost(g))),
+                PSY.get_value_curve(PSY.get_variable_operation_cost(get_operation_cost(g))),
             )
         end
         PSY.set_operation_cost!(

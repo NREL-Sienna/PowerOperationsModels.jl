@@ -74,8 +74,8 @@ function replace_load_with_interruptible!(sys::System)
         conformity = get_conformity(load1),
     )
     add_component!(sys, interruptible_load)
-    for ts_key in get_time_series_keys(load1)
-        ts = get_time_series(load1, ts_key)
+    for md in IS.list_time_series_metadata(load1)
+        ts = get_time_series(load1, IS.get_time_series_key(md))
         add_time_series!(
             sys,
             interruptible_load,
@@ -112,20 +112,26 @@ function tweak_system!(sys::System, load_pow_mult, therm_pow_mult, therm_price_m
             max = old_limits.max * therm_pow_mult * PSY.SU,
         )
         set_active_power_limits!(therm, new_limits)
-        if get_variable(op_cost) isa CostCurve{LinearCurve} ||
-           get_variable(op_cost) isa CostCurve{QuadraticCurve}
-            prop = get_proportional_term(get_value_curve(get_variable(op_cost)))
-            set_variable!(op_cost, CostCurve(LinearCurve(prop * therm_price_mult)))
-        elseif get_variable(op_cost) isa CostCurve{PiecewiseIncrementalCurve}
-            pwl = get_value_curve(get_variable(op_cost))
+        if get_variable_operation_cost(op_cost) isa CostCurve{LinearCurve} ||
+           get_variable_operation_cost(op_cost) isa CostCurve{QuadraticCurve}
+            prop =
+                get_proportional_term(get_value_curve(get_variable_operation_cost(op_cost)))
+            set_variable_operation_cost!(
+                op_cost,
+                CostCurve(LinearCurve(prop * therm_price_mult)),
+            )
+        elseif get_variable_operation_cost(op_cost) isa CostCurve{PiecewiseIncrementalCurve}
+            pwl = get_value_curve(get_variable_operation_cost(op_cost))
             new_pwl = PiecewiseIncrementalCurve(
                 therm_price_mult * get_initial_input(pwl),
                 get_x_coords(pwl),
                 therm_price_mult * get_slopes(pwl),
             )
-            set_variable!(op_cost, CostCurve(new_pwl))
+            set_variable_operation_cost!(op_cost, CostCurve(new_pwl))
         else
-            error("Unhandled operation cost variable type $(typeof(get_variable(op_cost)))")
+            error(
+                "Unhandled operation cost variable type $(typeof(get_variable_operation_cost(op_cost)))",
+            )
         end
     end
 end
@@ -391,7 +397,7 @@ function remove_thermal_mbcs!(sys::PSY.System)
         old_cost = get_operation_cost(comp)
         old_cost isa MarketBidCost || continue
         new_op_cost = ThermalGenerationCost(;
-            variable = get_incremental_offer_curves(old_cost),
+            variable_operation_cost = get_incremental_offer_curves(old_cost),
             start_up = get_start_up(old_cost),
             shut_down = get_proportional_term(get_shut_down(old_cost)),
             fixed = 0.0,
@@ -405,7 +411,7 @@ function zero_out_thermal_costs!(sys)
         set_operation_cost!(
             comp,
             ThermalGenerationCost(;
-                variable = CostCurve(
+                variable_operation_cost = CostCurve(
                     LinearCurve(0.0),
                 ),
                 start_up = (hot = 0.0, warm = 0.0, cold = 0.0),
@@ -463,11 +469,11 @@ function build_sys_decr2(
 
     # make the max_active_power time series constant.
     il = first(get_components(PSY.InterruptiblePowerLoad, sys))
-    for ts_key in get_time_series_keys(il)
-        if get_name(ts_key) == "max_active_power"
+    for md in IS.list_time_series_metadata(il)
+        if IS.get_name(md) == "max_active_power"
             max_active_power_ts = get_time_series(
                 first(get_components(PSY.InterruptiblePowerLoad, sys)),
-                ts_key,
+                IS.get_time_series_key(md),
             )
             max_max_active_power = maximum(maximum(values(max_active_power_ts.data)))
             remove_time_series!(sys, Deterministic, il, "max_active_power")
@@ -497,7 +503,7 @@ function create_multistart_sys(
     tweak_system!(c_sys5_pglib, load_pow_mult, therm_pow_mult, therm_price_mult)
     ms_comp = get_component(SEL_MULTISTART, c_sys5_pglib)
     old_op = get_operation_cost(ms_comp)
-    old_ic = IncrementalCurve(get_value_curve(get_variable(old_op)))
+    old_ic = IncrementalCurve(get_value_curve(get_variable_operation_cost(old_op)))
     new_ii = get_initial_input(old_ic) + get_fixed(old_op)
     new_ic = IncrementalCurve(get_function_data(old_ic), new_ii, nothing)
     set_operation_cost!(

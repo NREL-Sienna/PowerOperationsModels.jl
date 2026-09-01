@@ -51,9 +51,10 @@ function _build_mbtsc_thermal_system(;
     common = (init_time, horizon, interval, count, resolution)
     startup_ts =
         make_deterministic_ts("start_up", start_up_base, start_up_incr, 0.0, common...)
-    shutdown_ts =
-        make_deterministic_ts("shut_down", shut_down_base, shut_down_incr, 0.0, common...)
-    noload_ts = make_deterministic_ts("no_load", no_load_base, 0.0, 0.0, common...)
+    shutdown_ts = make_deterministic_ts(
+        "shut_down", shut_down_base, shut_down_incr, 0.0, common...; linear = true)
+    noload_ts =
+        make_deterministic_ts("no_load", no_load_base, 0.0, 0.0, common...; linear = true)
     incr_init_ts = make_deterministic_ts(
         "initial_input incremental", incr_init_base, incr_init_incr, 0.0, common...)
     decr_init_ts = make_deterministic_ts(

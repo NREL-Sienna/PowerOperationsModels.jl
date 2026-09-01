@@ -157,14 +157,65 @@ function construct_network!(
     return
 end
 
-function _add_dc_phase_shift_injections!(
+# Arcs whose DC shift comes from a `PhaseShifterAngle` variable instead of the stored
+# constant. `_branches_for_var` rejects a controlled circuit that a reduction merged into a
+# composite entry, so a controlled arc carries exactly one circuit and the variable term
+# replaces that arc's whole injection.
+function _add_controlled_shift_injections!(
     container::OptimizationContainer,
-    model::NetworkModel{<:AbstractPTDFNetworkModel},
-)
-    network_reduction = get_network_reduction(model)
+    network_model::NetworkModel{<:AbstractPTDFNetworkModel},
+    branch_model::DeviceModel{T},
+    controlled_arcs::Set{Tuple{Int, Int}},
+) where {T <: PSY.ACTransmission}
+    has_container_key(container, PhaseShifterAngle, T) || return
+    phase_var = get_variable(container, PhaseShifterAngle, T)
     nodal_expr = get_expression(container, ActivePowerBalance, PSY.ACBus)
     time_steps = get_time_steps(container)
+    _foreach_branch(_all_branches(network_model, T)) do rep
+        _phase_controlled(rep, branch_model, network_model) || return
+        push!(controlled_arcs, rep.arc)
+        b = _dc_susceptance(rep)
+        from_no, to_no = rep.arc
+        for t in time_steps
+            angle = phase_var[rep.name, t]
+            JuMP.add_to_expression!(nodal_expr[from_no, t], b, angle)
+            JuMP.add_to_expression!(nodal_expr[to_no, t], -b, angle)
+        end
+    end
+    return
+end
+
+# no-op on HVDC and any other non-AC branch model
+_add_controlled_shift_injections!(
+    ::OptimizationContainer,
+    ::NetworkModel,
+    ::DeviceModel,
+    ::Set{Tuple{Int, Int}},
+) = nothing
+
+function _add_shift_injections!(
+    container::OptimizationContainer,
+    network_model::NetworkModel{<:AbstractPTDFNetworkModel},
+    template::PowerOperationsProblemTemplate,
+)
+    controlled_arcs = Set{Tuple{Int, Int}}()
+    for branch_model in values(get_branch_models(template))
+        _add_controlled_shift_injections!(
+            container,
+            network_model,
+            branch_model,
+            controlled_arcs,
+        )
+    end
+    # Every other arc keeps its stored constant. This sweeps the reduced arc axis rather
+    # than the template's branch models because `requires_all_branch_models` is false for
+    # PTDF networks: a shifted arc whose branch type has no DeviceModel is still in the
+    # PTDF, so iterating only modeled types would silently drop its injection.
+    nodal_expr = get_expression(container, ActivePowerBalance, PSY.ACBus)
+    time_steps = get_time_steps(container)
+    network_reduction = get_network_reduction(network_model)
     for arc in PNM.get_arc_axis(network_reduction)
+        arc in controlled_arcs && continue
         injection = PNM.arc_dc_shift_injection(network_reduction, arc)
         iszero(injection) && continue
         from_no, to_no = arc
@@ -186,7 +237,7 @@ function construct_network!(
     _add_balance_slack_variables!(
         container, sys, model, get_market_model(template); reactive = false,
     )
-    _add_dc_phase_shift_injections!(container, model)
+    _add_shift_injections!(container, model, template)
     return
 end
 

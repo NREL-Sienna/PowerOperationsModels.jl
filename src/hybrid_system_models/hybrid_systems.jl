@@ -2344,7 +2344,7 @@ IOM.variable_cost(
     ::Type{HybridThermalActivePower},
     ::Type{<:PSY.HybridSystem},
     ::Type{<:AbstractHybridFormulation},
-) = PSY.get_variable(cost)
+) = PSY.get_variable_operation_cost(cost)
 
 # Renewable subcomponent variable cost (typically a curtailment penalty)
 IOM.variable_cost(

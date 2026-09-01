@@ -38,8 +38,8 @@ get_variable_binary(::Type{ShiftDownActivePowerVariable}, ::Type{<:PSY.ElectricL
 get_variable_lower_bound(::Type{ShiftDownActivePowerVariable}, d::PSY.ElectricLoad, ::Type{PowerLoadShift}) = 0.0
 get_variable_upper_bound(::Type{ShiftDownActivePowerVariable}, d::PSY.ElectricLoad, ::Type{PowerLoadShift}) = nothing # Unbounded above by default, but can be limited by time series parameters
 
-variable_cost(cost::PSY.OperationalCost, ::Type{ShiftUpActivePowerVariable}, ::PSY.ElectricLoad, ::Type{<:AbstractControllablePowerLoadFormulation})=PSY.get_variable(cost)
-variable_cost(cost::PSY.OperationalCost, ::Type{ShiftDownActivePowerVariable}, ::PSY.ElectricLoad, ::Type{<:AbstractControllablePowerLoadFormulation})=PSY.get_variable(cost)
+variable_cost(cost::PSY.OperationalCost, ::Type{ShiftUpActivePowerVariable}, ::PSY.ElectricLoad, ::Type{<:AbstractControllablePowerLoadFormulation})=PSY.get_variable_operation_cost(cost)
+variable_cost(cost::PSY.OperationalCost, ::Type{ShiftDownActivePowerVariable}, ::PSY.ElectricLoad, ::Type{<:AbstractControllablePowerLoadFormulation})=PSY.get_variable_operation_cost(cost)
 
 ########################### Reserve provision, ElectricLoad ################################
 # The inverse of a generator: up reserve is shed (P - r_up >= 0), down reserve is extra
@@ -570,7 +570,8 @@ _active_power_upper_bound(::UnofferedDispatch, ::PSY.ControllableLoad) = 0.0
 # Is this cost curve zero-valued, i.e. it puts no price on the device's dispatch? A market
 # bid with any offer attached (even a supply-side one, which is invalid for a load and is
 # rejected downstream) is an offer, not an absence of one.
-_is_costless_offer(cost::PSY.LoadCost) = PSY.get_variable(cost) == zero(PSY.CostCurve)
+_is_costless_offer(cost::PSY.LoadCost) =
+    PSY.get_variable_operation_cost(cost) == zero(PSY.CostCurve)
 _is_costless_offer(cost::PSY.MarketBidCost) = _has_no_offer_curves(cost)
 # A real (non-placeholder) time-series key means a genuine offer is attached; whether its
 # resolved values are all zero is unknowable before the series is read.
@@ -724,7 +725,7 @@ function proportional_cost(
     t::Int,
 )
     return onvar_cost(container, cost, S, T, U, t) +
-           PSY.get_constant_term(PSY.get_vom_cost(PSY.get_variable(cost))) +
+           PSY.get_constant_term(PSY.get_vom_cost(PSY.get_variable_operation_cost(cost))) +
            PSY.get_fixed(cost)
 end
 
@@ -736,7 +737,7 @@ function onvar_cost(
     ::Type{PowerLoadInterruption},
     t::Int,
 )
-    return _onvar_cost(container, PSY.get_variable(cost), d, t)
+    return _onvar_cost(container, PSY.get_variable_operation_cost(cost), d, t)
 end
 
 # LoadCost has no FuelCurve-backed `_onvar_cost` path; the OnVariable proportional
