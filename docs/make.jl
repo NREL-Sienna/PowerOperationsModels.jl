@@ -17,7 +17,7 @@ pages = OrderedDict(
         "Running a Problem with Service Bids" => "tutorials/generated_service_bids.md",
     ],
     # "How to..." => Any["stub" => "how_to_guides/stub.md"],
-    # "Explanation" => Any["stub" => "explanation/stub.md"],
+    "Explanation" => Any["Feedforwards" => "explanation/feedforwards.md"],
     "Reference" => Any[
         "Formulation Library" => "reference/formulation_library.md",
         "Developers" => [

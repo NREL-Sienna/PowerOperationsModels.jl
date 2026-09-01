@@ -15,7 +15,7 @@ _get_cost_if_exists(::PSY.MarketBidCost) = nothing
 # Time-varying market bids are not fuel curves either (same as the static MBC above);
 # their offer curves live in the cost's offer-curve fields, not a `variable`.
 _get_cost_if_exists(::PSY.MarketBidTimeSeriesCost) = nothing
-_get_cost_if_exists(cost::PSY.OperationalCost) = PSY.get_variable(cost)
+_get_cost_if_exists(cost::PSY.OperationalCost) = PSY.get_variable_operation_cost(cost)
 
 # Predicates for fuel-curve detection. Dispatch over the value returned by
 # `_get_cost_if_exists` so callers can avoid `isa` checks.

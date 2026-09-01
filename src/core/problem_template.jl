@@ -178,6 +178,19 @@ function set_service_model!(
     template::PowerOperationsProblemTemplate,
     model::ServiceModel{<:PSY.Service, <:AbstractServiceFormulation},
 )
+    # IOM's `ServiceModel` constructor still accepts a `feedforwards` kwarg, but POM's
+    # `add_feedforward_arguments!(::ServiceModel, ...)` always throws (service feedforwards
+    # are not implemented; see `feedforward/feedforwards.jl`). Reject it here, at template
+    # definition, rather than let it reach `build!` and fail deep inside argument construction.
+    if !isempty(IOM.get_feedforwards(model))
+        throw(
+            ArgumentError(
+                "Service feedforwards are not supported yet: $(get_component_type(model)) " *
+                "was given $(length(IOM.get_feedforwards(model))) feedforward(s). Construct " *
+                "the `ServiceModel` without the `feedforwards` kwarg.",
+            ),
+        )
+    end
     set_model!(template.services, model)
     return
 end

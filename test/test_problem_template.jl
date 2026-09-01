@@ -76,6 +76,21 @@ end
     )
 end
 
+@testset "set_service_model! rejects feedforwards on ServiceModel" begin
+    template = PowerOperationsProblemTemplate(CopperPlateNetworkModel)
+    ff = UpperBoundFeedforward(;
+        component_type = PSY.ThermalStandard,
+        source = ActivePowerVariable,
+        affected_values = [ActivePowerVariable],
+    )
+    # `ServiceModel`'s `feedforwards` kwarg is still accepted by IOM's constructor; POM must
+    # reject it here, at template definition, rather than let it reach `build!` and fail
+    # deep inside `add_feedforward_arguments!`.
+    service_model =
+        ServiceModel(OnlineReserve{ReserveUp}, RangeReserve; feedforwards = [ff])
+    @test_throws ArgumentError set_service_model!(template, service_model)
+end
+
 @testset "Operations Template Overwrite" begin
     template = PowerOperationsProblemTemplate(CopperPlateNetworkModel)
     set_device_model!(template, PowerLoad, StaticPowerLoad)

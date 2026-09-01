@@ -14,7 +14,7 @@ function add_mbc_inner!(
         error("At least one of incr_curve or decr_curve must be provided")
     end
     mbc = MarketBidCost(;
-        no_load_cost = LinearCurve(0.0),
+        minimum_energy_offer = LinearCurve(0.0),
         start_up = (hot = 0.0, warm = 0.0, cold = 0.0),
         shut_down = LinearCurve(0.0),
     )
@@ -69,8 +69,8 @@ Get a deterministic or DeterministicSingleTimeSeries time series from the system
 function get_deterministic_ts(sys::PSY.System)
     for device in get_components(PSY.Device, sys)
         if has_time_series(device, Union{DeterministicSingleTimeSeries, Deterministic})
-            for key in PSY.get_time_series_keys(device)
-                ts = get_time_series(device, key)
+            for md in IS.list_time_series_metadata(device)
+                ts = get_time_series(device, IS.get_time_series_key(md))
                 if ts isa DeterministicSingleTimeSeries || ts isa Deterministic
                     return ts
                 end
@@ -123,13 +123,15 @@ function extend_mbc!(
         end
 
         # Capture baseline scalar fields from the static MBC to preserve in the TS MBC.
-        old_no_load = get_proportional_term(get_no_load_cost(op_cost))
+        old_no_load = get_proportional_term(get_minimum_energy_offer(op_cost))
         old_start_up = get_start_up(op_cost)
         old_shut_down = get_proportional_term(get_shut_down(op_cost))
 
         # TS-backed no_load and shut_down (constant TS of the baseline scalar value).
-        nl_ts = make_deterministic_ts(sys, "no_load_cost", old_no_load, 0.0, 0.0)
-        sd_ts = make_deterministic_ts(sys, "shut_down_cost", old_shut_down, 0.0, 0.0)
+        nl_ts = make_deterministic_ts(sys, "no_load_cost", old_no_load, 0.0, 0.0;
+            linear = true)
+        sd_ts = make_deterministic_ts(sys, "shut_down_cost", old_shut_down, 0.0, 0.0;
+            linear = true)
         su_ts = make_deterministic_ts(sys, "start_up", Tuple(old_start_up), 0.0, 0.0)
         nl_key = add_time_series!(sys, comp, nl_ts)
         sd_key = add_time_series!(sys, comp, sd_ts)
@@ -186,7 +188,7 @@ function extend_mbc!(
         end
 
         new_cost = MarketBidTimeSeriesCost(;
-            no_load_cost = TimeSeriesLinearCurve(nl_key),
+            minimum_energy_offer = TimeSeriesLinearCurve(nl_key),
             start_up = su_key,
             shut_down = TimeSeriesLinearCurve(sd_key),
             incremental_offer_curves = ts_curves["incremental"],
@@ -209,10 +211,18 @@ function make_deterministic_ts(
     horizon::Period,
     interval::Period,
     window_count::Int,
-    resolution::Period,
+    resolution::Period;
+    linear::Bool = false,
 ) where {T <: Union{Number, Tuple}}
     horizon_count = IS.get_horizon_count(horizon, resolution)
-    ts_data = OrderedDict{DateTime, Vector{T}}()
+    # `linear = true` wraps each scalar as `LinearFunctionData(value, 0.0)` — the element
+    # type `TimeSeriesLinearCurve` keys require (shut-down / no-load cost fields).
+    E = if linear
+        IS.LinearFunctionData
+    else
+        T
+    end
+    ts_data = OrderedDict{DateTime, Vector{E}}()
     for i in 0:(window_count - 1)
         if ini_val isa Tuple
             series = [
@@ -221,6 +231,9 @@ function make_deterministic_ts(
             ]
         else
             series = ini_val .+ res_incr .* (0:(horizon_count - 1)) .+ i * interval_incr
+        end
+        if linear
+            series = IS.LinearFunctionData.(series, 0.0)
         end
         ts_data[init_time + i * interval] = series
     end

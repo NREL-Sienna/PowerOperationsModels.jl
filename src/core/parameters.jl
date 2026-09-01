@@ -124,26 +124,26 @@ Parameter to define energy capacity limits for hydro pump-turbine time series
 struct EnergyCapacityTimeSeriesParameter <: TimeSeriesParameter end
 
 """
-Parameter to define energy target for feedforward
+Reservoir energy target read from the system state
 """
 struct ReservoirTargetParameter <: VariableValueParameter end
 """
-Parameter to define energy limit for feedforward
+Reservoir energy limit read from the system state
 """
 struct ReservoirLimitParameter <: VariableValueParameter end
 
 """
-Parameter to define energy usage limit for feedforward
+Hydro energy usage limit read from the system state
 """
 struct HydroUsageLimitParameter <: VariableValueParameter end
 
 """
-Parameter to define water usage budget for feedforward
+Reservoir water usage budget read from the system state
 """
 struct WaterLevelBudgetParameter <: VariableValueParameter end
 
 """
-Parameter to define the level target for feedforward
+Reservoir level target read from the system state
 """
 struct LevelTargetParameter <: VariableValueParameter end
 
