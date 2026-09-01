@@ -934,3 +934,93 @@ end
         affected_values = [ActivePowerRangeExpressionUB],
     )
 end
+
+@testset "WaterLevelBudgetFeedforward attaches to a HydroReservoir DeviceModel" begin
+    reservoir_model = DeviceModel(HydroReservoir, HydroWaterModelReservoir)
+    ff = WaterLevelBudgetFeedforward(;
+        component_type = HydroReservoir,
+        source = TotalHydroFlowRateReservoirOutgoing,
+        affected_values = [WaterLevelBudgetParameter],
+    )
+    attach_feedforward!(reservoir_model, ff)
+    @test length(IOM.get_feedforwards(reservoir_model)) == 1
+end
+
+@testset "has_waterbudget_feedforward" begin
+    with_ff = DeviceModel(HydroReservoir, HydroWaterModelReservoir)
+    attach_feedforward!(
+        with_ff,
+        WaterLevelBudgetFeedforward(;
+            component_type = HydroReservoir,
+            source = TotalHydroFlowRateReservoirOutgoing,
+            affected_values = [WaterLevelBudgetParameter],
+        ),
+    )
+    @test POM.has_waterbudget_feedforward(with_ff)
+
+    without_ff = DeviceModel(HydroReservoir, HydroWaterModelReservoir)
+    @test !POM.has_waterbudget_feedforward(without_ff)
+end
+
+@testset "WaterLevelBudgetFeedforward rejects a non-ParameterType affected value" begin
+    @test_throws ErrorException WaterLevelBudgetFeedforward(;
+        component_type = HydroReservoir,
+        source = TotalHydroFlowRateReservoirOutgoing,
+        affected_values = [HydroReservoirVolumeVariable],
+    )
+end
+
+@testset "WaterLevelBudgetFeedforward builds the constraint against WaterLevelBudgetParameter" begin
+    # `HydroWaterModelReservoir` + `HydroTurbineWaterLinearCommitment` is the reservoir/
+    # turbine pairing already exercised through `mock_construct_devices!` in
+    # test_device_hydro_constructors.jl (their expressions cross-reference each other, so
+    # both device models' ArgumentConstructStage must run before either's
+    # ModelConstructStage -- `mock_construct_devices!` sequences that; `mock_construct_device!`
+    # (singular) cannot).
+    c_sys5_hy = PSB.build_system(PSITestSystems, "c_sys5_hy_turbine_head")
+    reservoir_model = DeviceModel(HydroReservoir, HydroWaterModelReservoir)
+    attach_feedforward!(
+        reservoir_model,
+        WaterLevelBudgetFeedforward(;
+            component_type = HydroReservoir,
+            source = TotalHydroFlowRateReservoirOutgoing,
+            affected_values = [WaterLevelBudgetParameter],
+        ),
+    )
+    turbine_model = DeviceModel(HydroTurbine, HydroTurbineWaterLinearCommitment)
+
+    model = DecisionModel(MockOperationProblem, DCPNetworkModel, c_sys5_hy)
+    mock_construct_devices!(
+        model,
+        (reservoir_model, turbine_model);
+        built_for_recurrent_solves = true,
+    )
+    container = IOM.get_optimization_container(model)
+
+    con =
+        IOM.get_constraint(container, FeedForwardWaterLevelBudgetConstraint, HydroReservoir)
+    param = IOM.get_parameter_array(container, WaterLevelBudgetParameter, HydroReservoir)
+    water_out =
+        IOM.get_expression(container, TotalHydroFlowRateReservoirOutgoing, HydroReservoir)
+
+    names = JuMP.axes(con)[1]
+    @test !isempty(names)
+    @test JuMP.axes(con)[2] == ["horizon"]
+    time_steps = JuMP.axes(param)[2]
+    for name in names
+        # sum(water_out[name, :]) - sum(param[name, :]) <= 0
+        # `water_out[name, t]` is itself an expression (the sum of the turbines feeding this
+        # reservoir), not a single variable, so `normalized_coefficient` -- which only
+        # accepts a variable -- can't check it directly; compare the accumulated per-variable
+        # coefficients on both sides instead.
+        obj = JuMP.constraint_object(con[name, "horizon"])
+        @test obj.set isa MOI.LessThan
+        expected_water_terms = sum(water_out[name, t] for t in time_steps).terms
+        for (v, c) in expected_water_terms
+            @test get(obj.func.terms, v, 0.0) == c
+        end
+        for t in time_steps
+            @test get(obj.func.terms, param[name, t], 0.0) == -1.0
+        end
+    end
+end

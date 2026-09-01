@@ -389,3 +389,40 @@ function add_feedforward_constraints!(
     end
     return
 end
+
+@doc raw"""
+Constructs a constraint that bounds a reservoir's cumulative outgoing water flow, summed
+over the full model horizon, to the water usage budget read from the system state.
+
+``` sum(water_out[name, :]) <= sum(param[name, :]) ```
+"""
+function add_feedforward_constraints!(
+    container::OptimizationContainer,
+    ::DeviceModel{T, U},
+    devices::Union{Vector{T}, IS.FlattenIteratorWrapper{T}},
+    ::WaterLevelBudgetFeedforward,
+) where {T <: PSY.HydroReservoir, U <: AbstractDeviceFormulation}
+    names = PSY.get_name.(devices)
+    water_out = get_expression(container, TotalHydroFlowRateReservoirOutgoing, T)
+    # A single value per device, summed over the whole horizon; `["horizon"]` is the same
+    # degenerate second axis `WaterBudgetConstraint` uses for the analogous constraint, since
+    # IOM rejects 1D constraint containers (issue #15).
+    con = add_constraints_container!(
+        container,
+        FeedForwardWaterLevelBudgetConstraint,
+        T,
+        names,
+        ["horizon"],
+    )
+    param = get_parameter_array(container, WaterLevelBudgetParameter, T)
+    if built_for_recurrent_solves(container)
+        jump_model = get_jump_model(container)
+        for name in names
+            con[name, "horizon"] = JuMP.@constraint(
+                jump_model,
+                sum(water_out[name, :]) <= sum(param[name, :])
+            )
+        end
+    end
+    return
+end

@@ -1410,17 +1410,19 @@ function construct_device!(
         network_model,
     )
 
-    """
-    if !has_waterbudget_feedforward(model)
-        add_constraints!(
-            container,
-            ReservoirLevelTargetConstraint,
-            devices,
-            model,
-            network_model,
-        )
-    end
-    """
+    # The ReservoirLevelTargetConstraint gate below is disabled, as it is upstream in
+    # HydroPowerSimulations, so the target constraint is not built for this formulation.
+    # Re-enabling it is a modeling decision, not a port fix.
+    #
+    # if !has_waterbudget_feedforward(model)
+    #     add_constraints!(
+    #         container,
+    #         ReservoirLevelTargetConstraint,
+    #         devices,
+    #         model,
+    #         network_model,
+    #     )
+    # end
 
     add_constraints!(
         container,

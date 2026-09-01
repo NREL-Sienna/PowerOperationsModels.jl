@@ -1102,6 +1102,43 @@ function _add_parameters!(
     return
 end
 
+# Shared by the `FixValueParameter` and generic `VariableValueParameter` `AuxVarKey`
+# methods below: builds the parameter container and populates its multiplier/initial-value
+# arrays. `meta` differs only for `FixValueParameter` (see that method for why).
+function _add_auxvar_parameter!(
+    container::OptimizationContainer,
+    ::Type{T},
+    key::AuxVarKey{U, D},
+    devices::V,
+    ::Type{W},
+    meta,
+) where {
+    T <: VariableValueParameter,
+    U <: AuxVariableType,
+    V <: Union{Vector{D}, IS.FlattenIteratorWrapper{D}},
+    W <: AbstractDeviceFormulation,
+} where {D <: PSY.Component}
+    names = [PSY.get_name(device) for device in devices]
+    time_steps = get_time_steps(container)
+    parameter_container =
+        add_param_container!(container, T, D, key, names, time_steps; meta = meta)
+    jump_model = get_jump_model(container)
+    parent_mult = IOM.get_multiplier_array_data(parameter_container)
+    parent_param = IOM.get_parameter_array_data(parameter_container)
+    for (i, d) in enumerate(devices)
+        IOM._set_multiplier_at!(
+            parent_mult,
+            get_parameter_multiplier(T, d, W),
+            i,
+        )
+        ini_val = get_initial_parameter_value(T, d, W)
+        for t in time_steps
+            IOM._set_parameter_at!(parent_param, jump_model, ini_val, i, t)
+        end
+    end
+    return
+end
+
 # An `AuxVariableType` source (e.g. a `FixValueFeedforward` pinned to another model's
 # aux variable) must store under the same "$U" meta as the `VariableKey` method above --
 # `add_feedforward_constraints!` always reads the parameter back under that meta,
@@ -1119,24 +1156,7 @@ function _add_parameters!(
     W <: AbstractDeviceFormulation,
 } where {D <: PSY.Component}
     @debug "adding" T D U _group = IOM.LOG_GROUP_OPTIMIZATION_CONTAINER
-    names = [PSY.get_name(device) for device in devices]
-    time_steps = get_time_steps(container)
-    parameter_container =
-        add_param_container!(container, T, D, key, names, time_steps; meta = "$U")
-    jump_model = get_jump_model(container)
-    parent_mult = IOM.get_multiplier_array_data(parameter_container)
-    parent_param = IOM.get_parameter_array_data(parameter_container)
-    for (i, d) in enumerate(devices)
-        IOM._set_multiplier_at!(
-            parent_mult,
-            get_parameter_multiplier(T, d, W),
-            i,
-        )
-        ini_val = get_initial_parameter_value(T, d, W)
-        for t in time_steps
-            IOM._set_parameter_at!(parent_param, jump_model, ini_val, i, t)
-        end
-    end
+    _add_auxvar_parameter!(container, T, key, devices, W, "$U")
     return
 end
 
@@ -1157,29 +1177,7 @@ function _add_parameters!(
     W <: AbstractDeviceFormulation,
 } where {D <: PSY.Component}
     @debug "adding" T D U _group = IOM.LOG_GROUP_OPTIMIZATION_CONTAINER
-    names = [PSY.get_name(device) for device in devices]
-    time_steps = get_time_steps(container)
-    parameter_container = add_param_container!(container, T,
-        D,
-        key,
-        names,
-        time_steps,
-    )
-    jump_model = get_jump_model(container)
-    parent_mult = IOM.get_multiplier_array_data(parameter_container)
-    parent_param = IOM.get_parameter_array_data(parameter_container)
-
-    for (i, d) in enumerate(devices)
-        IOM._set_multiplier_at!(
-            parent_mult,
-            get_parameter_multiplier(T, d, W),
-            i,
-        )
-        ini_val = get_initial_parameter_value(T, d, W)
-        for t in time_steps
-            IOM._set_parameter_at!(parent_param, jump_model, ini_val, i, t)
-        end
-    end
+    _add_auxvar_parameter!(container, T, key, devices, W, IOM.CONTAINER_KEY_EMPTY_META)
     return
 end
 

@@ -116,6 +116,23 @@ function _add_feedforward_arguments!(
     return
 end
 
+# `WaterLevelBudgetParameter`'s own `_add_parameters!` (hydro_generation.jl) takes
+# `(container, T, devices, model)`, with no source-key argument -- it derives the budget
+# from `get_initial_parameter_value`, not from the feedforward's source. That shape doesn't
+# match the generic `add_parameters!(container, T, ff, model, devices)` fallback above, so
+# this calls the plain, non-feedforward `add_parameters!(container, T, devices, model)`
+# dispatcher directly, which still gives the rebuild-model guard for free.
+function _add_feedforward_arguments!(
+    container::OptimizationContainer,
+    model::DeviceModel{T, U},
+    devices::Union{Vector{T}, IS.FlattenIteratorWrapper{T}},
+    ff::WaterLevelBudgetFeedforward,
+) where {T <: PSY.HydroReservoir, U <: AbstractDeviceFormulation}
+    parameter_type = get_default_parameter_type(ff, T)
+    add_parameters!(container, parameter_type, devices, model)
+    return
+end
+
 function _add_feedforward_arguments!(
     container::OptimizationContainer,
     model::DeviceModel{T, U},

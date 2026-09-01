@@ -586,6 +586,7 @@ export UpperBoundFeedforward
 export LowerBoundFeedforward
 export SemiContinuousFeedforward
 export FixValueFeedforward
+export WaterLevelBudgetFeedforward
 export attach_feedforward!
 export FeedforwardUpperBoundConstraint
 export FeedforwardLowerBoundConstraint

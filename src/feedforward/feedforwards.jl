@@ -24,6 +24,10 @@
 # inconsistent. See the TODO at `common_models/add_parameters.jl` for the fix.
 #################################################################################
 
+function get_optimization_container_key(ff::AbstractAffectFeedforward)
+    return ff.optimization_container_key
+end
+
 function get_affected_values(ff::AbstractAffectFeedforward)
     return ff.affected_values
 end
@@ -35,6 +39,15 @@ end
 function get_feedforward_meta(ff::AbstractAffectFeedforward)
     return get_optimization_container_key(ff).meta
 end
+
+# Whether a feedforward is of concrete type `FF`, as dispatch rather than an `isa`/`<:`
+# check -- shared by `has_semicontinuous_feedforward` and `has_waterbudget_feedforward`
+# instead of each keeping its own "default false, true for my type" trait pair.
+_is_feedforward_type(
+    ::AbstractAffectFeedforward,
+    ::Type{<:AbstractAffectFeedforward},
+)::Bool = false
+_is_feedforward_type(::FF, ::Type{FF}) where {FF <: AbstractAffectFeedforward} = true
 
 # Which affected-value types a feedforward accepts is dispatch on the feedforward type,
 # not a runtime `<:`/`isa` branch. `FixValueFeedforward` adds a `ParameterType` method
@@ -60,6 +73,21 @@ function _affected_values_vector(
         values_vector[ix] = get_optimization_container_key(v, component_type, meta)
     end
     return values_vector
+end
+
+# Every feedforward's inner constructor pairs `_affected_values_vector` (validates and
+# builds the affected-values vector) with `get_optimization_container_key` (builds the
+# source key) -- shared here so each struct constructor below is a single call instead of
+# repeating the pairing.
+function _feedforward_key_and_values(
+    ::Type{FF},
+    ::Type{T},
+    component_type::Type{<:PSY.Component},
+    affected_values::Vector{DataType},
+    meta,
+) where {FF <: AbstractAffectFeedforward, T}
+    values_vector = _affected_values_vector(FF, affected_values, component_type, meta)
+    return get_optimization_container_key(T, component_type, meta), values_vector
 end
 
 # Shared by `feedforward_arguments.jl` and `feedforward_constraints.jl`: every
@@ -177,8 +205,8 @@ Constructs a parameterized upper bound constraint from a quantity in the system 
 # Arguments:
 
   - `component_type::Type{<:PSY.Component}` : Specify the type of component on which the Feedforward will be applied
-  - `source::Type{T}` : Specify the VariableType or AuxVariableType as the source of values for the Feedforward
-  - `affected_values::Vector{DataType}` : Specify the variable on which the upper bound will be applied using the source values
+  - `source::Type{T}` : The VariableType or AuxVariableType naming the quantity in the system state that the Feedforward reads
+  - `affected_values::Vector{DataType}` : Specify the variable on which the upper bound will be applied from the state values
   - `add_slacks::Bool = false` : Add slacks variables to relax the upper bound constraint.
 """
 struct UpperBoundFeedforward <: AbstractAffectFeedforward
@@ -192,24 +220,18 @@ struct UpperBoundFeedforward <: AbstractAffectFeedforward
         add_slacks::Bool = false,
         meta = IOM.CONTAINER_KEY_EMPTY_META,
     ) where {T}
-        values_vector =
-            _affected_values_vector(
-                UpperBoundFeedforward,
-                affected_values,
-                component_type,
-                meta,
-            )
-        new(
-            get_optimization_container_key(T, component_type, meta),
-            values_vector,
-            add_slacks,
+        key, values_vector = _feedforward_key_and_values(
+            UpperBoundFeedforward,
+            T,
+            component_type,
+            affected_values,
+            meta,
         )
+        new(key, values_vector, add_slacks)
     end
 end
 
 get_default_parameter_type(::UpperBoundFeedforward, _) = UpperBoundValueParameter
-get_optimization_container_key(ff::UpperBoundFeedforward) = ff.optimization_container_key
-get_slacks(ff::UpperBoundFeedforward) = ff.add_slacks
 
 """
     LowerBoundFeedforward(
@@ -225,8 +247,8 @@ Constructs a parameterized lower bound constraint from a quantity in the system 
 # Arguments:
 
   - `component_type::Type{<:PSY.Component}` : Specify the type of component on which the Feedforward will be applied
-  - `source::Type{T}` : Specify the VariableType or AuxVariableType as the source of values for the Feedforward
-  - `affected_values::Vector{DataType}` : Specify the variable on which the lower bound will be applied using the source values
+  - `source::Type{T}` : The VariableType or AuxVariableType naming the quantity in the system state that the Feedforward reads
+  - `affected_values::Vector{DataType}` : Specify the variable on which the lower bound will be applied from the state values
   - `add_slacks::Bool = false` : Add slacks variables to relax the lower bound constraint.
 """
 struct LowerBoundFeedforward <: AbstractAffectFeedforward
@@ -240,24 +262,19 @@ struct LowerBoundFeedforward <: AbstractAffectFeedforward
         add_slacks::Bool = false,
         meta = IOM.CONTAINER_KEY_EMPTY_META,
     ) where {T}
-        values_vector =
-            _affected_values_vector(
-                LowerBoundFeedforward,
-                affected_values,
-                component_type,
-                meta,
-            )
-        new(
-            get_optimization_container_key(T, component_type, meta),
-            values_vector,
-            add_slacks,
+        key, values_vector = _feedforward_key_and_values(
+            LowerBoundFeedforward,
+            T,
+            component_type,
+            affected_values,
+            meta,
         )
+        new(key, values_vector, add_slacks)
     end
 end
 
 get_default_parameter_type(::LowerBoundFeedforward, _) = LowerBoundValueParameter
-get_optimization_container_key(ff::LowerBoundFeedforward) = ff.optimization_container_key
-get_slacks(ff::LowerBoundFeedforward) = ff.add_slacks
+get_slacks(ff::Union{UpperBoundFeedforward, LowerBoundFeedforward}) = ff.add_slacks
 
 # Bridges the feedforward type to `IOM.BoundDirection` so `_add_feedforward_slack_variables!`
 # can key off `feedforward_constraints.jl`'s single `_feedforward_slack_type` table instead
@@ -301,8 +318,8 @@ second.
 # Arguments:
 
   - `component_type::Type{<:PSY.Component}` : Specify the type of component on which the Feedforward will be applied
-  - `source::Type{T}` : Specify the VariableType or AuxVariableType as the source of values for the Feedforward
-  - `affected_values::Vector{DataType}` : Specify the variable on which the semicontinuous limit will be applied using the source values
+  - `source::Type{T}` : The VariableType or AuxVariableType naming the quantity in the system state that the Feedforward reads
+  - `affected_values::Vector{DataType}` : Specify the variable on which the semicontinuous limit will be applied from the state values
 """
 struct SemiContinuousFeedforward <: AbstractAffectFeedforward
     optimization_container_key::OptimizationContainerKey
@@ -313,18 +330,18 @@ struct SemiContinuousFeedforward <: AbstractAffectFeedforward
         affected_values::Vector{DataType},
         meta = IOM.CONTAINER_KEY_EMPTY_META,
     ) where {T}
-        values_vector = _affected_values_vector(
+        key, values_vector = _feedforward_key_and_values(
             SemiContinuousFeedforward,
-            affected_values,
+            T,
             component_type,
+            affected_values,
             meta,
         )
-        new(get_optimization_container_key(T, component_type, meta), values_vector)
+        new(key, values_vector)
     end
 end
 
 get_default_parameter_type(::SemiContinuousFeedforward, _) = OnStatusParameter
-get_optimization_container_key(f::SemiContinuousFeedforward) = f.optimization_container_key
 
 # The commitment status arrives through a single `OnStatusParameter` container keyed only
 # by parameter and component type, so a device model can carry at most one semicontinuous
@@ -363,11 +380,11 @@ function has_semicontinuous_feedforward(
         return false
     end
     # A device model carries at most one SemiContinuousFeedforward but may carry other
-    # feedforward types alongside it, so filter on `_is_semicontinuous` across the whole
-    # list rather than assume position.
+    # feedforward types alongside it, so filter across the whole list rather than assume
+    # position.
     return any(
-        _is_semicontinuous(ff) && T ∈ get_entry_type.(get_affected_values(ff)) for
-        ff in model.feedforwards
+        _is_feedforward_type(ff, SemiContinuousFeedforward) &&
+        T ∈ get_entry_type.(get_affected_values(ff)) for ff in model.feedforwards
     )
 end
 
@@ -377,11 +394,11 @@ variables it affects. The commitment status then arrives as a variable-valued pa
 so formulations must not also build a float-valued `OnStatusParameter` for it.
 """
 function has_semicontinuous_feedforward(model::DeviceModel)::Bool
-    return any(_is_semicontinuous, model.feedforwards)
+    return any(
+        ff -> _is_feedforward_type(ff, SemiContinuousFeedforward),
+        model.feedforwards,
+    )
 end
-
-_is_semicontinuous(::AbstractAffectFeedforward)::Bool = false
-_is_semicontinuous(::SemiContinuousFeedforward)::Bool = true
 
 """
 The variable a device formulation schedules power through. Most formulations schedule
@@ -416,8 +433,8 @@ value.
 # Arguments:
 
   - `component_type::Type{<:PSY.Component}` : Specify the type of component on which the Feedforward will be applied
-  - `source::Type{T}` : Specify the VariableType or AuxVariableType as the source of values for the Feedforward
-  - `affected_values::Vector{DataType}` : Specify the variable on which the fix value will be applied using the source values
+  - `source::Type{T}` : The VariableType or AuxVariableType naming the quantity in the system state that the Feedforward reads
+  - `affected_values::Vector{DataType}` : Specify the variable on which the fix value will be applied from the state values
 """
 struct FixValueFeedforward <: AbstractAffectFeedforward
     optimization_container_key::OptimizationContainerKey
@@ -430,18 +447,73 @@ struct FixValueFeedforward <: AbstractAffectFeedforward
         affected_values::Vector{DataType},
         meta = IOM.CONTAINER_KEY_EMPTY_META,
     ) where {T}
-        values_vector =
-            _affected_values_vector(
-                FixValueFeedforward,
-                affected_values,
-                component_type,
-                meta,
-            )
-        new(get_optimization_container_key(T, component_type, meta), values_vector)
+        key, values_vector = _feedforward_key_and_values(
+            FixValueFeedforward,
+            T,
+            component_type,
+            affected_values,
+            meta,
+        )
+        new(key, values_vector)
     end
 end
 
 get_default_parameter_type(::FixValueFeedforward, _) = FixValueParameter
-get_optimization_container_key(ff::FixValueFeedforward) = ff.optimization_container_key
 _valid_affected_type(::Type{FixValueFeedforward}, ::Type{<:ParameterType}) = true
 _affected_type_description(::Type{FixValueFeedforward}) = "VariableType or ParameterType"
+
+"""
+    WaterLevelBudgetFeedforward(
+        component_type::Type{<:PSY.Component},
+        source::Type{T},
+        affected_values::Vector{DataType},
+        meta = CONTAINER_KEY_EMPTY_META
+    ) where {T}
+
+Bounds a reservoir's cumulative outgoing water flow, summed over the full model horizon, to
+a water usage budget read from the system state.
+
+# Arguments:
+
+  - `component_type::Type{<:PSY.Component}` : Specify the type of component on which the Feedforward will be applied
+  - `source::Type{T}` : The VariableType, ParameterType, or ExpressionType naming the quantity in the system state that the Feedforward reads
+  - `affected_values::Vector{DataType}` : Specify the parameter on which the water budget will be applied from the state values
+"""
+struct WaterLevelBudgetFeedforward <: AbstractAffectFeedforward
+    optimization_container_key::OptimizationContainerKey
+    affected_values::Vector{<:OptimizationContainerKey}
+    function WaterLevelBudgetFeedforward(;
+        component_type::Type{<:PSY.Component},
+        source::Type{T},
+        affected_values::Vector{DataType},
+        meta = IOM.CONTAINER_KEY_EMPTY_META,
+    ) where {T}
+        key, values_vector = _feedforward_key_and_values(
+            WaterLevelBudgetFeedforward,
+            T,
+            component_type,
+            affected_values,
+            meta,
+        )
+        new(key, values_vector)
+    end
+end
+
+get_default_parameter_type(::WaterLevelBudgetFeedforward, _) = WaterLevelBudgetParameter
+# Overrides the generic `VariableType`-accepting default above: this feedforward only
+# ever builds a `WaterLevelBudgetParameter` container, so a `VariableType` affected value
+# would silently reach `get_variable` inside `add_feedforward_constraints!` instead of
+# erroring here at construction.
+_valid_affected_type(::Type{WaterLevelBudgetFeedforward}, ::Type{<:VariableType}) = false
+_valid_affected_type(::Type{WaterLevelBudgetFeedforward}, ::Type{<:ParameterType}) = true
+_affected_type_description(::Type{WaterLevelBudgetFeedforward}) = "ParameterType"
+
+"""
+Whether `model` carries a `WaterLevelBudgetFeedforward`.
+"""
+function has_waterbudget_feedforward(model::DeviceModel)::Bool
+    return any(
+        ff -> _is_feedforward_type(ff, WaterLevelBudgetFeedforward),
+        model.feedforwards,
+    )
+end
