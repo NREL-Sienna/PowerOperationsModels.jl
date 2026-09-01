@@ -1492,19 +1492,25 @@ _branch_uses_control(
     branch,
     device_model::DeviceModel,
     network_model::NetworkModel,
-) = _supports_tap_control(network_model) && _control_objective(branch, device_model) === _VOLTAGE_CONTROL
+) =
+    _supports_tap_control(network_model) &&
+    _control_objective(branch, device_model) === _VOLTAGE_CONTROL
 _branch_uses_control(
     ::Type{ReactivePowerFlowControlConstraint},
     branch,
     device_model::DeviceModel,
     network_model::NetworkModel,
-) = _supports_tap_control(network_model) && _control_objective(branch, device_model) === _REACTIVE_CONTROL
+) =
+    _supports_tap_control(network_model) &&
+    _control_objective(branch, device_model) === _REACTIVE_CONTROL
 _branch_uses_control(
     ::Type{ActivePowerFlowControlConstraint},
     branch,
     device_model::DeviceModel,
     network_model::NetworkModel,
-) = _supports_phase_control(network_model) && _control_objective(branch, device_model) === _ACTIVE_CONTROL
+) =
+    _supports_phase_control(network_model) &&
+    _control_objective(branch, device_model) === _ACTIVE_CONTROL
 
 function _branches_for_cons(
     C::Union{
@@ -1682,7 +1688,13 @@ function _add_transformer_control_constraints!(
 ) where {T <: PSY.ACTransmission}
     _control_enabled(device_model) || return
     if _supports_tap_control(network_model)
-        _add_voltage_control_constraints!(container, sys, devices, device_model, network_model)
+        _add_voltage_control_constraints!(
+            container,
+            sys,
+            devices,
+            device_model,
+            network_model,
+        )
         _add_flow_control_constraints!(
             container,
             ReactivePowerFlowControlConstraint,
@@ -1866,7 +1878,11 @@ function add_constraints!(
 
         tap_controlled = _tap_controlled(rep, device_model, network_model)
         for t in time_steps
-            tm = tap_controlled ? JuMP.AffExpr(0.0, tap_var[name, t] => 1.0) : JuMP.AffExpr(adm.tap)
+            tm = if tap_controlled
+                JuMP.AffExpr(0.0, tap_var[name, t] => 1.0)
+            else
+                JuMP.AffExpr(adm.tap)
+            end
             tr = tm * cos(adm.shift)
             ti = tm * sin(adm.shift)
             tm2 = tm^2
@@ -2144,7 +2160,11 @@ function add_constraints!(
                 else
                     p[name, t]
                 end
-            shift = phase_controlled ? JuMP.AffExpr(0.0, phase_var[rep.name, t] => 1.0) : JuMP.AffExpr(dc_shift)
+            shift = if phase_controlled
+                JuMP.AffExpr(0.0, phase_var[rep.name, t] => 1.0)
+            else
+                JuMP.AffExpr(dc_shift)
+            end
             cons[name, t] = JuMP.@constraint(
                 jump_model,
                 flow == b * (va[from_name, t] - va[to_name, t] - shift)
@@ -2200,7 +2220,11 @@ function add_expressions!(
 
         phase_controlled = _phase_controlled(rep, device_model, network_model)
         for t in time_steps
-            shift = phase_controlled ? JuMP.AffExpr(0.0, phase_var[rep.name, t] => 1.0) : JuMP.AffExpr(dc_shift)
+            shift = if phase_controlled
+                JuMP.AffExpr(0.0, phase_var[rep.name, t] => 1.0)
+            else
+                JuMP.AffExpr(dc_shift)
+            end
             flow = JuMP.@expression(
                 jump_model,
                 b * (va[from_name, t] - va[to_name, t] - shift)
@@ -2541,7 +2565,11 @@ function add_constraints!(
         to_name = _to_name(rep)
         phase_controlled = _phase_controlled(rep, device_model, network_model)
         for t in time_steps
-            shift = phase_controlled ? JuMP.AffExpr(0.0, phase_var[rep.name, t] => 1.0) : JuMP.AffExpr(dc_shift)
+            shift = if phase_controlled
+                JuMP.AffExpr(0.0, phase_var[rep.name, t] => 1.0)
+            else
+                JuMP.AffExpr(dc_shift)
+            end
             cons[rep.name, t] = JuMP.@constraint(
                 jump_model,
                 pft[rep.name, t] == b * (va[from_name, t] - va[to_name, t] - shift),

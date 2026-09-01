@@ -185,7 +185,12 @@ function _check_branch_rating_time_series_formulation!(
     return
 end
 
-function _check_security_constrained_three_winding_transformer(branch_model::DeviceModel{PSY.ThreeWindingTransformer, <:AbstractSecurityConstrainedStaticBranch})
+function _check_security_constrained_three_winding_transformer(
+    branch_model::DeviceModel{
+        PSY.ThreeWindingTransformer,
+        <:AbstractSecurityConstrainedStaticBranch,
+    },
+)
     throw(
         IS.ConflictingInputsError(
             "Security-constrained branch formulations are not implemented \
@@ -196,7 +201,9 @@ end
 
 _check_security_constrained_three_winding_transformer(::DeviceModel) = nothing
 
-function _check_security_constrained_three_winding_transformer(branch_models::IOM.BranchModelContainer)
+function _check_security_constrained_three_winding_transformer(
+    branch_models::IOM.BranchModelContainer,
+)
     for device_model in values(branch_models)
         _check_security_constrained_three_winding_transformer(device_model)
     end
@@ -351,7 +358,9 @@ end
 
 _phase_controlled_circuit_names(::DeviceModel, ::NetworkModel) = String[]
 
-_is_security_constrained(::DeviceModel{<:PSY.ACTransmission, <:AbstractSecurityConstrainedStaticBranch}) = true
+_is_security_constrained(
+    ::DeviceModel{<:PSY.ACTransmission, <:AbstractSecurityConstrainedStaticBranch},
+) = true
 _is_security_constrained(::DeviceModel) = false
 
 # `_build_post_contingency_flow_expressions_for_outage` builds every post-contingency flow
@@ -384,7 +393,10 @@ function _check_security_constrained_phase_control(
     )
 end
 
-function _check_security_constrained_network(branch_model::DeviceModel{<:PSY.ACTransmission, B}, network_model::NetworkModel) where {B <: AbstractSecurityConstrainedStaticBranch}
+function _check_security_constrained_network(
+    branch_model::DeviceModel{<:PSY.ACTransmission, B},
+    network_model::NetworkModel,
+) where {B <: AbstractSecurityConstrainedStaticBranch}
     _sc_branch_network_supported(network_model) || throw(
         IS.ConflictingInputsError(
             "$(B) is not supported with network model \
@@ -412,7 +424,12 @@ function _check_security_constrained_network(
     return
 end
 
-function _check_monitored_components(branch_model::DeviceModel{<:PSY.ACTransmission, <:AbstractSecurityConstrainedStaticBranch})
+function _check_monitored_components(
+    branch_model::DeviceModel{
+        <:PSY.ACTransmission,
+        <:AbstractSecurityConstrainedStaticBranch,
+    },
+)
     for (uuid, per_type) in get_outages(branch_model)
         for (T, names) in per_type
             for name in names

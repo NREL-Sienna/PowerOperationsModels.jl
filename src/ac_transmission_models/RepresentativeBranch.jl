@@ -186,7 +186,11 @@ const _PHASE_CONTROLS = (_ACTIVE_CONTROL,)
 _supports_tap_control(::NetworkModel{<:NativeACNetworkModel}) = true
 _supports_tap_control(::NetworkModel) = false
 
-_supports_phase_control(::NetworkModel{<:Union{DCPNetworkModel, AbstractDCPLLNetworkModel, AbstractPTDFNetworkModel}}) = true
+_supports_phase_control(
+    ::NetworkModel{
+        <:Union{DCPNetworkModel, AbstractDCPLLNetworkModel, AbstractPTDFNetworkModel},
+    },
+) = true
 _supports_phase_control(::NetworkModel) = false
 
 _get_circuit(t::PSY.TwoWindingTransformer) = PSY.get_circuit(t)
@@ -354,13 +358,15 @@ end
 
 _angle_limits(d::PSY.Line) = PSY.get_angle_limits(d)
 _angle_limits(d::PSY.MonitoredLine) = PSY.get_angle_limits(d)
-_angle_limits(::Union{PSY.ACTransmission, PNM.AbstractReductionAggregate}) = (min = -π / 2, max = π / 2)
+_angle_limits(::Union{PSY.ACTransmission, PNM.AbstractReductionAggregate}) =
+    (min = -π / 2, max = π / 2)
 _angle_limits(rep::RepresentativeBranch) = _angle_limits(rep.branch)
 
 # A branch constrains the angle difference when it carries angle-limit data (only
 # Line / MonitoredLine do) narrower than the PSY default ±π window.
 _is_binding_angle_window(lims) = !(lims.min ≈ -π && lims.max ≈ π)
-_constrains_angle_difference(::Union{PSY.ACTransmission, PNM.AbstractReductionAggregate}) = false
+_constrains_angle_difference(::Union{PSY.ACTransmission, PNM.AbstractReductionAggregate}) =
+    false
 _constrains_angle_difference(d::PSY.Line) =
     _is_binding_angle_window(PSY.get_angle_limits(d))
 _constrains_angle_difference(d::PSY.MonitoredLine) =

@@ -183,11 +183,17 @@ function _pin_transformer_controls!(
                 continue
             end
             if obj in _TAP_CONTROLS && !_supports_tap_control(network_model)
-                _warn_circuit(obj, "tap control is not supported on $(N). Try an AC network.")
+                _warn_circuit(
+                    obj,
+                    "tap control is not supported on $(N). Try an AC network.",
+                )
                 continue
             end
             if obj in _PHASE_CONTROLS && !_supports_phase_control(network_model)
-                _warn_circuit(obj, "phase control is not supported on $(N). Try a DC network.")
+                _warn_circuit(
+                    obj,
+                    "phase control is not supported on $(N). Try a DC network.",
+                )
                 continue
             end
             if obj in (
