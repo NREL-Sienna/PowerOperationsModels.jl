@@ -1028,10 +1028,20 @@ function calculate_aux_variable_value!(
         d = PSY.get_component(T, system, d_name)
         name = PSY.get_name(d)
         min = PSY.get_active_power_limits(d, PSY.SU).min
-        for t in time_steps
-            aux_variable_container[name, t] =
-                jump_value(on_variable_output[name, t]) * min +
-                jump_value(p_variable_output[name, t])
+        # A must-run unit appears in neither the OnVariable container nor the
+        # OnStatusParameter array — both are built from the non-must-run devices — while
+        # the power axis above carries every device. Its commitment is fixed at 1.
+        if PSY.get_must_run(d)
+            for t in time_steps
+                aux_variable_container[name, t] =
+                    min + jump_value(p_variable_output[name, t])
+            end
+        else
+            for t in time_steps
+                aux_variable_container[name, t] =
+                    jump_value(on_variable_output[name, t]) * min +
+                    jump_value(p_variable_output[name, t])
+            end
         end
     end
 
