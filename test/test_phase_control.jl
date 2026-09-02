@@ -411,7 +411,7 @@ function _sc_phase_system(;
     end
     transformer = PSY.get_component(PSY.TwoWindingTransformer, sys, _PST_NAME)
 
-    monitored = collect(get_components(PSY.Line, sys))
+    monitored = PSY.ACTransmission[get_components(PSY.Line, sys)...]
     monitor_transformer && push!(monitored, transformer)
     outage = PSY.GeometricDistributionForcedOutage(;
         mean_time_to_recovery = 10,
