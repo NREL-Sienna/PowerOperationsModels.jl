@@ -45,7 +45,12 @@ const _CONTROL_FORMULATIONS =
     Union{StaticBranch, StaticBranchBounds, AbstractSecurityConstrainedStaticBranch}
 
 _control_supported(::Type{<:_TRANSFORMERS}, ::Type{<:_CONTROL_FORMULATIONS}) = true
-_control_supported(::DeviceModel{U, V}) where {U <: PSY.ACTransmission, V <: AbstractBranchFormulation} = _control_supported(U, V)
+_control_supported(::Type{<:PSY.ACTransmission}, ::Type{<:AbstractBranchFormulation}) =
+    false
+_control_supported(
+    ::DeviceModel{U, V},
+) where {U <: PSY.ACTransmission, V <: AbstractBranchFormulation} =
+    _control_supported(U, V)
 
 """
 DeviceModel attribute key selecting which `PowerNetworkMatrices` function aggregates
@@ -66,7 +71,7 @@ _control_attribute(
     ::Type{U},
     ::Type{V},
 ) where {U <: PSY.ACTransmission, V <: AbstractBranchFormulation} =
-    _control_supported(DeviceModel(U, V)) ? (ENABLE_CONTROLS_KEY => false,) : ()
+    _control_supported(U, V) ? (ENABLE_CONTROLS_KEY => false,) : ()
 
 function get_default_attributes(
     ::Type{U},

@@ -449,25 +449,16 @@ function add_constraints!(
     return
 end
 
-_is_phase_variable(::Tuple{Type{PhaseShifterAngle}, DenseAxisArray}) = true
-_is_phase_variable(::Tuple{Type{<:VariableType}, DenseAxisArray}) = false
-
-function _monitored_phase_variables(
-    container::OptimizationContainer,
-    resolved::Vector{Pair{Int, Vector{RepresentativeBranch}}},
-)
-    phase_vars = filter(_is_phase_variable, IOM.get_variables(container))
-    monitored_phase_vars = Dict{String, DenseAxisArray{JuMP.VariableRef, 2}}()
-    for (_, reps) in resolved, rep in reps
-        haskey(monitored_phase_vars, rep.name) && continue
-        for (_, phase_var) in phase_vars
-            if rep.name in axes(phase_var)[1]
-                monitored_phase_vars[rep.name] = phase_var
-                break
-            end
+function _phase_variables(container::OptimizationContainer)
+    phase_vars = Dict{String, DenseAxisArray{JuMP.VariableRef, 2}}()
+    for T in (PSY.TwoWindingTransformer, PSY.ThreeWindingTransformer)
+        has_container_key(container, PhaseShifterAngle, T) || continue
+        phase_var = get_variable(container, PhaseShifterAngle, T)
+        for name in axes(phase_var)[1]
+            phase_vars[name] = phase_var
         end
     end
-    return monitored_phase_vars
+    return phase_vars
 end
 
 function _build_post_contingency_flow_expressions_for_outage(
@@ -550,7 +541,7 @@ function _add_modf_post_contingency_flow_expressions!(
         end
     end
 
-    phase_vars = _monitored_phase_variables(container, fresh_resolved)
+    phase_vars = _phase_variables(container)
 
     # Parallel JuMP `AffExpr` build (no libklu): tasks return results, the main
     # thread does the serial writes. The try/catch surfaces the inner exception.
@@ -781,7 +772,6 @@ function construct_device!(
             network_model,
         )
     end
-
     if haskey(
         get_time_series_names(device_model),
         PostContingencyBranchRatingTimeSeriesParameter,
@@ -794,8 +784,7 @@ function construct_device!(
         )
     end
 
-    add_feedforward_arguments!(container, device_model, devices)
-
+    _add_transformer_control_variables!(container, devices, device_model, network_model)
     add_expressions!(
         container,
         PTDFBranchFlow,
@@ -803,7 +792,7 @@ function construct_device!(
         device_model,
         network_model,
     )
-
+    add_feedforward_arguments!(container, device_model, devices)
     return
 end
 

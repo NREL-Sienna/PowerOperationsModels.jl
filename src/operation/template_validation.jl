@@ -337,7 +337,10 @@ end
 _is_security_constrained(::DeviceModel{<:PSY.ACTransmission, <:AbstractSecurityConstrainedStaticBranch}) = true
 _is_security_constrained(::DeviceModel) = false
 
-_has_unsupported_phase(t::_TRANSFORMERS, m::DeviceModel{<:_TRANSFORMERS}) = any(_control_enabled(c, m) in _PHASE_CONTROLS || !iszero(PSY.get_α(c)) for c in PSY.get_circuits(t))
+_has_unsupported_phase(t::_TRANSFORMERS, m::DeviceModel{<:_TRANSFORMERS}) = any(
+    _control_objective(c, m) in _PHASE_CONTROLS || !iszero(PSY.get_α(c)) for
+    c in PSY.get_circuits(t)
+)
 _has_unsupported_phase(_, ::DeviceModel) = false
 
 _has_unsupported_phase(m::DeviceModel{<:_TRANSFORMERS}) = any(_has_unsupported_phase(t, m) for t in get_device_cache(m))
@@ -414,7 +417,7 @@ function _check_monitored_components(
             for uuid in PSY.get_monitored_components(outage)
                 isnothing(IS.get_component(sys, uuid)) && throw(
                     IS.ConflictingInputsError(
-                        "Monitored component \"$name\" (type $T) for outage $uuid is not found in the system.",
+                        "Monitored component with UUID $uuid on outage $outage_id is not found in the system.",
                     ),
                 )
             end
