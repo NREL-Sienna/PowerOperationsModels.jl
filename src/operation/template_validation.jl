@@ -334,7 +334,9 @@ function _check_flow_slack_support(
     )
 end
 
-_is_security_constrained(::DeviceModel{<:PSY.ACTransmission, <:AbstractSecurityConstrainedStaticBranch}) = true
+_is_security_constrained(
+    ::DeviceModel{<:PSY.ACTransmission, <:AbstractSecurityConstrainedStaticBranch},
+) = true
 _is_security_constrained(::DeviceModel) = false
 
 _has_unsupported_phase(t::_TRANSFORMERS, m::DeviceModel{<:_TRANSFORMERS}) = any(
@@ -343,7 +345,8 @@ _has_unsupported_phase(t::_TRANSFORMERS, m::DeviceModel{<:_TRANSFORMERS}) = any(
 )
 _has_unsupported_phase(_, ::DeviceModel) = false
 
-_has_unsupported_phase(m::DeviceModel{<:_TRANSFORMERS}) = any(_has_unsupported_phase(t, m) for t in get_device_cache(m))
+_has_unsupported_phase(m::DeviceModel{<:_TRANSFORMERS}) =
+    any(_has_unsupported_phase(t, m) for t in get_device_cache(m))
 _has_unsupported_phase(::DeviceModel) = false
 
 function _check_security_constrained_phase_control(
@@ -398,7 +401,11 @@ function _assert_transformer_outages(
     branch_models::IOM.BranchModelContainer,
 ) where {T <: _TRANSFORMERS}
     model = get(branch_models, nameof(T), nothing)
-    _has_unsupported_phase(transformer, model) && throw(IS.ConflictingInputsError("Phase-shifting transformers and transformers with non-zero angle may not be outages."))
+    _has_unsupported_phase(transformer, model) && throw(
+        IS.ConflictingInputsError(
+            "Phase-shifting transformers and transformers with non-zero angle may not be outages.",
+        ),
+    )
     return
 end
 
