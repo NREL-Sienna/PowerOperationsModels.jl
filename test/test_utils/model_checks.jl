@@ -630,3 +630,138 @@ function slack_residual_coefficient(con, var)
     base = JuMP.value(v -> 0.0, f)
     return JuMP.value(v -> _slack_indicator_value(v, var), f) - base
 end
+
+#################################################################################
+# Trait-vs-reality guards
+#
+# Generalized from the `slack_spec` testset in test_native_dcp_acp_models.jl. For a trait
+# axis, assert that what the trait DECLARES matches what a real `build!` actually
+# produces — so "the trait says yes" and "the constructor builds it" cannot drift apart.
+#
+# The `forbidden` list is not redundant with `declared`. On an active-power-only network a
+# leaked `add_to_expression!(..., ReactivePowerBalance, ...)` is a loud `KeyError`, but a
+# leaked `add_variables!(..., ReactivePowerVariable, ...)` is SILENT: free, uncosted
+# columns that change neither the objective nor the solution. Only an explicit
+# absence assertion catches that one.
+#################################################################################
+
+"""
+A container a trait table promises (or forbids). `meta` defaults to the empty meta.
+"""
+struct ContainerSpec
+    kind::Symbol   # :variable | :constraint | :expression | :parameter | :aux_variable
+    entry_type::DataType
+    component_type::DataType
+    meta::String
+end
+
+ContainerSpec(kind::Symbol, entry_type::DataType, component_type::DataType) =
+    ContainerSpec(kind, entry_type, component_type, IOM.CONTAINER_KEY_EMPTY_META)
+
+function _fetch_container(container, s::ContainerSpec)
+    s.kind === :variable &&
+        return IOM.get_variable(container, s.entry_type, s.component_type, s.meta)
+    s.kind === :constraint &&
+        return IOM.get_constraint(container, s.entry_type, s.component_type, s.meta)
+    s.kind === :expression &&
+        return IOM.get_expression(container, s.entry_type, s.component_type, s.meta)
+    s.kind === :parameter &&
+        return IOM.get_parameter(container, s.entry_type, s.component_type, s.meta)
+    return IOM.get_aux_variable(container, s.entry_type, s.component_type, s.meta)
+end
+
+"""
+Whether `s` exists and is non-empty in `container`. A missing container throws from the
+IOM accessor rather than returning `nothing`, so absence is caught here.
+"""
+function container_exists(container, s::ContainerSpec)
+    try
+        return !isempty(_fetch_container(container, s))
+    catch
+        return false
+    end
+end
+
+"""
+    assert_trait_matches_build(axis_name, cases; declared, forbidden, template_for, extra_checks)
+
+Trait-vs-reality guard for one trait axis.
+
+`cases` is an iterable of `(network_formulation, optimizer, sys, formulations)`. For each
+`(formulation, network_formulation)` pair this builds a real `DecisionModel` and asserts
+
+1. every `ContainerSpec` in `declared(F, N)` exists and is non-empty;
+2. every `ContainerSpec` in `forbidden(F, N)` does **not** exist;
+3. `extra_checks(container, F, N)` passes — the hook for coefficient, sign and row-wiring
+   assertions.
+
+`declared` and `forbidden` MUST be computed by calling the trait function under test.
+Restating the expected containers by hand reduces this to a test that agrees with itself.
+
+Cannot catch: container-set-preserving reorderings (a collapse that moves an
+`add_variables!` call produces an identical container set), coefficient errors inside a
+container that exists unless `extra_checks` asserts them, and cross-stage behavior such as
+which construct stage registered an initial condition.
+"""
+function assert_trait_matches_build(
+    axis_name::String,
+    cases;
+    declared,
+    forbidden = (F, N) -> ContainerSpec[],
+    template_for,
+    extra_checks = (container, F, N) -> nothing,
+)
+    for (network_formulation, optimizer, sys, formulations) in cases
+        for formulation in formulations
+            @testset "$axis_name: $network_formulation / $formulation" begin
+                model = DecisionModel(
+                    template_for(formulation, network_formulation),
+                    sys;
+                    optimizer = optimizer,
+                )
+                @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
+                      IOM.ModelBuildStatus.BUILT
+                container = IOM.get_optimization_container(model)
+                for spec in declared(formulation, network_formulation)
+                    @test container_exists(container, spec)
+                end
+                for spec in forbidden(formulation, network_formulation)
+                    @test !container_exists(container, spec)
+                end
+                extra_checks(container, formulation, network_formulation)
+            end
+        end
+    end
+    return
+end
+
+"""
+Concrete subtypes of `root` reachable as exported-or-internal bindings of `mod`. Scans the
+module's own names rather than `InteractiveUtils.subtypes` so the test environment needs no
+extra dependency; that also scopes the answer to formulations this package actually
+defines, which is what the coverage guard is asking about.
+"""
+function _concrete_subtypes_in(mod::Module, root::DataType)
+    out = DataType[]
+    for name in names(mod; all = true)
+        isdefined(mod, name) || continue
+        value = getfield(mod, name)
+        value isa DataType || continue
+        (isconcretetype(value) && value <: root) || continue
+        value in out || push!(out, value)
+    end
+    return out
+end
+
+"""
+    assert_axis_coverage(root, covered; mod = PowerOperationsModels)
+
+Completeness guard: every concrete subtype of `root` defined in `mod` must appear in
+`covered`, so adding a network formulation without adding a trait method and a test case
+fails here rather than silently escaping the trait table.
+"""
+function assert_axis_coverage(root::DataType, covered; mod::Module = PowerOperationsModels)
+    missing_types = setdiff(_concrete_subtypes_in(mod, root), collect(covered))
+    @test isempty(missing_types)
+    return
+end

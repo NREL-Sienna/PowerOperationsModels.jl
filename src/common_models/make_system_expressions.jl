@@ -3,23 +3,42 @@ function make_container_array(ax...)
     return IOM.remove_undef!(DenseAxisArray{GAE}(undef, ax...))
 end
 
+function _nodal_bus_numbers(
+    subnetworks::Dict{Int, Set{Int}},
+    bus_reduction_map::Dict{Int64, Set{Int64}},
+)
+    isempty(bus_reduction_map) &&
+        return collect(Iterators.flatten(values(subnetworks)))
+    return collect(keys(bus_reduction_map))
+end
+
 """
-Generic fallback for full power flow models (ACP, ACR, etc.).
-Creates both ActivePowerBalance and ReactivePowerBalance on ACBus.
+Nodal fallback for the per-bus formulations. Which balance expressions exist is derived
+from [`reactive_power_support`](@ref) rather than restated here, so
+"`ReactivePowerBalance` is allocated iff the network supports reactive power" holds by
+construction. The aggregated formulations (CopperPlate/PTDF/AreaBalance) define strictly
+more specific methods below and are unaffected.
 """
 function make_system_expressions!(
     container::OptimizationContainer,
     subnetworks::Dict{Int, Set{Int}},
     ::Vector{Int},
-    ::Type{<:AbstractNetworkModel},
+    ::Type{N},
     bus_reduction_map::Dict{Int64, Set{Int64}},
+) where {N <: AbstractNetworkModel}
+    return _make_nodal_expressions!(
+        reactive_power_support(N),
+        container,
+        _nodal_bus_numbers(subnetworks, bus_reduction_map),
+    )
+end
+
+function _make_nodal_expressions!(
+    ::HasReactivePower,
+    container::OptimizationContainer,
+    ac_bus_numbers::Vector{Int},
 )
     time_steps = get_time_steps(container)
-    if isempty(bus_reduction_map)
-        ac_bus_numbers = collect(Iterators.flatten(values(subnetworks)))
-    else
-        ac_bus_numbers = collect(keys(bus_reduction_map))
-    end
     container.expressions = Dict(
         ExpressionKey(ActivePowerBalance, PSY.ACBus) =>
             make_container_array(ac_bus_numbers, time_steps),
@@ -29,23 +48,12 @@ function make_system_expressions!(
     return
 end
 
-"""
-Fallback for active-power-only models (DCP, NFA, etc.).
-Creates only ActivePowerBalance on ACBus (no reactive power).
-"""
-function make_system_expressions!(
+function _make_nodal_expressions!(
+    ::NoReactivePower,
     container::OptimizationContainer,
-    subnetworks::Dict{Int, Set{Int}},
-    ::Vector{Int},
-    ::Type{<:AbstractActivePowerModel},
-    bus_reduction_map::Dict{Int64, Set{Int64}},
+    ac_bus_numbers::Vector{Int},
 )
     time_steps = get_time_steps(container)
-    if isempty(bus_reduction_map)
-        ac_bus_numbers = collect(Iterators.flatten(values(subnetworks)))
-    else
-        ac_bus_numbers = collect(keys(bus_reduction_map))
-    end
     container.expressions = Dict(
         ExpressionKey(ActivePowerBalance, PSY.ACBus) =>
             make_container_array(ac_bus_numbers, time_steps),

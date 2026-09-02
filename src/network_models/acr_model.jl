@@ -5,6 +5,12 @@
 # Branch flow variables, rate limits, and the rectangular AC Ohm's law are added by the
 # branch device construction path (see AC_branches.jl and branch_constructor.jl).
 #
+# Entry points dispatch on the `voltage_coordinates` trait rather than enumerating
+# {ACR, IVR} in a Union: the two share rectangular coordinates but sit in sibling branches
+# of the network tree, so no supertype names the pair. Only the `RectangularVoltage`
+# implementations exist, so a polar or non-voltage formulation reaching one of these raises
+# a MethodError naming the trait instead of the network type.
+#
 # Convention: variables/constraints indexed by ACBus use bus NAME (String) — see dcp_model.jl.
 # _bus_name_number_pairs / _retained_number_to_name / _bus_by_number are defined in
 # dcp_model.jl (same module scope) and available here.
@@ -13,7 +19,21 @@ function add_variables!(
     container::OptimizationContainer,
     ::Type{VoltageReal},
     sys::PSY.System,
-    network_model::NetworkModel{<:Union{ACRNetworkModel, IVRNetworkModel}},
+    network_model::NetworkModel{N},
+) where {N <: AbstractNetworkModel}
+    return _add_voltage_real_variables!(
+        voltage_coordinates(N),
+        container,
+        sys,
+        network_model,
+    )
+end
+
+function _add_voltage_real_variables!(
+    ::RectangularVoltage,
+    container::OptimizationContainer,
+    sys::PSY.System,
+    network_model::NetworkModel,
 )
     _add_bounded_bus_voltage_variable!(
         container, VoltageReal, sys, network_model,
@@ -30,7 +50,21 @@ function add_variables!(
     container::OptimizationContainer,
     ::Type{VoltageImaginary},
     sys::PSY.System,
-    network_model::NetworkModel{<:Union{ACRNetworkModel, IVRNetworkModel}},
+    network_model::NetworkModel{N},
+) where {N <: AbstractNetworkModel}
+    return _add_voltage_imaginary_variables!(
+        voltage_coordinates(N),
+        container,
+        sys,
+        network_model,
+    )
+end
+
+function _add_voltage_imaginary_variables!(
+    ::RectangularVoltage,
+    container::OptimizationContainer,
+    sys::PSY.System,
+    network_model::NetworkModel,
 )
     _add_bounded_bus_voltage_variable!(
         container, VoltageImaginary, sys, network_model,
@@ -47,7 +81,21 @@ function add_constraints!(
     container::OptimizationContainer,
     ::Type{ReferenceBusConstraint},
     sys::PSY.System,
-    network_model::NetworkModel{<:Union{ACRNetworkModel, IVRNetworkModel}},
+    network_model::NetworkModel{N},
+) where {N <: AbstractNetworkModel}
+    return _add_rectangular_reference_bus_constraints!(
+        voltage_coordinates(N),
+        container,
+        sys,
+        network_model,
+    )
+end
+
+function _add_rectangular_reference_bus_constraints!(
+    ::RectangularVoltage,
+    container::OptimizationContainer,
+    sys::PSY.System,
+    network_model::NetworkModel,
 )
     time_steps = get_time_steps(container)
     vi = get_variable(container, VoltageImaginary, PSY.ACBus)
@@ -96,7 +144,21 @@ function add_constraints!(
     container::OptimizationContainer,
     ::Type{VoltageMagnitudeConstraint},
     sys::PSY.System,
-    network_model::NetworkModel{<:Union{ACRNetworkModel, IVRNetworkModel}},
+    network_model::NetworkModel{N},
+) where {N <: AbstractNetworkModel}
+    return _add_voltage_magnitude_constraints!(
+        voltage_coordinates(N),
+        container,
+        sys,
+        network_model,
+    )
+end
+
+function _add_voltage_magnitude_constraints!(
+    ::RectangularVoltage,
+    container::OptimizationContainer,
+    sys::PSY.System,
+    network_model::NetworkModel,
 )
     time_steps = get_time_steps(container)
     vr = get_variable(container, VoltageReal, PSY.ACBus)

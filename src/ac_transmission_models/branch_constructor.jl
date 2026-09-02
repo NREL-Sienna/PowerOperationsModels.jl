@@ -263,43 +263,112 @@ function _add_static_branch_balance_arguments!(
     return
 end
 
+# Per-network extras for the shared StaticBranch constructors below. These are genuinely
+# formulation-specific additions, not a cross-cutting axis, so they dispatch on the network
+# formulation directly — the point is that the SHARED body no longer has to.
+_add_static_branch_auxiliary_variables!(
+    ::OptimizationContainer,
+    _devices,
+    ::DeviceModel,
+    ::NetworkModel,
+) = nothing
+
+_add_static_branch_auxiliary_variables!(
+    container::OptimizationContainer,
+    devices,
+    device_model::DeviceModel,
+    network_model::NetworkModel{LPACCNetworkModel},
+) = add_variables!(container, CosineApproximation, devices, device_model, network_model)
+
+_add_static_branch_auxiliary_constraints!(
+    ::OptimizationContainer,
+    ::PSY.System,
+    _devices,
+    ::DeviceModel,
+    ::NetworkModel,
+) = nothing
+
+_add_static_branch_auxiliary_constraints!(
+    container::OptimizationContainer,
+    sys::PSY.System,
+    devices,
+    device_model::DeviceModel,
+    network_model::NetworkModel{LPACCNetworkModel},
+) = add_constraints!(
+    container,
+    sys,
+    CosineRelaxationConstraint,
+    devices,
+    device_model,
+    network_model,
+)
+
+_add_static_branch_auxiliary_constraints!(
+    container::OptimizationContainer,
+    sys::PSY.System,
+    devices,
+    device_model::DeviceModel,
+    network_model::NetworkModel{IVRNetworkModel},
+) = add_constraints!(
+    container,
+    sys,
+    CurrentLimitConstraint,
+    devices,
+    device_model,
+    network_model,
+)
+
 """
-ArgumentConstructStage for StaticBranch under ACPNetworkModel.
+ArgumentConstructStage for StaticBranch under the polar and LPAC AC formulations
+(ACP/ACR/LPACC).
 
 Creates the four directional flow variables (active and reactive, from-to and to-from),
 optional slack variables, and registers each flow variable's contribution to the
-per-bus ActivePowerBalance and ReactivePowerBalance expressions.
+per-bus ActivePowerBalance and ReactivePowerBalance expressions. LPACC's cosine variable
+arrives through `_add_static_branch_auxiliary_variables!`.
+
+IVR keeps its own argument-stage method: it builds terminal and series current variables
+and inlines the balance wiring rather than calling
+`_add_static_branch_balance_arguments!`, so it is a different construction, not this one
+plus an extra.
 """
 function construct_device!(
     container::OptimizationContainer,
     sys::PSY.System,
     ::ArgumentConstructStage,
     device_model::DeviceModel{T, StaticBranch},
-    network_model::NetworkModel{ACPNetworkModel},
+    network_model::NetworkModel{
+        <:Union{ACPNetworkModel, ACRNetworkModel, LPACCNetworkModel},
+    },
 ) where {T <: PSY.ACTransmission}
-    @debug "construct_device ACP StaticBranch (ArgumentConstructStage)" _group =
+    @debug "construct_device $(get_network_formulation(network_model)) StaticBranch (ArgumentConstructStage)" _group =
         LOG_GROUP_BRANCH_CONSTRUCTIONS
     devices = get_available_components(device_model, sys)
     _add_static_branch_flow_variables!(container, devices, device_model, network_model)
+    _add_static_branch_auxiliary_variables!(container, devices, device_model, network_model)
     _add_static_branch_balance_arguments!(container, device_model, devices, network_model)
     add_variables!(container, TapRatioVariable, devices, device_model, network_model)
     return
 end
 
 """
-ModelConstructStage for StaticBranch under ACPNetworkModel.
+ModelConstructStage for StaticBranch under every AC-native formulation
+(ACP/ACR/LPACC/IVR).
 
-Applies the apparent-power rate limits (from-to and to-from), the π-model AC Ohm's law
-constraints, and (when applicable) the branch angle-difference limits.
+Applies the apparent-power rate limits (from-to and to-from), the network's Ohm's law
+constraints, and the branch angle-difference limits. LPACC's convex cosine relaxation and
+IVR's terminal current-magnitude limits arrive through
+`_add_static_branch_auxiliary_constraints!` — the only place these four formulations
+differed.
 """
 function construct_device!(
     container::OptimizationContainer,
     sys::PSY.System,
     ::ModelConstructStage,
     device_model::DeviceModel{T, StaticBranch},
-    network_model::NetworkModel{ACPNetworkModel},
+    network_model::NetworkModel{<:AbstractReactivePowerNetworkModel},
 ) where {T <: PSY.ACTransmission}
-    @debug "construct_device ACP StaticBranch (ModelConstructStage)" _group =
+    @debug "construct_device $(get_network_formulation(network_model)) StaticBranch (ModelConstructStage)" _group =
         LOG_GROUP_BRANCH_CONSTRUCTIONS
     devices = get_available_components(device_model, sys)
     add_constraints!(
@@ -311,6 +380,9 @@ function construct_device!(
     add_constraints!(
         container, sys, NetworkFlowConstraint, devices, device_model, network_model,
     )
+    _add_static_branch_auxiliary_constraints!(
+        container, sys, devices, device_model, network_model,
+    )
     add_constraints!(
         container, sys, AngleDifferenceConstraint, devices, device_model, network_model,
     )
@@ -318,7 +390,12 @@ function construct_device!(
         container, sys, devices, device_model, network_model,
     )
     add_feedforward_constraints!(container, device_model, devices)
-    add_to_objective_function!(container, devices, device_model, ACPNetworkModel)
+    add_to_objective_function!(
+        container,
+        devices,
+        device_model,
+        get_network_formulation(network_model),
+    )
     add_constraint_dual!(container, sys, device_model)
     return
 end
@@ -390,67 +467,6 @@ end
 
 ################################## ACRNetworkModel branch constructors #################
 
-"""
-ArgumentConstructStage for StaticBranch under ACRNetworkModel.
-
-Creates the four directional flow variables (active and reactive, from-to and to-from),
-optional slack variables, and registers each flow variable's contribution to the
-per-bus ActivePowerBalance and ReactivePowerBalance expressions.
-"""
-function construct_device!(
-    container::OptimizationContainer,
-    sys::PSY.System,
-    ::ArgumentConstructStage,
-    device_model::DeviceModel{T, StaticBranch},
-    network_model::NetworkModel{ACRNetworkModel},
-) where {T <: PSY.ACTransmission}
-    @debug "construct_device ACR StaticBranch (ArgumentConstructStage)" _group =
-        LOG_GROUP_BRANCH_CONSTRUCTIONS
-    devices = get_available_components(device_model, sys)
-    _add_static_branch_flow_variables!(container, devices, device_model, network_model)
-    _add_static_branch_balance_arguments!(container, device_model, devices, network_model)
-    add_variables!(container, TapRatioVariable, devices, device_model, network_model)
-    return
-end
-
-"""
-ModelConstructStage for StaticBranch under ACRNetworkModel.
-
-Applies the apparent-power rate limits (from-to and to-from), the π-model rectangular
-AC Ohm's law constraints, and cross-product angle-difference limits for branches with
-non-default (non-±π) angle bounds.
-"""
-function construct_device!(
-    container::OptimizationContainer,
-    sys::PSY.System,
-    ::ModelConstructStage,
-    device_model::DeviceModel{T, StaticBranch},
-    network_model::NetworkModel{ACRNetworkModel},
-) where {T <: PSY.ACTransmission}
-    @debug "construct_device ACR StaticBranch (ModelConstructStage)" _group =
-        LOG_GROUP_BRANCH_CONSTRUCTIONS
-    devices = get_available_components(device_model, sys)
-    add_constraints!(
-        container, FlowRateConstraintFromTo, devices, device_model, network_model,
-    )
-    add_constraints!(
-        container, FlowRateConstraintToFrom, devices, device_model, network_model,
-    )
-    add_constraints!(
-        container, sys, NetworkFlowConstraint, devices, device_model, network_model,
-    )
-    add_constraints!(
-        container, sys, AngleDifferenceConstraint, devices, device_model, network_model,
-    )
-    _add_transformer_control_constraints!(
-        container, sys, devices, device_model, network_model,
-    )
-    add_feedforward_constraints!(container, device_model, devices)
-    add_to_objective_function!(container, devices, device_model, ACRNetworkModel)
-    add_constraint_dual!(container, sys, device_model)
-    return
-end
-
 # ACR/LPACC/IVR HVDC ArgumentConstructStage: active scalar + directional reactive flow
 # variables (from-to and to-from), wired into ActivePowerBalance and ReactivePowerBalance.
 function construct_device!(
@@ -500,70 +516,6 @@ function construct_device!(
 end
 
 ################################## LPACCNetworkModel branch constructors ###############
-
-"""
-ArgumentConstructStage for StaticBranch under LPACCNetworkModel.
-
-Creates the four directional flow variables, the bus-pair cosine variable (cs), optional
-slacks, and registers each flow's contribution to the per-bus ActivePowerBalance and
-ReactivePowerBalance expressions.
-"""
-function construct_device!(
-    container::OptimizationContainer,
-    sys::PSY.System,
-    ::ArgumentConstructStage,
-    device_model::DeviceModel{T, StaticBranch},
-    network_model::NetworkModel{LPACCNetworkModel},
-) where {T <: PSY.ACTransmission}
-    @debug "construct_device LPACC StaticBranch (ArgumentConstructStage)" _group =
-        LOG_GROUP_BRANCH_CONSTRUCTIONS
-    devices = get_available_components(device_model, sys)
-    _add_static_branch_flow_variables!(container, devices, device_model, network_model)
-    add_variables!(container, CosineApproximation, devices, device_model, network_model)
-    _add_static_branch_balance_arguments!(container, device_model, devices, network_model)
-    add_variables!(container, TapRatioVariable, devices, device_model, network_model)
-    return
-end
-
-"""
-ModelConstructStage for StaticBranch under LPACCNetworkModel.
-
-Applies the apparent-power rate limits, the LPAC-linearized AC Ohm's law constraints, the
-convex cosine relaxation, and (when applicable) the branch angle-difference limits.
-"""
-function construct_device!(
-    container::OptimizationContainer,
-    sys::PSY.System,
-    ::ModelConstructStage,
-    device_model::DeviceModel{T, StaticBranch},
-    network_model::NetworkModel{LPACCNetworkModel},
-) where {T <: PSY.ACTransmission}
-    @debug "construct_device LPACC StaticBranch (ModelConstructStage)" _group =
-        LOG_GROUP_BRANCH_CONSTRUCTIONS
-    devices = get_available_components(device_model, sys)
-    add_constraints!(
-        container, FlowRateConstraintFromTo, devices, device_model, network_model,
-    )
-    add_constraints!(
-        container, FlowRateConstraintToFrom, devices, device_model, network_model,
-    )
-    add_constraints!(
-        container, sys, NetworkFlowConstraint, devices, device_model, network_model,
-    )
-    add_constraints!(
-        container, sys, CosineRelaxationConstraint, devices, device_model, network_model,
-    )
-    add_constraints!(
-        container, sys, AngleDifferenceConstraint, devices, device_model, network_model,
-    )
-    _add_transformer_control_constraints!(
-        container, sys, devices, device_model, network_model,
-    )
-    add_feedforward_constraints!(container, device_model, devices)
-    add_to_objective_function!(container, devices, device_model, LPACCNetworkModel)
-    add_constraint_dual!(container, sys, device_model)
-    return
-end
 
 """
 ArgumentConstructStage for StaticBranchBounds under LPACCNetworkModel.
@@ -695,48 +647,6 @@ function construct_device!(
     end
     add_variables!(container, TapRatioVariable, devices, device_model, network_model)
     add_feedforward_arguments!(container, device_model, devices)
-    return
-end
-
-"""
-ModelConstructStage for StaticBranch under IVRNetworkModel.
-
-Applies apparent-power rate limits (from-to and to-from), the IVR π-model constraints
-(bilinear power-current linking, KCL at each terminal, Ohm's law across series impedance),
-the terminal current-magnitude quadratic limits, and cross-product angle-difference limits
-for branches with non-default (non-±π) angle bounds.
-"""
-function construct_device!(
-    container::OptimizationContainer,
-    sys::PSY.System,
-    ::ModelConstructStage,
-    device_model::DeviceModel{T, StaticBranch},
-    network_model::NetworkModel{IVRNetworkModel},
-) where {T <: PSY.ACTransmission}
-    @debug "construct_device IVR StaticBranch (ModelConstructStage)" _group =
-        LOG_GROUP_BRANCH_CONSTRUCTIONS
-    devices = get_available_components(device_model, sys)
-    add_constraints!(
-        container, FlowRateConstraintFromTo, devices, device_model, network_model,
-    )
-    add_constraints!(
-        container, FlowRateConstraintToFrom, devices, device_model, network_model,
-    )
-    add_constraints!(
-        container, sys, NetworkFlowConstraint, devices, device_model, network_model,
-    )
-    add_constraints!(
-        container, sys, CurrentLimitConstraint, devices, device_model, network_model,
-    )
-    add_constraints!(
-        container, sys, AngleDifferenceConstraint, devices, device_model, network_model,
-    )
-    _add_transformer_control_constraints!(
-        container, sys, devices, device_model, network_model,
-    )
-    add_feedforward_constraints!(container, device_model, devices)
-    add_to_objective_function!(container, devices, device_model, IVRNetworkModel)
-    add_constraint_dual!(container, sys, device_model)
     return
 end
 

@@ -243,16 +243,21 @@ function construct_device!(
 ) where {St <: PSY.Storage, D <: StorageDispatchWithReserves, S <: AbstractNetworkModel}
     devices = get_available_components(model, sys)
     _active_power_variables_and_expressions(container, devices, model, network_model)
-    add_variables!(container, ReactivePowerVariable, devices, D)
+    _maybe_add_reactive_power_variable!(
+        container,
+        ReactivePowerVariable,
+        devices,
+        D,
+        network_model,
+    )
 
     if get_attribute(model, "regularization")
         add_variables!(container, StorageRegularizationVariableCharge, devices, D)
         add_variables!(container, StorageRegularizationVariableDischarge, devices, D)
     end
 
-    add_to_expression!(
+    _maybe_add_reactive_power_balance!(
         container,
-        ReactivePowerBalance,
         ReactivePowerVariable,
         devices,
         model,
@@ -371,69 +376,15 @@ function construct_device!(
     devices = get_available_components(model, sys)
     _active_power_and_energy_bounds(container, devices, model, network_model)
 
-    add_constraints!(
+    _maybe_add_reactive_power_constraints!(
         container,
+        devices,
+        model,
+        network_model,
         ReactivePowerVariableLimitsConstraint,
         ReactivePowerVariable,
-        devices,
-        model,
-        network_model,
     )
 
-    _energy_constraints_and_objective!(
-        container,
-        sys,
-        devices,
-        stage,
-        model,
-        network_model,
-    )
-    return
-end
-
-function construct_device!(
-    container::OptimizationContainer,
-    sys::PSY.System,
-    stage::ArgumentConstructStage,
-    model::DeviceModel{St, D},
-    network_model::NetworkModel{S},
-) where {
-    St <: PSY.Storage,
-    D <: StorageDispatchWithReserves,
-    S <: AbstractActivePowerModel,
-}
-    devices = get_available_components(model, sys)
-    _active_power_variables_and_expressions(container, devices, model, network_model)
-
-    if get_attribute(model, "regularization")
-        add_variables!(container, StorageRegularizationVariableCharge, devices, D)
-        add_variables!(container, StorageRegularizationVariableDischarge, devices, D)
-    end
-
-    if has_service_model(model)
-        _add_ancillary_services!(container, devices, stage, model, network_model)
-    end
-
-    process_market_bid_parameters!(container, devices, model, true, true)
-
-    add_feedforward_arguments!(container, model, devices)
-    add_event_arguments!(container, devices, model, network_model)
-    return
-end
-
-function construct_device!(
-    container::OptimizationContainer,
-    sys::PSY.System,
-    stage::ModelConstructStage,
-    model::DeviceModel{St, D},
-    network_model::NetworkModel{S},
-) where {
-    St <: PSY.Storage,
-    D <: StorageDispatchWithReserves,
-    S <: AbstractActivePowerModel,
-}
-    devices = get_available_components(model, sys)
-    _active_power_and_energy_bounds(container, devices, model, network_model)
     _energy_constraints_and_objective!(
         container,
         sys,

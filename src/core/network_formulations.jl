@@ -49,10 +49,7 @@ honors_network_reduction(::Type{<:AbstractNetworkModel}) = true
 honors_network_reduction(::Type{CopperPlateNetworkModel}) = false
 honors_network_reduction(::Type{AreaBalanceNetworkModel}) = false
 
-# AC network models allocate a ReactivePowerBalance expression; active-power-only models do not
-# (see common_models/make_system_expressions.jl). Used to drop reactive-only device models.
-network_has_reactive_power(::Type{<:AbstractNetworkModel}) = true
-network_has_reactive_power(::Type{<:AbstractActivePowerModel}) = false
+# `network_has_reactive_power` is derived from the `reactive_power_support` trait below.
 
 # POM DCP — concrete construct_network! in network_constructor.jl.
 # IS doesn't know about power-system network formulations; POM owns all dispatch.
@@ -133,13 +130,6 @@ const NativeACNetworkModel = Union{
     IVRNetworkModel,
 }
 
-# The subset of native nodal formulations with an active-power-only balance.
-const NativeDCNetworkModel = Union{
-    DCPNetworkModel,
-    DCPLLNetworkModel,
-    NFANetworkModel,
-}
-
 #################################################################################
 # Network-formulation capability traits (Holy traits)
 #
@@ -168,11 +158,34 @@ abstract type ReactivePowerSupport end
 struct HasReactivePower <: ReactivePowerSupport end
 struct NoReactivePower <: ReactivePowerSupport end
 
-# Trait form of `network_has_reactive_power` (kept as a predicate for the `if`-based
-# validation call sites; this is for dispatch). Same partition: AbstractNetworkModel
-# has it, AbstractActivePowerModel does not.
+"""
+    reactive_power_support(::Type{<:AbstractNetworkModel}) -> ReactivePowerSupport
+
+Whether a network formulation allocates a `ReactivePowerBalance` expression, and therefore
+whether devices may inject reactive power under it.
+
+Single source of truth for the axis: `make_system_expressions!` allocates from it, the
+`network_has_reactive_power` predicate derives from it, and the
+`_maybe_add_reactive_power_*` constructor helpers dispatch on it. Extend the table here —
+never with a `Union` alias enumerating formulations, and never by overriding
+`network_has_reactive_power` separately.
+"""
 reactive_power_support(::Type{<:AbstractNetworkModel}) = HasReactivePower()
 reactive_power_support(::Type{<:AbstractActivePowerModel}) = NoReactivePower()
+
+_has_reactive_balance(::HasReactivePower) = true
+_has_reactive_balance(::NoReactivePower) = false
+
+"""
+    network_has_reactive_power(::Type{<:AbstractNetworkModel}) -> Bool
+
+Whether the network carries a reactive-power balance. Predicate form of
+[`reactive_power_support`](@ref) for the `if`-based validation call sites in
+`operation/template_validation.jl`; derived from it so the two cannot disagree. Extend
+`reactive_power_support`, not this.
+"""
+network_has_reactive_power(::Type{N}) where {N <: AbstractNetworkModel} =
+    _has_reactive_balance(reactive_power_support(N))
 
 # --- Whether the network carries a bus VoltageAngle variable ---
 abstract type VoltageForm end
@@ -184,3 +197,33 @@ voltage_form(::Type{DCPNetworkModel}) = AngleBasedVoltage()
 voltage_form(::Type{DCPLLNetworkModel}) = AngleBasedVoltage()
 voltage_form(::Type{ACPNetworkModel}) = AngleBasedVoltage()
 voltage_form(::Type{LPACCNetworkModel}) = AngleBasedVoltage()
+
+# --- How the AC voltage state is represented ---
+# `Union{ACRNetworkModel, IVRNetworkModel}` was spelled out at 17 call sites across 8 files
+# before this axis existed. The two share rectangular (vr, vi) coordinates but sit in
+# sibling branches of the network tree, so no supertype names the pair.
+abstract type VoltageCoordinates end
+
+"Bus voltage carried as magnitude and angle (`ACPNetworkModel`, `LPACCNetworkModel`)."
+struct PolarVoltage <: VoltageCoordinates end
+
+"Bus voltage carried as real/imaginary components (`ACRNetworkModel`, `IVRNetworkModel`)."
+struct RectangularVoltage <: VoltageCoordinates end
+
+"No AC voltage state — the active-power-only and aggregated formulations."
+struct NoVoltageCoordinates <: VoltageCoordinates end
+
+"""
+    voltage_coordinates(::Type{<:AbstractNetworkModel}) -> VoltageCoordinates
+
+The coordinate system a network formulation carries its AC bus voltage in. Dispatch on this
+instead of enumerating network formulations in a `Union`.
+
+Distinct from [`voltage_form`](@ref), which asks only whether a bus `VoltageAngle` variable
+exists: `DCPNetworkModel` is `AngleBasedVoltage()` but has no AC voltage state at all.
+"""
+voltage_coordinates(::Type{<:AbstractNetworkModel}) = NoVoltageCoordinates()
+voltage_coordinates(::Type{ACPNetworkModel}) = PolarVoltage()
+voltage_coordinates(::Type{LPACCNetworkModel}) = PolarVoltage()
+voltage_coordinates(::Type{ACRNetworkModel}) = RectangularVoltage()
+voltage_coordinates(::Type{IVRNetworkModel}) = RectangularVoltage()
