@@ -44,8 +44,8 @@ const _TRANSFORMERS = Union{PSY.TwoWindingTransformer, PSY.ThreeWindingTransform
 const _CONTROL_FORMULATIONS =
     Union{StaticBranch, StaticBranchBounds, AbstractSecurityConstrainedStaticBranch}
 
-_control_supported(::DeviceModel{<:_TRANSFORMERS, <:_CONTROL_FORMULATIONS}) = true
-_control_supported(::DeviceModel) = false
+_control_supported(::Type{<:_TRANSFORMERS}, ::Type{<:_CONTROL_FORMULATIONS}) = true
+_control_supported(::DeviceModel{U, V}) where {U <: PSY.ACTransmission, V <: AbstractBranchFormulation} = _control_supported(U, V)
 
 """
 DeviceModel attribute key selecting which `PowerNetworkMatrices` function aggregates

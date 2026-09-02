@@ -334,20 +334,23 @@ function _check_flow_slack_support(
     )
 end
 
-_has_unsupported_phase(m::DeviceModel{<:_TRANSFORMERS}) = any(
-    _control_objective(c, m) in _PHASE_CONTROLS || !iszero(PSY.get_α(circuit)) for
-    t in get_device_cache(m) for c in PSY.get_circuits(t)
-)
+_is_security_constrained(::DeviceModel{<:PSY.ACTransmission, <:AbstractSecurityConstrainedStaticBranch}) = true
+_is_security_constrained(::DeviceModel) = false
+
+_has_unsupported_phase(t::_TRANSFORMERS, m::DeviceModel{<:_TRANSFORMERS}) = any(_control_enabled(c, m) in _PHASE_CONTROLS || !iszero(PSY.get_α(c)) for c in PSY.get_circuits(t))
+_has_unsupported_phase(_, ::DeviceModel) = false
+
+_has_unsupported_phase(m::DeviceModel{<:_TRANSFORMERS}) = any(_has_unsupported_phase(t, m) for t in get_device_cache(m))
 _has_unsupported_phase(::DeviceModel) = false
 
 function _check_security_constrained_phase_control(
     branch_models::IOM.BranchModelContainer,
-    network_model::NetworkModel{<:AbstractDCPNetworkModel},
+    network_model::NetworkModel{<:Union{DCPNetworkModel, AbstractDCPLLNetworkModel}},
 )
     any(_is_security_constrained(m) for m in values(branch_models)) || return
     any(_has_unsupported_phase(m) for m in values(branch_models)) && throw(
         IS.ConflictingInputsError(
-            "N-1 DCP networks do not support any transformers with phase-control or nonzero phase.",
+            "N-1 DCP/DCPLL networks do not support any transformers with phase-control or nonzero phase.",
         ),
     )
     return
@@ -387,49 +390,37 @@ function _check_security_constrained_network(
     return
 end
 
-function _assert_outage_controlled_transformer(
+function _assert_transformer_outages(
     transformer::T,
     branch_models::IOM.BranchModelContainer,
 ) where {T <: _TRANSFORMERS}
     model = get(branch_models, nameof(T), nothing)
-    isnothing(model) && return
-    _control_enabled(model) || return
-    for circuit in PSY.get_circuits(transformer)
-        PSY.get_control_objective(circuit) > 0 && throw(
-            IS.ConflictingInputsError(
-                "Control-enabled transformer $(name) may not be outaged. Disable controls on the device formulation or remove this device from the outages list.",
-            ),
-        )
-    end
+    _has_unsupported_phase(transformer, model) && throw(IS.ConflictingInputsError("Phase-shifting transformers and transformers with non-zero angle may not be outages."))
     return
 end
 
-_assert_outage_controlled_transformer(::PSY.Device, ::IOM.BranchModelContainer) =
+_assert_transformer_outages(::PSY.Device, ::IOM.BranchModelContainer) =
     nothing
 
-# Monitored and outaged components exist; no controlled transformer outages
+# Monitored components exist; no controlled transformer outages
 function _check_monitored_components(
     branch_models::IOM.BranchModelContainer,
     sys::PSY.System,
 )
     for branch_model in values(branch_models)
-        IOM.supports_outages(branch_model) || return
-        for (uuid, per_type) in get_outages(branch_model)
-            for (T, names) in per_type
-                for name in names
-                    !PSY.has_component(sys, T, name) && throw(
-                        IS.ConflictingInputsError(
-                            "Monitored component \"$name\" (type $T) for outage $uuid is not found in the system.",
-                        ),
-                    )
-                    _assert_outage_controlled_transformer(T, name, branch_models)
-                end
+        IOM.supports_outages(IOM.get_formulation(branch_model)) || continue
+        for (outage_id, per_type) in get_outages(branch_model)
+            outage = PSY.get_supplemental_attribute(sys, outage_id)
+            for uuid in PSY.get_monitored_components(outage)
+                isnothing(IS.get_component(sys, uuid)) && throw(
+                    IS.ConflictingInputsError(
+                        "Monitored component \"$name\" (type $T) for outage $uuid is not found in the system.",
+                    ),
+                )
             end
-            component = IS.get_component(sys, uuid)
-            if isnothing(component)
-                throw(IS.ConflictingInputsError("Monitored component with UUID $(uuid) not found in system.",))
+            for component in PSY.get_associated_components(sys, outage)
+                _assert_transformer_outages(component, branch_models)
             end
-            _assert_outage_controlled_transformer(component, branch_models)
         end
     end
     return
