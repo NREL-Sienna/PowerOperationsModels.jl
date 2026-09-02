@@ -449,21 +449,50 @@ function add_constraints!(
     return
 end
 
+_is_phase_variable(::Tuple{Type{PhaseShifterAngle}, ::DenseAxisArray}) = true
+_is_phase_variable(::Tuple{Type{<:VariableType}, ::DenseAxisArray}) = false
+
+function _monitored_phase_variables(
+    container::OptimizationContainer,
+    resolved::Vector{Pair{Int, Vector{RepresentativeBranch}}},
+)
+    phase_vars = filter(_is_phase_variable, IOM.get_variables(container))
+    monitored_phase_vars = Dict{String, DenseAxisArray{JuMP.VariableRef, 2}}()
+    for (_, reps) in resolved, rep in reps
+        haskey(monitored_phase_vars, rep.name) && continue
+        for (_, phase_var) in phase_vars
+            if rep.name in axes(phase_var)[1]
+                monitored_phase_vars[rep.name] = phase_var
+                break
+            end
+        end
+    end
+    return monitored_phase_vars
+end
+
 function _build_post_contingency_flow_expressions_for_outage(
     time_steps::UnitRange{Int},
     outage_id::String,
     modf_cols::Dict{Tuple{String, Tuple{Int64, Int64}}, Vector{Float64}},
     nodal_balance_expressions::Matrix{JuMP.AffExpr},
     reps::Vector{RepresentativeBranch},
+    phase_vars::Dict{String, DenseAxisArray{JuMP.VariableRef, 2}},
 )
     results = Vector{Tuple{String, Vector{JuMP.AffExpr}}}(undef, length(reps))
     for (i, rep) in enumerate(reps)
-        _, expressions = _ptdf_branch_flow(
-            rep,
-            time_steps,
-            modf_cols[(outage_id, rep.arc)],
-            nodal_balance_expressions,
-        )
+        modf_col = modf_cols[(outage_id, rep.arc)]
+        phase_var = get(phase_vars, rep.name, nothing)
+        _, expressions = if isnothing(phase_var)
+            _ptdf_branch_flow(rep, time_steps, modf_col, nodal_balance_expressions)
+        else
+            _ptdf_branch_flow(
+                rep,
+                time_steps,
+                modf_col,
+                nodal_balance_expressions,
+                phase_var,
+            )
+        end
         results[i] = (rep.name, expressions)
     end
     return results
@@ -521,6 +550,8 @@ function _add_modf_post_contingency_flow_expressions!(
         end
     end
 
+    phase_vars = _monitored_phase_variables(container, fresh_resolved)
+
     # Parallel JuMP `AffExpr` build (no libklu): tasks return results, the main
     # thread does the serial writes. The try/catch surfaces the inner exception.
     tasks = map(fresh_resolved) do (uuid, reps)
@@ -532,6 +563,7 @@ function _add_modf_post_contingency_flow_expressions!(
                 modf_cols,
                 nodal_injection_expressions,
                 reps,
+                phase_vars,
             )
         catch e
             @error "Post-contingency flow-expression task failed" outage_id =

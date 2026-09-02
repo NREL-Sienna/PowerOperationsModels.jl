@@ -40,17 +40,12 @@ function get_default_time_series_names(
     return Dict{Type{<:TimeSeriesParameter}, String}()
 end
 
-const ENABLE_CONTROLS_KEY = "enable_controls"
 const _TRANSFORMERS = Union{PSY.TwoWindingTransformer, PSY.ThreeWindingTransformer}
-const _CONTROL_FORMULATIONS = Union{StaticBranch, StaticBranchBounds}
+const _CONTROL_FORMULATIONS =
+    Union{StaticBranch, StaticBranchBounds, AbstractSecurityConstrainedStaticBranch}
 
-_control_attribute(::Type{<:_TRANSFORMERS}, ::Type{<:_CONTROL_FORMULATIONS}) =
-    (ENABLE_CONTROLS_KEY => false,)
-_control_attribute(::Type{<:PSY.ACTransmission}, ::Type{<:AbstractBranchFormulation}) = ()
-
-_control_enabled(m::DeviceModel{<:_TRANSFORMERS, <:_CONTROL_FORMULATIONS}) =
-    get_attribute(m, ENABLE_CONTROLS_KEY) === true
-_control_enabled(::DeviceModel) = false
+_control_supported(::DeviceModel{<:_TRANSFORMERS}, {<:_CONTROL_FORMULATIONS}) = true
+_control_supported(::DeviceModel) = false
 
 """
 DeviceModel attribute key selecting which `PowerNetworkMatrices` function aggregates
@@ -60,6 +55,18 @@ capacity), `"sum_of_max"` (plain Σ Sᵢ), `"impedance_averaged"` (susceptance-w
 average). `PNM.MixedBranchesParallel` groups always use `sum_of_max`.
 """
 const PARALLEL_BRANCH_MAX_RATING_KEY = "parallel_branch_max_rating_method"
+
+"""
+Attribute key indicating if transformer controls are enabled. Aavailable on
+any DeviceModel where _control_enabled === true.
+"""
+const ENABLE_CONTROLS_KEY = "enable_controls"
+
+_control_attribute(
+    ::Type{U},
+    ::Type{V},
+) where {U <: PSY.ACTransmission, V <: AbstractBranchFormulation} =
+    _control_supported(DeviceModel(U, V)) ? (ENABLE_CONTROLS_KEY => false,) : ()
 
 function get_default_attributes(
     ::Type{U},
@@ -112,6 +119,9 @@ function get_default_attributes(
         MODEL_ALL_BRANCHES_KEY => false,
     )
 end
+
+_control_enabled(m::DeviceModel) =
+    _control_supported(m) && get_attribute(m, ENABLE_CONTROLS_KEY) === true
 
 #################################### Flow Variable Bounds ##################################################
 
