@@ -44,7 +44,7 @@ const _TRANSFORMERS = Union{PSY.TwoWindingTransformer, PSY.ThreeWindingTransform
 const _CONTROL_FORMULATIONS =
     Union{StaticBranch, StaticBranchBounds, AbstractSecurityConstrainedStaticBranch}
 
-_control_supported(::DeviceModel{<:_TRANSFORMERS}, {<:_CONTROL_FORMULATIONS}) = true
+_control_supported(::DeviceModel{<:_TRANSFORMERS, <:_CONTROL_FORMULATIONS}) = true
 _control_supported(::DeviceModel) = false
 
 """

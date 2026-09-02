@@ -449,8 +449,8 @@ function add_constraints!(
     return
 end
 
-_is_phase_variable(::Tuple{Type{PhaseShifterAngle}, ::DenseAxisArray}) = true
-_is_phase_variable(::Tuple{Type{<:VariableType}, ::DenseAxisArray}) = false
+_is_phase_variable(::Tuple{Type{PhaseShifterAngle}, DenseAxisArray}) = true
+_is_phase_variable(::Tuple{Type{<:VariableType}, DenseAxisArray}) = false
 
 function _monitored_phase_variables(
     container::OptimizationContainer,
