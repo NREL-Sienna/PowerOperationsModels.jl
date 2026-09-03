@@ -80,17 +80,23 @@ function IOM.validate_occ_component(
     device::PSY.ThermalMultiStart,
 )
     startup = PSY.get_start_up(PSY.get_operation_cost(device))
-    # A TS-backed startup is a bare time-series key referencing NTuple{3, Float64}
-    # stages. Keys carry no element type (`eltype(typeof(key))` is `Any` for every key
-    # type, so any check against it is unsatisfiable); the referenced series' element
-    # type is validated when the parameter is populated (IOM `time_series_utils`).
-    startup isa IS.TimeSeriesKey && return
+    return _validate_startup_eltype(startup, device)
+end
+
+# A TS-backed startup is a bare time-series key referencing NTuple{3, Float64} stages.
+# Keys carry no element type (`eltype(typeof(key))` is `Any` for every key type, so any
+# check against it is unsatisfiable); the referenced series' element type is validated
+# when the parameter is populated (IOM `time_series_utils`).
+_validate_startup_eltype(::IS.TimeSeriesKey, ::PSY.ThermalMultiStart) = nothing
+
+function _validate_startup_eltype(startup, device::PSY.ThermalMultiStart)
     _validate_eltype(
         Union{Float64, NTuple{3, Float64}, PSY.StartUpStages},
         device,
         startup,
         " startup cost",
     )
+    return
 end
 
 # Renewable / Storage: warn on nonzero startup, shutdown, and no-load costs
