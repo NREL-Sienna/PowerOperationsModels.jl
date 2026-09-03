@@ -576,7 +576,7 @@ end
 
         function _arc(name)
             for n2a in values(name_to_arc_maps)
-                haskey(n2a, name) && return n2a[name][1]
+                haskey(n2a, name) && return n2a[name]
             end
             error("monitored name $name not found in any reduction map")
         end

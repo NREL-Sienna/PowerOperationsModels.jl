@@ -873,12 +873,11 @@ end
 end
 
 @testset "get_ptdf_orientation_sign resolves every reduction kind" begin
-    # This function had no test coverage, and the reduction tag it switches on is agreed
-    # across a package boundary by convention alone: PNM stores a `Symbol` in the second slot
-    # of `name_to_arc`, and nothing checks that POM reads it as one. When the tag was a
-    # `String` here and a `Symbol` there, every arm below was silently `false` and the
-    # function fell through to its trailing `error()` for every branch on every path. It is
-    # reachable only from area interchange, so the whole suite stayed green.
+    # This function had no test coverage, and the reduction kind it switches on crosses a
+    # package boundary: PNM derives it from the arc entry's type via `arc_provenance`, and
+    # POM dispatches `_ptdf_orientation_sign` on the returned singleton. The arms below pin
+    # every provenance this fixture produces, so a kind that stops resolving is caught here.
+    # It is reachable only from area interchange, so the whole suite stays green otherwise.
     sys = PSB.build_system(PSITestSystems, "case11_network_reductions")
     ybus = PNM.Ybus(
         sys;
@@ -888,13 +887,16 @@ end
     )
     catalog = PNM.get_branch_catalog(ybus)
 
-    kinds = Set{Symbol}()
+    kinds = Set{DataType}()
     signs = Float64[]
     for (T, by_name) in PNM.get_name_to_arc_maps(catalog)
-        for (name, (_, reduction)) in by_name
-            # The contract itself: a `Symbol`, not a `String` and not a provenance object.
-            @test reduction isa Symbol
-            push!(kinds, reduction)
+        for (name, arc) in by_name
+            # The contract itself: the map's value is the bare arc, and its provenance is
+            # derived from the entry rather than stored alongside it.
+            @test arc isa Tuple{Int, Int}
+            provenance = PNM.arc_provenance(catalog, arc)
+            @test provenance isa PNM.ArcProvenance
+            push!(kinds, typeof(provenance))
             # Must resolve rather than reach the "unhandled reduction map" error.
             sign = PowerOperationsModels.get_ptdf_orientation_sign(catalog, T, name)
             @test sign == 1.0 || sign == -1.0
@@ -902,11 +904,11 @@ end
         end
     end
 
-    # All three tags this fixture produces are exercised, so a regression cannot hide in an
-    # arm the fixture never reaches.
-    @test :direct_branch_map in kinds
-    @test :parallel_branch_map in kinds
-    @test :series_branch_map in kinds
+    # All three provenances this fixture produces are exercised, so a regression cannot hide
+    # in an arm the fixture never reaches.
+    @test PNM.DirectArc in kinds
+    @test PNM.ParallelArc in kinds
+    @test PNM.SeriesArc in kinds
     @test !isempty(signs)
 
     # KNOWN GAP: every segment of every chain in `case11_network_reductions` is traversed
