@@ -178,6 +178,11 @@ IOM._is_time_series_cost(::PSY.MarketBidTimeSeriesCost) = true
 # type dispatch — no instance lookup (unlike FuelCurve-backed ThermalGenerationCost).
 IOM.is_time_variant_proportional(::PSY.MarketBidCost) = false
 IOM.is_time_variant_proportional(::PSY.MarketBidTimeSeriesCost) = true
+
+# `PSY.StartUpStages` is a plain NamedTuple: the static, non-time-series `start_up` field
+# of a MarketBidCost. IOM's generic predicate delegates to `IS.is_time_series_backed`,
+# which has no method for it, so state the answer here where PSY types are in scope.
+IOM.is_time_variant(::PSY.StartUpStages) = false
 IOM.is_time_variant_proportional(::PSY.ImportExportCost) = false
 IOM.is_time_variant_proportional(::PSY.ImportExportTimeSeriesCost) = true
 

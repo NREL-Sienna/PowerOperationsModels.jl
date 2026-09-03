@@ -37,7 +37,7 @@ PowerFlows = "94fada2c-fd9a-4e89-8d82-81405f5cb4f6"
 # than PSY's local checkout expects (TimeSeriesKey UnionAll mismatch on load).
 # Revert to the git rev pin once PSY's local changes land on IS4.
 InfrastructureSystems = {rev = "IS4", url = "https://github.com/Sienna-Platform/InfrastructureSystems.jl"}
-InfrastructureOptimizationModels = {rev = "main", url = "https://github.com/Sienna-Platform/InfrastructureOptimizationModels.jl"}
+InfrastructureOptimizationModels = {rev = "jd/pwl_width_refs", url = "https://github.com/Sienna-Platform/InfrastructureOptimizationModels.jl"}
 # LOCAL PATH CO-DEV PIN (temporary): the variable -> variable_operation_cost cost-field
 # rename on PSY's generated cost types is uncommitted on disk, not on the psy6 branch yet.
 # Revert to the git rev pin once pushed/merged.
