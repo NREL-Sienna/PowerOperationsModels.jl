@@ -1873,3 +1873,208 @@ end
         @test sum(awards[t, c] for c in sub_cols) ≈ demand[t, "UP_GROUP"] atol = 1e-3
     end
 end
+
+# The interface spans lines "1", "2" and "6", but the branch filter admits only line "1".
+# Every branch in a modeled service must be modeled regardless of the filter, so that the
+# interface flow is the sum over all three lines rather than over the one that passed.
+@testset "Interface branches survive a branch filter" begin
+    c_sys5_uc = PSB.build_system(PSITestSystems, "c_sys5_uc")
+    interface = TransmissionInterface(;
+        name = "west_east",
+        available = true,
+        active_power_flow_limits = (min = 0.0, max = 400.0),
+    )
+    interface_line_names = ["1", "2", "6"]
+    interface_lines =
+        [get_component(Line, c_sys5_uc, n) for n in interface_line_names]
+    add_service!(c_sys5_uc, interface, interface_lines)
+
+    raw_filter = x -> PSY.get_name(x) == "1"
+    template = get_thermal_dispatch_template_network(PTDFNetworkModel)
+    set_device_model!(
+        template,
+        DeviceModel(
+            Line,
+            StaticBranch;
+            attributes = Dict("filter_function" => raw_filter),
+        ),
+    )
+    set_service_model!(
+        template,
+        ServiceModel(TransmissionInterface, ConstantMaxInterfaceFlow),
+    )
+
+    model = DecisionModel(template, c_sys5_uc; optimizer = HiGHS_optimizer)
+    @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
+          IOM.ModelBuildStatus.BUILT
+    @test solve!(model) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
+
+    container = IOM.get_optimization_container(model)
+    branch_flow = IOM.get_expression(container, POM.PTDFBranchFlow, Line)
+    # The filter admits only line "1"; the interface must pull "2" and "6" back in.
+    for name in interface_line_names
+        @test name in axes(branch_flow)[1]
+    end
+
+    # The device cache and the network catalog read the same widened filter, so a forced
+    # branch must appear in the rate constraints too, not only in the flow expression.
+    rate_constraint = IOM.get_constraint(container, FlowRateConstraint, Line, "ub")
+    for name in interface_line_names
+        @test name in axes(rate_constraint)[1]
+    end
+
+    interface_flow =
+        IOM.get_expression(container, POM.InterfaceTotalFlow, TransmissionInterface)
+    for t in axes(interface_flow)[2]
+        expected = sum(
+            JuMP.value(branch_flow[name, t]) for name in interface_line_names
+        )
+        @test isapprox(
+            JuMP.value(interface_flow["west_east", t]),
+            expected;
+            atol = POM.ABSOLUTE_TOLERANCE,
+        )
+    end
+
+    # Rebuilding the same model (build! -> reset! -> build!, as production code does) must
+    # not nest the widened filter one layer deeper on every pass: re-validating an
+    # already-widened template has to unwrap the previous widening before rewrapping it.
+    POM.reset!(model)
+    @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
+          IOM.ModelBuildStatus.BUILT
+    @test solve!(model) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
+
+    rebuilt_container = IOM.get_optimization_container(model)
+    rebuilt_branch_flow = IOM.get_expression(rebuilt_container, POM.PTDFBranchFlow, Line)
+    rebuilt_interface_flow = IOM.get_expression(
+        rebuilt_container,
+        POM.InterfaceTotalFlow,
+        TransmissionInterface,
+    )
+    for t in axes(rebuilt_interface_flow)[2]
+        expected = sum(
+            JuMP.value(rebuilt_branch_flow[name, t]) for name in interface_line_names
+        )
+        @test isapprox(
+            JuMP.value(rebuilt_interface_flow["west_east", t]),
+            expected;
+            atol = POM.ABSOLUTE_TOLERANCE,
+        )
+    end
+
+    # The rebuild must widen the user's own filter afresh rather than widening the
+    # already-widened one from the first build, so the stored filter's `.original` has to
+    # still be the exact raw predicate the template was built with, not another wrapper.
+    rebuilt_line_model = IOM.get_model(IOM.get_template(model), Line)
+    rebuilt_stored_filter = POM.get_attribute(rebuilt_line_model, "filter_function")
+    @test POM._unwiden_branch_filter(rebuilt_stored_filter) === raw_filter
+end
+
+@testset "Collect branch names required by service models" begin
+    c_sys5_uc = PSB.build_system(PSITestSystems, "c_sys5_uc")
+    interface = TransmissionInterface(;
+        name = "west_east",
+        available = true,
+        active_power_flow_limits = (min = -400.0, max = 400.0),
+    )
+    add_service!(
+        c_sys5_uc,
+        interface,
+        [get_component(Line, c_sys5_uc, n) for n in ("1", "2", "6")],
+    )
+
+    template = get_thermal_dispatch_template_network(PTDFNetworkModel)
+    set_service_model!(
+        template,
+        ServiceModel(TransmissionInterface, ConstantMaxInterfaceFlow),
+    )
+    IOM.finalize_template!(template, c_sys5_uc)
+
+    forced = POM._collect_service_branch_names(template, c_sys5_uc)
+    @test haskey(forced, Line)
+    @test forced[Line].branch_names == Set(["1", "2", "6"])
+    @test forced[Line].service_names == Set(["west_east"])
+
+    # A network model that does not model branch flows has nothing to force in.
+    copper_template = get_thermal_dispatch_template_network(CopperPlateNetworkModel)
+    set_service_model!(
+        copper_template,
+        ServiceModel(TransmissionInterface, ConstantMaxInterfaceFlow),
+    )
+    IOM.finalize_template!(copper_template, c_sys5_uc)
+    @test isempty(POM._collect_service_branch_names(copper_template, c_sys5_uc))
+end
+
+# A transformer in the interface with no TwoWindingTransformer branch model cannot be forced
+# in: there is no formulation to build its flow. The interface would silently omit it, so the
+# template is rejected instead.
+@testset "Interface branch with no branch model is rejected" begin
+    c_sys14 = PSB.build_system(PSITestSystems, "c_sys14")
+    line = get_component(Line, c_sys14, "Line1")
+    transformer = first(PSY.get_components(TwoWindingTransformer, c_sys14))
+    interface = TransmissionInterface(;
+        name = "mixed_types",
+        available = true,
+        active_power_flow_limits = (min = -400.0, max = 400.0),
+    )
+    add_service!(c_sys14, interface, [line, transformer])
+
+    template = PowerOperationsProblemTemplate(PTDFNetworkModel)
+    set_device_model!(template, ThermalStandard, ThermalBasicDispatch)
+    set_device_model!(template, PowerLoad, StaticPowerLoad)
+    set_device_model!(template, Line, StaticBranch)
+    set_service_model!(
+        template,
+        ServiceModel(TransmissionInterface, ConstantMaxInterfaceFlow),
+    )
+
+    model = DecisionModel(template, c_sys14; optimizer = HiGHS_optimizer)
+    # Assert on `validate_template` directly: `build!` may catch and return FAILED rather than
+    # propagating, which would make the assertion depend on build's error handling.
+    # This is the pattern used at test/test_ac_transmission_security_constrained_models.jl:840.
+    # Pin the message to the offending branch type, branch name and service name so this test
+    # can only pass if the new service-branch-model check is what threw, not
+    # `_check_branch_network_compatibility` or `_formulation_supports_network`.
+    err = try
+        POM.validate_template(model)
+        nothing
+    catch e
+        e
+    end
+    @test !isnothing(err)
+    @test typeof(err) == IS.ConflictingInputsError
+    message = sprint(showerror, err)
+    @test occursin("TwoWindingTransformer", message)
+    @test occursin(PSY.get_name(transformer), message)
+    @test occursin("mixed_types", message)
+
+    # Adding the missing branch model resolves it.
+    set_device_model!(template, TwoWindingTransformer, StaticBranch)
+    ok_model = DecisionModel(template, c_sys14; optimizer = HiGHS_optimizer)
+    @test build!(ok_model; output_dir = mktempdir(; cleanup = true)) ==
+          IOM.ModelBuildStatus.BUILT
+end
+
+@testset "Service branch forcing is skipped where branch flows are not modeled" begin
+    c_sys5_uc = PSB.build_system(PSITestSystems, "c_sys5_uc")
+    interface = TransmissionInterface(;
+        name = "west_east",
+        available = true,
+        active_power_flow_limits = (min = -400.0, max = 400.0),
+    )
+    add_service!(
+        c_sys5_uc,
+        interface,
+        [get_component(Line, c_sys5_uc, n) for n in ("1", "2", "6")],
+    )
+
+    # AreaPTDF resolves interfaces over AreaInterchange components and ignores the lines that
+    # cross them, so it must not pull filtered lines back into the model.
+    area_template = get_thermal_dispatch_template_network(AreaPTDFNetworkModel)
+    set_service_model!(
+        area_template,
+        ServiceModel(TransmissionInterface, ConstantMaxInterfaceFlow),
+    )
+    IOM.finalize_template!(area_template, c_sys5_uc)
+    @test isempty(POM._collect_service_branch_names(area_template, c_sys5_uc))
+end

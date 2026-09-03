@@ -28,6 +28,152 @@ function _reconcile_resolution!(settings, sys)
     return
 end
 
+"""
+The branches a service model requires to be modeled, and the services that require them.
+Carried per concrete branch type so a filter can be widened per branch model, and so a
+missing branch model can be reported against the service that needed it.
+"""
+struct ServiceBranchRequirement
+    branch_names::Set{String}
+    service_names::Set{String}
+end
+
+ServiceBranchRequirement() = ServiceBranchRequirement(Set{String}(), Set{String}())
+
+# Only branch-typed contributors matter: a reserve's thermal contributors are modeled
+# through their own device models and carry no flow into a service expression.
+_record_service_branch!(
+    ::Dict{DataType, ServiceBranchRequirement},
+    ::PSY.Device,
+    ::String,
+) = nothing
+
+function _record_service_branch!(
+    forced::Dict{DataType, ServiceBranchRequirement},
+    branch::PSY.Branch,
+    service_name::String,
+)
+    PSY.get_available(branch) || return
+    entry = get!(ServiceBranchRequirement, forced, typeof(branch))
+    push!(entry.branch_names, PSY.get_name(branch))
+    push!(entry.service_names, service_name)
+    return
+end
+
+"""
+The branches that must be modeled because a service model in the template depends on their
+flow, keyed by concrete branch type. Read from the system's own contributing-device mapping
+rather than from the service model's map, which has already been narrowed by component type
+and so cannot report a branch type the template fails to model.
+"""
+function _collect_service_branch_names(
+    template::PowerOperationsProblemTemplate,
+    sys::PSY.System,
+)
+    forced = Dict{DataType, ServiceBranchRequirement}()
+    service_models = get_service_models(template)
+    isempty(service_models) && return forced
+    network_formulation = get_network_formulation(get_network_model(template))
+    # Nothing to force where no branch flow is built, and AreaPTDF resolves interfaces over
+    # AreaInterchange components alone, ignoring the lines that cross them.
+    branches_modeled(network_formulation) || return forced
+    network_formulation <: AreaPTDFNetworkModel && return forced
+    services_mapping = PSY.get_contributing_device_mapping(sys)
+    isempty(services_mapping) && return forced
+    for service_model in values(service_models)
+        for service in get_available_components(service_model, sys)
+            service_name = PSY.get_name(service)
+            key = (type = typeof(service), name = service_name)
+            haskey(services_mapping, key) || continue
+            for device in services_mapping[key].contributing_devices
+                _record_service_branch!(forced, device, service_name)
+            end
+        end
+    end
+    return forced
+end
+
+"""
+A branch filter widened with the branches a service model requires. Named rather than anonymous
+so that re-validating a template unwraps the previous widening instead of nesting another layer.
+"""
+struct WidenedBranchFilter{F} <: Function
+    original::F
+    names::Set{String}
+end
+
+function (f::WidenedBranchFilter)(x)
+    return (PSY.get_name(x) ∈ f.names)::Bool || (f.original(x))::Bool
+end
+
+_unwiden_branch_filter(f) = f
+_unwiden_branch_filter(f::WidenedBranchFilter) = f.original
+
+"""
+Widen each branch model's filter so it also admits the branches its services require.
+
+Only a model that already carries a filter is rewritten. A model with no filter admits every
+available branch already, and installing a filter on it would flip `model_has_branch_filters`
+and force the network catalog to rebuild, both without changing which branches are modeled.
+
+Idempotent and unconditional: every filtered branch model is first unwrapped back to the user's
+own predicate, then re-widened from the current `forced` set only if that type still has a
+requirement. This is what keeps a rebuild from leaving a stale widening in place after the
+template or system data changes between `build!` passes (a service model removed from the
+template, or every interface branch made unavailable) — the old early-return-on-empty and
+continue-on-no-entry left the previous pass's `WidenedBranchFilter` installed in both cases.
+"""
+function _widen_branch_filters!(
+    branch_models::IOM.BranchModelContainer,
+    forced::Dict{DataType, ServiceBranchRequirement},
+)
+    for branch_model in values(branch_models)
+        original_filter = get_attribute(branch_model, "filter_function")
+        original_filter === nothing && continue
+        unwidened = _unwiden_branch_filter(original_filter)
+        entry = get(forced, get_component_type(branch_model), nothing)
+        if entry === nothing
+            get_attributes(branch_model)["filter_function"] = unwidened
+        else
+            get_attributes(branch_model)["filter_function"] =
+                WidenedBranchFilter(unwidened, entry.branch_names)
+        end
+    end
+    return
+end
+
+"""
+Reject a template whose service models depend on a branch type it does not model.
+
+A filter can be widened to admit a branch, but a missing branch model cannot be conjured: there
+is no formulation with which to build the branch's flow, so the service's flow expression would
+be short by that branch's contribution with nothing to signal it.
+"""
+function _check_service_branch_models(
+    template::PowerOperationsProblemTemplate,
+    forced::Dict{DataType, ServiceBranchRequirement},
+)
+    isempty(forced) && return
+    modeled_branch_types = Set{DataType}(
+        get_component_type(m) for m in values(get_branch_models(template))
+    )
+    for (branch_type, entry) in forced
+        branch_type ∈ modeled_branch_types && continue
+        branch_list = join(sort!(collect(entry.branch_names)), ", ")
+        service_list = join(sort!(collect(entry.service_names)), ", ")
+        throw(
+            IS.ConflictingInputsError(
+                "Branches of type $(branch_type) contribute to the service(s) $(service_list) \
+                but the template has no branch model for that type: $(branch_list). Their flow \
+                would be omitted from the service's flow expression. Add a branch model for \
+                $(branch_type), remove the service model from the template, or detach the \
+                branch(es) from the service in the system data.",
+            ),
+        )
+    end
+    return
+end
+
 function validate_template_impl!(model::IOM.AbstractOptimizationModel)
     template = get_template(model)
     settings = get_settings(model)
@@ -74,6 +220,11 @@ function validate_template_impl!(model::IOM.AbstractOptimizationModel)
         delete!(template.devices, k)
     end
 
+    # Branches carrying a modeled service's flow must be modeled whether or not they pass a
+    # branch filter, so widen the filters before the device caches are built from them.
+    forced_service_branches = _collect_service_branch_names(template, system)
+    _widen_branch_filters!(template.branches, forced_service_branches)
+
     model_has_branch_filters = false
     branch_keys_to_delete = Symbol[]
     validate_branches =
@@ -108,6 +259,8 @@ function validate_template_impl!(model::IOM.AbstractOptimizationModel)
     for k in branch_keys_to_delete
         delete!(template.branches, k)
     end
+    # After the deletions: a branch model dropped here is as absent as one never added.
+    _check_service_branch_models(template, forced_service_branches)
     _check_security_constrained_three_winding_transformer(template.branches)
     _check_security_constrained_network(template.branches, network_model)
     _check_security_constrained_phase_control(template.branches, network_model)
