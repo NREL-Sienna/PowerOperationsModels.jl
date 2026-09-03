@@ -1,12 +1,11 @@
 #################################### RepresentativeBranch ##################################
 
-const DIRECT_BRANCH_MAP = :direct_branch_map
 const _NO_BUS_NAMES = Dict{Int, String}()
 
 """
 One branch as the reduction-aware builders see it. Build with
 [`_representative_branches`](@ref) (one per arc, for constraint rows) or
-[`_all_branches`](@ref) (one per device name, for variables), and iterate with
+[`_all_branches`](@ref) (one per reporting row, for variables), and iterate with
 [`_foreach_branch`](@ref).
 
 `B` is either a PSY.Device, a PNM.AbstractReductionAggregate, or a
@@ -15,11 +14,26 @@ PNM.ThreeWindingTransformerCircuit.
 struct RepresentativeBranch{B}
     name::String
     arc::Tuple{Int, Int}
-    reduction::Symbol
     branch::B
     nr::PNM.NetworkReductionData
     number_to_name::Dict{Int, String}
 end
+
+"""
+How the arc this branch occupies came to exist. Read off the entry rather than stored: `B` is
+concrete per specialization, so this resolves statically and costs nothing.
+
+PNM used to hand out a `Symbol` naming the internal map an entry came from, and this struct
+kept it alongside the entry that symbol was used to fetch. The entry answers the question.
+"""
+_provenance(rep) = PNM.arc_provenance(rep.branch)
+
+# Appears in JuMP variable names, so keep it short and stable.
+_reduction_label(::PNM.DirectArc) = "direct"
+_reduction_label(::PNM.ParallelArc) = "parallel"
+_reduction_label(::PNM.SeriesArc) = "series"
+_reduction_label(::PNM.SyntheticArc) = "synthetic"
+_reduction_label(rep::RepresentativeBranch) = _reduction_label(_provenance(rep))
 
 """
 Used for specializing the device loop per concrete RepresentativeBranch.
@@ -35,20 +49,18 @@ end
 _branch_names(reps) = String[rep.name for rep in reps]
 
 function _make_representative_branch(
-    nr::PNM.NetworkReductionData,
-    all_branch_maps_by_type::PNM.BranchMapsByType,
+    catalog::PNM.BranchCatalog,
     arc_map,
     number_to_name::Dict{Int, String},
     ::Type{T},
     name::AbstractString,
 ) where {T <: PSY.ACTransmission}
-    (arc, reduction) = arc_map[name]
+    arc = arc_map[name]
     return RepresentativeBranch(
         name,
         arc,
-        reduction,
-        all_branch_maps_by_type[reduction][T][arc],
-        nr,
+        PNM.get_reduction_entry(catalog, arc),
+        PNM.get_network_reduction_data(catalog),
         number_to_name,
     )
 end
@@ -67,20 +79,19 @@ function _representative_branches(
     number_to_name::Dict{Int, String} = _NO_BUS_NAMES,
 ) where {T <: PSY.ACTransmission, C <: ConstraintType}
     catalog = get_branch_catalog(network_model)
-    nr = PNM.get_network_reduction_data(catalog)
     tracker = get_reduced_branch_tracker(network_model)
     arc_map = PNM.get_name_to_arc_map(catalog, T)
-    all_branch_maps_by_type = PNM.get_all_branch_maps_by_type(catalog)
     return RepresentativeBranch[
-        _make_representative_branch(
-            nr, all_branch_maps_by_type, arc_map, number_to_name, T, name,
-        )
+        _make_representative_branch(catalog, arc_map, number_to_name, T, name)
         for name in get_branch_argument_constraint_axis(catalog, tracker, T, C)
     ]
 end
 
 """
-One entry per reduction catalog entry name. Arcs may appear multiple times.
+One entry per reporting row, for variable container axes: every segment of a series chain
+gets its own row, because a lossless chain carries the same flow in each, while a parallel
+group gets one row at whatever depth it sits. A parallel member is therefore not an axis key
+-- reach its row with [`_representative_branch`](@ref), which redirects.
 """
 function _all_branches(
     network_model::NetworkModel,
@@ -88,13 +99,9 @@ function _all_branches(
     number_to_name::Dict{Int, String} = _NO_BUS_NAMES,
 ) where {T <: PSY.ACTransmission}
     catalog = get_branch_catalog(network_model)
-    nr = PNM.get_network_reduction_data(catalog)
     arc_map = PNM.get_name_to_arc_map(catalog, T)
-    all_branch_maps_by_type = PNM.get_all_branch_maps_by_type(catalog)
     return RepresentativeBranch[
-        _make_representative_branch(
-            nr, all_branch_maps_by_type, arc_map, number_to_name, T, name,
-        )
+        _make_representative_branch(catalog, arc_map, number_to_name, T, name)
         for name in keys(arc_map)
     ]
 end
@@ -111,7 +118,6 @@ function _representative_branch(
     number_to_name::Dict{Int, String} = _NO_BUS_NAMES,
 ) where {T <: PSY.ACTransmission}
     catalog = get_branch_catalog(network_model)
-    nr = PNM.get_network_reduction_data(catalog)
     arc_map = PNM.get_name_to_arc_map(catalog, T)
     entry_name = if haskey(arc_map, name)
         name
@@ -124,14 +130,7 @@ function _representative_branch(
         get(redirects, name, string())
     end
     isempty(entry_name) && error("$(T) \"$(name)\" does not exist in the reduction maps.")
-    return _make_representative_branch(
-        nr,
-        PNM.get_all_branch_maps_by_type(catalog),
-        arc_map,
-        number_to_name,
-        T,
-        entry_name,
-    )
+    return _make_representative_branch(catalog, arc_map, number_to_name, T, entry_name)
 end
 
 ################################## Topology ################################################
