@@ -37,15 +37,13 @@ import PowerNetworkMatrices as PNM
             catalog = PNM.get_branch_catalog(ybus)
             arc_lookup = PNM.get_arc_lookup(core)
             per_arc = PNM._get_arc_susceptances(core)
-            maps = PNM.get_all_branch_maps_by_type(catalog)
-
             n_checked = 0
             for (branch_type, name_map) in PNM.get_name_to_arc_maps(catalog)
-                for (name, (arc, map_name)) in name_map
+                for (name, arc) in name_map
                     # Arcs absorbed by the reduction (radial/degree-two) never make it
                     # into the retained arc_lookup; nothing to compare for them.
                     haskey(arc_lookup, arc) || continue
-                    entry = maps[map_name][branch_type][arc]
+                    entry = PNM.get_reduction_entry(catalog, arc)
                     from_branch = PNM.get_series_susceptance(entry, PSY.SU)
                     from_arc = per_arc[arc_lookup[arc]]
                     n_checked += 1

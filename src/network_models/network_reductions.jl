@@ -24,7 +24,7 @@ mutable struct BranchReductionOptimizationTracker <: IOM.AbstractBranchReduction
         Type{<:ConstraintType},
         Dict{
             Type{<:IS.InfrastructureSystemsComponent},
-            IOM.SortedDict{String, Tuple{Tuple{Int, Int}, Symbol}},
+            IOM.SortedDict{String, Tuple{Int, Int}},
         },
     }
     number_of_steps::Int
@@ -227,9 +227,8 @@ function get_branch_argument_parameter_axes(
     arc_map = get(PNM.get_name_to_arc_maps(branch_catalog), T, nothing)
     isnothing(arc_map) && return name_axis, ts_hash_axis
     devices_with_time_series = IS.InfrastructureSystemsComponent[]
-    for (name, (arc, reduction)) in arc_map
-        reduction_entry =
-            PNM.get_all_branch_maps_by_type(branch_catalog)[reduction][T][arc]
+    for (name, arc) in arc_map
+        reduction_entry = PNM.get_reduction_entry(branch_catalog, arc)
         device_with_time_series =
             get_branch_with_time_series(reduction_entry, V, ts_name)
         if !isnothing(device_with_time_series)
@@ -307,17 +306,16 @@ function get_branch_argument_constraint_axis(
     constraint_map = get!(
         Dict{
             Type{<:IS.InfrastructureSystemsComponent},
-            IOM.SortedDict{String, Tuple{Tuple{Int, Int}, Symbol}},
+            IOM.SortedDict{String, Tuple{Int, Int}},
         },
         constraint_map_by_type,
         U,
     )
     constraint_submap =
-        get!(IOM.SortedDict{String, Tuple{Tuple{Int, Int}, Symbol}}, constraint_map, T)
-    for (branch_name, name_axis_tuple) in name_axis
-        arc_tuple = name_axis_tuple[1]
+        get!(IOM.SortedDict{String, Tuple{Int, Int}}, constraint_map, T)
+    for (branch_name, arc_tuple) in name_axis
         if !(arc_tuple in arc_tuples_with_constraints)
-            constraint_submap[branch_name] = name_axis_tuple
+            constraint_submap[branch_name] = arc_tuple
             push!(arc_tuples_with_constraints, arc_tuple)
         end
     end
