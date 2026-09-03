@@ -865,3 +865,51 @@ end
         _dcp_reduction_from(sys -> IOM.DefaultNetworkSource()),
     )
 end
+
+@testset "get_ptdf_orientation_sign resolves every reduction kind" begin
+    # This function had no test coverage, and the reduction tag it switches on is agreed
+    # across a package boundary by convention alone: PNM stores a `Symbol` in the second slot
+    # of `name_to_arc`, and nothing checks that POM reads it as one. When the tag was a
+    # `String` here and a `Symbol` there, every arm below was silently `false` and the
+    # function fell through to its trailing `error()` for every branch on every path. It is
+    # reachable only from area interchange, so the whole suite stayed green.
+    sys = PSB.build_system(PSITestSystems, "case11_network_reductions")
+    ybus = PNM.Ybus(
+        sys;
+        network_reductions = PNM.NetworkReduction[
+            PNM.RadialReduction(), PNM.DegreeTwoReduction(),
+        ],
+    )
+    catalog = PNM.get_branch_catalog(ybus)
+
+    kinds = Set{Symbol}()
+    signs = Float64[]
+    for (T, by_name) in PNM.get_name_to_arc_maps(catalog)
+        for (name, (_, reduction)) in by_name
+            # The contract itself: a `Symbol`, not a `String` and not a provenance object.
+            @test reduction isa Symbol
+            push!(kinds, reduction)
+            # Must resolve rather than reach the "unhandled reduction map" error.
+            sign = PowerOperationsModels.get_ptdf_orientation_sign(catalog, T, name)
+            @test sign == 1.0 || sign == -1.0
+            push!(signs, sign)
+        end
+    end
+
+    # All three tags this fixture produces are exercised, so a regression cannot hide in an
+    # arm the fixture never reaches.
+    @test :direct_branch_map in kinds
+    @test :parallel_branch_map in kinds
+    @test :series_branch_map in kinds
+    @test !isempty(signs)
+
+    # KNOWN GAP: every segment of every chain in `case11_network_reductions` is traversed
+    # `:FromTo`, so all 11 entries return `+1.0`. The series arm is reached, but the
+    # `:ToFrom` -> `-1.0` case -- the only one that reads `get_segment_orientations` for
+    # anything other than its length -- is not distinguished from the trivial path here.
+    # Covering it needs a chain whose interior bus numbering reverses a segment (PNM pins
+    # that shape with `build_reversed_asymmetric_degree_two_chains`); this asserts the
+    # current state so that adding such a fixture visibly flips it rather than passing
+    # silently either way.
+    @test all(==(1.0), signs)
+end
