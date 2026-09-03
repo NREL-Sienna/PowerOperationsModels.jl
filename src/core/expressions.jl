@@ -146,3 +146,12 @@ convert_output_to_natural_units(::Type{PostContingencyBranchFlow}) = true
 convert_output_to_natural_units(::Type{PTDFBranchFlow}) = true
 convert_output_to_natural_units(::Type{BThetaBranchFlow}) = true
 convert_output_to_natural_units(::Type{RealizedShiftedLoad}) = true
+
+"""
+Signed net cleared position per settlement location (`ACBus`, `LoadZone`, `TradingHub`),
+one entry per location name per timestep. Positive = injection. Instruments write their
+own sign (demand −, supply +, P2P − at `from` / + at `to`); the distribution pass is
+sign-free. Exists solely to be distributed onto the nodal `ActivePowerBalance`; it never
+feeds `SettlementBalance`.
+"""
+struct AggregateClearedInjection <: ExpressionType end

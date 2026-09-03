@@ -80,17 +80,23 @@ function IOM.validate_occ_component(
     device::PSY.ThermalMultiStart,
 )
     startup = PSY.get_start_up(PSY.get_operation_cost(device))
-    # A TS-backed startup is a bare time-series key referencing NTuple{3, Float64}
-    # stages. Keys carry no element type (`eltype(typeof(key))` is `Any` for every key
-    # type, so any check against it is unsatisfiable); the referenced series' element
-    # type is validated when the parameter is populated (IOM `time_series_utils`).
-    startup isa IS.TimeSeriesKey && return
+    return _validate_startup_eltype(startup, device)
+end
+
+# A TS-backed startup is a bare time-series key referencing NTuple{3, Float64}
+# stages. Keys carry no element type (`eltype(typeof(key))` is `Any` for every key
+# type, so any check against it is unsatisfiable); the referenced series' element
+# type is validated when the parameter is populated (IOM `time_series_utils`).
+_validate_startup_eltype(::IS.TimeSeriesKey, ::PSY.ThermalMultiStart) = return
+
+function _validate_startup_eltype(startup, device::PSY.ThermalMultiStart)
     _validate_eltype(
         Union{Float64, NTuple{3, Float64}, PSY.StartUpStages},
         device,
         startup,
         " startup cost",
     )
+    return
 end
 
 # Renewable / Storage: warn on nonzero startup, shutdown, and no-load costs
@@ -254,6 +260,50 @@ function add_variable_cost_to_objective!(
 end
 
 #################################################################################
+# Section 6a: VirtualParticipant — incremental (supply) and decremental (demand)
+# offers on a MarketBidCost. Structurally identical two-sided precedent to Source
+# ImportExport above, just keyed on MBC_TYPES instead of IEC_TYPES.
+#################################################################################
+
+function add_variable_cost_to_objective!(
+    container::OptimizationContainer,
+    ::Type{ActivePowerOutVariable},
+    component::PSY.VirtualParticipant,
+    cost_function::MBC_TYPES,
+    ::Type{VirtualBidDispatch},
+)
+    IOM.is_nontrivial_offer(get_output_offer_curves(cost_function)) || return
+    add_pwl_term_delta!(
+        IncrementalOffer(),
+        container,
+        component,
+        cost_function,
+        ActivePowerOutVariable,
+        VirtualBidDispatch,
+    )
+    return
+end
+
+function add_variable_cost_to_objective!(
+    container::OptimizationContainer,
+    ::Type{ActivePowerInVariable},
+    component::PSY.VirtualParticipant,
+    cost_function::MBC_TYPES,
+    ::Type{VirtualBidDispatch},
+)
+    IOM.is_nontrivial_offer(get_input_offer_curves(cost_function)) || return
+    add_pwl_term_delta!(
+        DecrementalOffer(),
+        container,
+        component,
+        cost_function,
+        ActivePowerInVariable,
+        VirtualBidDispatch,
+    )
+    return
+end
+
+#################################################################################
 # Section 6b: Storage — discharge is an incremental (supply) offer, charge is a
 # decremental (demand) offer. Certain market resources bid both sides, so the storage
 # objective (storage_models.jl `add_to_objective_function!`) calls
@@ -311,7 +361,7 @@ function add_variable_cost_to_objective!(
 ) where {T <: VariableType, U <: AbstractControllablePowerLoadFormulation}
     component_name = PSY.get_name(component)
     @debug "Market Bid" _group = LOG_GROUP_COST_FUNCTIONS component_name
-    if IOM.is_nontrivial_offer(get_output_offer_curves(cost_function))
+    if IOM.is_nontrivial_offer(container, component, get_output_offer_curves(cost_function))
         throw(
             ArgumentError(
                 "Component $(component_name) is not allowed to participate as a supply.",

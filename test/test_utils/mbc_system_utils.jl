@@ -176,7 +176,7 @@ function zero_out_non_incremental_curve!(::PSY.System, unit::PSY.Component)
     set_operation_cost!(unit, cost)
 end
 
-"Zero out the no_load_cost and fold its value into the incremental curve's initial_input. Not designed for time series."
+"Zero out the minimum_energy_offer and fold its value into the incremental curve's initial_input. Not designed for time series."
 function no_load_to_initial_input!(comp::Generator)
     cost = get_operation_cost(comp)::MarketBidCost
     no_load = get_proportional_term(PSY.get_minimum_energy_offer(cost))
@@ -239,7 +239,7 @@ function _constant_ts_offer_curve!(
 end
 
 # Promote `comp`'s static MarketBidCost to a `MarketBidTimeSeriesCost`, with all fields
-# backed by time series. Offer curves and no_load_cost get constant-valued series; startup
+# backed by time series. Offer curves and minimum_energy_offer get constant-valued series; startup
 # and shutdown optionally vary per `startup_incr`/`shutdown_incr = (res_incr, interval_incr)`.
 # Returns the startup and shutdown Deterministic objects (callers compare to these).
 function _promote_mbc_to_ts!(
@@ -261,7 +261,7 @@ function _promote_mbc_to_ts!(
 
     su_ts = make_deterministic_ts(sys, "start_up", su_base, startup_incr...)
     sd_ts = make_deterministic_ts(sys, "shut_down", sd_base, shutdown_incr...)
-    nl_ts = make_deterministic_ts(sys, "no_load_cost", nl_base, 0.0, 0.0)
+    nl_ts = make_deterministic_ts(sys, "minimum_energy_offer", nl_base, 0.0, 0.0)
     su_key = add_time_series!(sys, comp, su_ts)
     sd_key = add_time_series!(sys, comp, sd_ts)
     nl_key = add_time_series!(sys, comp, nl_ts)

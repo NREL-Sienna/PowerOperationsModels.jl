@@ -131,6 +131,41 @@ end
     )
 end
 
+@testset "ImportExportBudgetConstraint: MWh limits scale with the system base" begin
+    # The limits are MWh; the power variables are per-unit on the system base. The
+    # bound must therefore move with the base, or a 100 MVA system gets a budget
+    # 100x looser than it asked for.
+    for base in (1.0, 100.0)
+        cost = _static_iec([0.0, 0.25, 1.0], [2.0, 5.0], [0.0, 0.40, 0.9], [4.0, 8.0])
+        PSY.set_energy_import_weekly_limit!(cost, 168.0)
+        PSY.set_energy_export_weekly_limit!(cost, 336.0)
+        sys = one_bus_one_source(cost; name = _SOURCE_NAME, system_base_power = base)
+
+        time_steps = 1:1
+        container = build_test_container(sys, time_steps; resolution = Dates.Hour(1))
+        add_jump_var!(container, IOM.ActivePowerOutVariable, PSY.Source, _SOURCE_NAME, 1)
+        add_jump_var!(container, IOM.ActivePowerInVariable, PSY.Source, _SOURCE_NAME, 1)
+
+        POM.add_constraints!(
+            container,
+            POM.ImportExportBudgetConstraint,
+            PSY.get_components(PSY.Source, sys),
+            IOM.DeviceModel(PSY.Source, POM.ImportExportSourceModel),
+            IOM.NetworkModel(POM.CopperPlateNetworkModel),
+        )
+
+        import_con = IOM.get_constraint(
+            container, POM.ImportExportBudgetConstraint, PSY.Source, "import",
+        )
+        export_con = IOM.get_constraint(
+            container, POM.ImportExportBudgetConstraint, PSY.Source, "export",
+        )
+        # One hour of a 168-hour week, then MWh -> per-unit hours.
+        @test JuMP.normalized_rhs(import_con[_SOURCE_NAME, "horizon"]) ≈ 1.0 / base
+        @test JuMP.normalized_rhs(export_con[_SOURCE_NAME, "horizon"]) ≈ 2.0 / base
+    end
+end
+
 @testset "ImportExportBudgetConstraint: sub-hourly resolution" begin
     cost = _static_iec([0.0, 0.25, 1.0], [2.0, 5.0], [0.0, 0.40, 0.9], [4.0, 8.0])
     PSY.set_energy_import_weekly_limit!(cost, 168.0)
@@ -153,6 +188,8 @@ end
     )
 
     # 12 × 5 min is one hour of horizon, so each weekly limit prorates by 1/168.
+    # The limits are MWh and the variables are on the 100 MVA system base, so the
+    # bound is also divided by 100 to reach per-unit hours: 168/168/100 = 0.01.
     import_con =
         IOM.get_constraint(
             container,
@@ -167,8 +204,8 @@ end
             PSY.Source,
             "export",
         )
-    @test JuMP.normalized_rhs(import_con[_SOURCE_NAME, "horizon"]) ≈ 1.0
-    @test JuMP.normalized_rhs(export_con[_SOURCE_NAME, "horizon"]) ≈ 2.0
+    @test JuMP.normalized_rhs(import_con[_SOURCE_NAME, "horizon"]) ≈ 0.01
+    @test JuMP.normalized_rhs(export_con[_SOURCE_NAME, "horizon"]) ≈ 0.02
     # Each 5-minute step contributes an hour twelfth of energy.
     p_out = IOM.get_variable(container, IOM.ActivePowerOutVariable, PSY.Source)
     @test JuMP.normalized_coefficient(

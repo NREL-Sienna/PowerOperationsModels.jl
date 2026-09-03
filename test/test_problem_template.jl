@@ -102,3 +102,101 @@ end
     @test IOM.get_formulation(template.devices[:ThermalStandard]) ==
           ThermalBasicUnitCommitment
 end
+
+@testset "Template market model wiring" begin
+    template = PowerOperationsProblemTemplate(CopperPlateNetworkModel)
+    @test get_market_model(template) === nothing
+    # `IOM.FixedOutput` stands in as a concrete `IOM.AbstractDeviceFormulation`; this
+    # testset is about the template wiring, not any particular market formulation.
+    @test_throws ArgumentError set_market_component_model!(
+        template,
+        PSY.VirtualParticipant,
+        IOM.FixedOutput,
+    )
+    set_market_model!(
+        template,
+        IOM.MarketModel(SettlementMarket; settlement_domain = PSY.System),
+    )
+    @test IOM.get_settlement_domain(get_market_model(template)) === PSY.System
+
+    set_market_component_model!(template, PSY.VirtualParticipant, IOM.FixedOutput)
+    @test haskey(
+        IOM.get_market_component_models(get_market_model(template)),
+        nameof(PSY.VirtualParticipant),
+    )
+
+    # A non-System settlement domain is rejected at validation time, not at set time --
+    # mirroring how set_network_model! defers to validate_template_impl!.
+    bad_domain_template = PowerOperationsProblemTemplate(CopperPlateNetworkModel)
+    set_market_model!(
+        bad_domain_template,
+        IOM.MarketModel(SettlementMarket; settlement_domain = PSY.LoadZone),
+    )
+    @test_throws ArgumentError POM._check_market_model!(bad_domain_template)
+
+    bad_network_template = PowerOperationsProblemTemplate(ACPNetworkModel)
+    set_market_model!(
+        bad_network_template,
+        IOM.MarketModel(SettlementMarket; settlement_domain = PSY.System),
+    )
+    @test_throws ArgumentError POM._check_market_model!(bad_network_template)
+
+    # I7: only CopperPlateNetworkModel is accepted, even though PTDF/AreaBalance/DCP are
+    # all `<: AbstractActivePowerModel` too -- their branch/area constraints stay binding
+    # and would silently congestion-contaminate the settlement price. Error names the
+    # offending formulation.
+    for bad_formulation in (PTDFNetworkModel, AreaBalanceNetworkModel, DCPNetworkModel)
+        ptdf_template = PowerOperationsProblemTemplate(bad_formulation)
+        set_market_model!(
+            ptdf_template,
+            IOM.MarketModel(SettlementMarket; settlement_domain = PSY.System),
+        )
+        err = nothing
+        try
+            POM._check_market_model!(ptdf_template)
+        catch e
+            err = e
+        end
+        @test err isa ArgumentError
+        @test occursin(string(bad_formulation), err.msg)
+    end
+
+    # A CopperPlate market template is otherwise accepted (no component models yet).
+    cp_template = PowerOperationsProblemTemplate(CopperPlateNetworkModel)
+    set_market_model!(
+        cp_template,
+        IOM.MarketModel(SettlementMarket; settlement_domain = PSY.System),
+    )
+
+    # I1: an empty market-component container is a configuration error at validation time.
+    err_empty = nothing
+    try
+        POM._check_market_model!(cp_template)
+    catch e
+        err_empty = e
+    end
+    @test err_empty isa ArgumentError
+    @test occursin("no market component models", err_empty.msg)
+
+    set_market_component_model!(cp_template, PSY.VirtualParticipant, IOM.FixedOutput)
+    @test POM._check_market_model!(cp_template) === nothing
+
+    # I2: use_slacks = true on the network model conflicts with a market model (the market
+    # rule zeroes the physical slack cost regardless, so the penalty can never be honored).
+    slacks_template = PowerOperationsProblemTemplate(
+        NetworkModel(CopperPlateNetworkModel; use_slacks = true),
+    )
+    set_market_model!(
+        slacks_template,
+        IOM.MarketModel(SettlementMarket; settlement_domain = PSY.System),
+    )
+    set_market_component_model!(slacks_template, PSY.VirtualParticipant, IOM.FixedOutput)
+    err_slacks = nothing
+    try
+        POM._check_market_model!(slacks_template)
+    catch e
+        err_slacks = e
+    end
+    @test err_slacks isa ArgumentError
+    @test occursin("use_slacks", err_slacks.msg)
+end

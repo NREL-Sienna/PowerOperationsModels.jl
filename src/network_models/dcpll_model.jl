@@ -11,6 +11,8 @@ function construct_network!(
     template::PowerOperationsProblemTemplate,
     ::ModelConstructStage,
 )
-    _construct_voltage_network!(container, sys, model; reactive = false)
+    _construct_voltage_network!(
+        container, sys, model, get_market_model(template); reactive = false,
+    )
     return
 end

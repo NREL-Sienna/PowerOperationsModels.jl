@@ -688,7 +688,7 @@ function _device_offer_curve_ts_key(
     },
     device::PSY.Component,
 )
-    op_cost = PSY.get_operation_cost(device)
+    op_cost = IOM.get_operation_cost(device)
     IS.@assert_op op_cost isa TS_OFFER_CURVE_COST_TYPES
     return IS.get_time_series_key(PSY.get_value_curve(get_output_offer_curves(op_cost)))
 end
@@ -702,7 +702,7 @@ function _device_offer_curve_ts_key(
     },
     device::PSY.Component,
 )
-    op_cost = PSY.get_operation_cost(device)
+    op_cost = IOM.get_operation_cost(device)
     IS.@assert_op op_cost isa TS_OFFER_CURVE_COST_TYPES
     return IS.get_time_series_key(PSY.get_value_curve(get_input_offer_curves(op_cost)))
 end

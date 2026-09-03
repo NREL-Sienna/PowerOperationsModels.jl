@@ -48,34 +48,28 @@ UUIDs = "cf7118a7-6976-5b1a-9a39-7adc72f591a4"
 # to apply). Drop the dep + entry once InfraStore is registered.
 [sources]
 PowerOperationsModels = {path = ".."}
-# LOCAL PATH CO-DEV PIN (temporary): POM's IS4 git pin resolved to an older commit
-# than PSY's local checkout expects (TimeSeriesKey UnionAll mismatch on load).
-# Revert to the git rev pin once PSY's local changes land on IS4.
 InfrastructureSystems = {rev = "IS4", url = "https://github.com/Sienna-Platform/InfrastructureSystems.jl"}
-InfrastructureOptimizationModels = {rev = "main", url = "https://github.com/Sienna-Platform/InfrastructureOptimizationModels.jl"}
-# LOCAL PATH CO-DEV PIN (temporary): the variable -> variable_operation_cost cost-field
-# rename on PSY's generated cost types is uncommitted on disk, not on the psy6 branch yet.
-# Revert to the git rev pin once pushed/merged.
+# Still-unmerged market-model work; not yet an ancestor of IOM's main.
+InfrastructureOptimizationModels = {rev = "jd/market_model", url = "https://github.com/Sienna-Platform/InfrastructureOptimizationModels.jl"}
 PowerSystems = {rev = "psy6", url = "https://github.com/Sienna-Platform/PowerSystems.jl"}
-# LOCAL PATH CO-DEV PIN (temporary): PSB's to_file call was updated for PSY's
-# unit_system -> power_units rename on local disk only. Revert with the pins above.
 PowerSystemCaseBuilder = {rev = "psy6", url = "https://github.com/Sienna-Platform/PowerSystemCaseBuilder.jl"}
-# LOCAL PATH CO-DEV PINS (temporary): the local PowerSystems checkout pinned above reads
-# the power_units/cost-rename regen of PowerOpenAPIModels, which exists only on local disk.
-# Mirrors PowerSystems.jl's own [sources]. Revert to the git pins once that regen is pushed.
+# PSY psy6 depends on these unregistered packages; [sources] of non-root projects are
+# ignored by Pkg, so every environment resolving PSY must pin them itself (same rev as
+# PSY's own sources). Mirrors the root Project.toml.
 PowerCoreOpenAPIModels = {url = "https://github.com/Sienna-Platform/PowerOpenAPIModels.git", rev = "main", subdir = "PowerCoreOpenAPIModels.jl"}
 InfrastructureTimeSeriesOpenAPIModels = {url = "https://github.com/Sienna-Platform/PowerOpenAPIModels.git", rev = "main", subdir = "InfrastructureTimeSeriesOpenAPIModels.jl"}
 InfrastructureCoreOpenAPIModels = {url = "https://github.com/Sienna-Platform/PowerOpenAPIModels.git", rev = "main", subdir = "InfrastructureCoreOpenAPIModels.jl"}
 PowerDynamicsOpenAPIModels = {url = "https://github.com/Sienna-Platform/PowerOpenAPIModels.git", rev = "main", subdir = "PowerDynamicsOpenAPIModels.jl"}
-PowerFlowFileParser = {rev = "psy6", url = "https://github.com/Sienna-Platform/PowerFlowFileParser.jl"}
-PowerFlows = {rev = "psy6", url = "https://github.com/Sienna-Platform/PowerFlows.jl"}
 PowerInvestmentsOpenAPIModels = {url = "https://github.com/Sienna-Platform/PowerOpenAPIModels.git", rev = "main", subdir = "PowerInvestmentsOpenAPIModels.jl"}
 # TEMPORARY: pinned to the arc-keyed-catalog branch (PNM #356 + #357) until they merge to
 # psy6. Revert to `rev = "psy6"` once they land.
 PowerNetworkMatrices = {rev = "lk/arc-keyed-catalog", url = "https://github.com/Sienna-Platform/PowerNetworkMatrices.jl"}
 PowerOpenAPIModels = {url = "https://github.com/Sienna-Platform/PowerOpenAPIModels.git", rev = "main", subdir = "PowerOpenAPIModels.jl"}
 PowerOperationsOpenAPIModels = {url = "https://github.com/Sienna-Platform/PowerOpenAPIModels.git", rev = "main", subdir = "PowerOperationsOpenAPIModels.jl"}
-PowerTableDataParser = {rev = "psy6", url = "https://github.com/NREL-Sienna/PowerTableDataParser.jl"}
+PowerFlowFileParser = {rev = "psy6", url = "https://github.com/Sienna-Platform/PowerFlowFileParser.jl"}
+PowerFlows = {rev = "psy6", url = "https://github.com/Sienna-Platform/PowerFlows.jl"}
+PowerNetworkMatrices = {rev = "psy6", url = "https://github.com/Sienna-Platform/PowerNetworkMatrices.jl"}
+PowerTableDataParser = {rev = "psy6", url = "https://github.com/NLR-Sienna/PowerTableDataParser.jl"}
 
 [compat]
 HiGHS = "1"

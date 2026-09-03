@@ -2524,6 +2524,7 @@ function construct_device!(
     if all(has_ts)
         for device in devices
             name = PSY.get_name(device)
+            # Thin keys carry no name; count distinct names off the metadata catalog.
             num_ts = length(unique(IS.get_name.(IS.list_time_series_metadata(device))))
             if num_ts < 2
                 error(

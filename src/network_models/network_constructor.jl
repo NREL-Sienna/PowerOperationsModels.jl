@@ -13,10 +13,11 @@
 function _add_balance_slack_variables!(
     container::OptimizationContainer,
     sys::PSY.System,
-    model::NetworkModel;
+    model::NetworkModel,
+    market_model::Union{Nothing, IOM.MarketModel};
     reactive::Bool,
 )
-    if get_use_slacks(model)
+    if _uses_balance_slacks(model, market_model)
         add_variables!(container, SystemBalanceSlackUp, sys, model)
         add_variables!(container, SystemBalanceSlackDown, sys, model)
         add_to_expression!(container, ActivePowerBalance, SystemBalanceSlackUp, sys, model)
@@ -39,12 +40,14 @@ function construct_network!(
     container::OptimizationContainer,
     sys::PSY.System,
     model::NetworkModel{ACPNetworkModel},
-    ::PowerOperationsProblemTemplate,
+    template::PowerOperationsProblemTemplate,
     ::ArgumentConstructStage,
 )
     add_variables!(container, VoltageAngle, sys, model)
     add_variables!(container, VoltageMagnitude, sys, model)
-    _add_balance_slack_variables!(container, sys, model; reactive = true)
+    _add_balance_slack_variables!(
+        container, sys, model, get_market_model(template); reactive = true,
+    )
     return
 end
 
@@ -52,12 +55,14 @@ function construct_network!(
     container::OptimizationContainer,
     sys::PSY.System,
     model::NetworkModel{<:Union{ACRNetworkModel, IVRNetworkModel}},
-    ::PowerOperationsProblemTemplate,
+    template::PowerOperationsProblemTemplate,
     ::ArgumentConstructStage,
 )
     add_variables!(container, VoltageReal, sys, model)
     add_variables!(container, VoltageImaginary, sys, model)
-    _add_balance_slack_variables!(container, sys, model; reactive = true)
+    _add_balance_slack_variables!(
+        container, sys, model, get_market_model(template); reactive = true,
+    )
     return
 end
 
@@ -65,12 +70,14 @@ function construct_network!(
     container::OptimizationContainer,
     sys::PSY.System,
     model::NetworkModel{LPACCNetworkModel},
-    ::PowerOperationsProblemTemplate,
+    template::PowerOperationsProblemTemplate,
     ::ArgumentConstructStage,
 )
     add_variables!(container, VoltageAngle, sys, model)
     add_variables!(container, VoltageDeviation, sys, model)
-    _add_balance_slack_variables!(container, sys, model; reactive = true)
+    _add_balance_slack_variables!(
+        container, sys, model, get_market_model(template); reactive = true,
+    )
     return
 end
 
@@ -78,11 +85,13 @@ function construct_network!(
     container::OptimizationContainer,
     sys::PSY.System,
     model::NetworkModel{DCPLLNetworkModel},
-    ::PowerOperationsProblemTemplate,
+    template::PowerOperationsProblemTemplate,
     ::ArgumentConstructStage,
 )
     add_variables!(container, VoltageAngle, sys, model)
-    _add_balance_slack_variables!(container, sys, model; reactive = false)
+    _add_balance_slack_variables!(
+        container, sys, model, get_market_model(template); reactive = false,
+    )
     return
 end
 
@@ -124,7 +133,9 @@ function construct_network!(
     ::ArgumentConstructStage,
 )
     add_variables!(container, VoltageAngle, sys, model)
-    _add_balance_slack_variables!(container, sys, model; reactive = false)
+    _add_balance_slack_variables!(
+        container, sys, model, get_market_model(template); reactive = false,
+    )
     for branch_model in values(get_branch_models(template))
         _add_static_branch_btheta_expression!(container, sys, branch_model, model)
     end
@@ -137,10 +148,12 @@ function construct_network!(
     container::OptimizationContainer,
     sys::PSY.System,
     model::NetworkModel{<:AbstractNetworkModel},
-    ::PowerOperationsProblemTemplate,
+    template::PowerOperationsProblemTemplate,
     ::ArgumentConstructStage,
 )
-    _add_balance_slack_variables!(container, sys, model; reactive = false)
+    _add_balance_slack_variables!(
+        container, sys, model, get_market_model(template); reactive = false,
+    )
     return
 end
 
@@ -221,7 +234,9 @@ function construct_network!(
     template::PowerOperationsProblemTemplate,
     ::ArgumentConstructStage,
 )
-    _add_balance_slack_variables!(container, sys, model; reactive = false)
+    _add_balance_slack_variables!(
+        container, sys, model, get_market_model(template); reactive = false,
+    )
     _add_shift_injections!(container, model, template)
     return
 end
@@ -235,9 +250,10 @@ function _construct_copper_plate_model!(
     container::OptimizationContainer,
     sys::PSY.System,
     model::NetworkModel,
+    market_model::Union{Nothing, IOM.MarketModel},
 )
-    if get_use_slacks(model)
-        add_to_objective_function!(container, sys, model)
+    if _uses_balance_slacks(model, market_model)
+        add_to_objective_function!(container, sys, model, market_model)
     end
     add_constraints!(container, CopperPlateBalanceConstraint, sys, model)
     add_constraint_dual!(container, sys, model)
@@ -248,10 +264,10 @@ function construct_network!(
     container::OptimizationContainer,
     sys::PSY.System,
     model::NetworkModel{CopperPlateNetworkModel},
-    ::PowerOperationsProblemTemplate,
+    template::PowerOperationsProblemTemplate,
     ::ModelConstructStage,
 )
-    _construct_copper_plate_model!(container, sys, model)
+    _construct_copper_plate_model!(container, sys, model, get_market_model(template))
     return
 end
 
@@ -259,10 +275,10 @@ function construct_network!(
     container::OptimizationContainer,
     sys::PSY.System,
     model::NetworkModel{AreaBalanceNetworkModel},
-    ::PowerOperationsProblemTemplate,
+    template::PowerOperationsProblemTemplate,
     ::ModelConstructStage,
 )
-    _construct_copper_plate_model!(container, sys, model)
+    _construct_copper_plate_model!(container, sys, model, get_market_model(template))
     return
 end
 
@@ -270,10 +286,10 @@ function construct_network!(
     container::OptimizationContainer,
     sys::PSY.System,
     model::NetworkModel{<:AbstractPTDFNetworkModel},
-    ::PowerOperationsProblemTemplate,
+    template::PowerOperationsProblemTemplate,
     ::ModelConstructStage,
 )
-    _construct_copper_plate_model!(container, sys, model)
+    _construct_copper_plate_model!(container, sys, model, get_market_model(template))
     return
 end
 
@@ -285,11 +301,12 @@ end
 function _construct_voltage_network!(
     container::OptimizationContainer,
     sys::PSY.System,
-    model::NetworkModel{<:Union{DCPNetworkModel, ACPNetworkModel, DCPLLNetworkModel}};
+    model::NetworkModel{<:Union{DCPNetworkModel, ACPNetworkModel, DCPLLNetworkModel}},
+    market_model::Union{Nothing, IOM.MarketModel};
     reactive::Bool,
 )
-    if get_use_slacks(model)
-        add_to_objective_function!(container, sys, model)
+    if _uses_balance_slacks(model, market_model)
+        add_to_objective_function!(container, sys, model, market_model)
     end
     add_constraints!(container, ReferenceBusConstraint, sys, model)
     add_constraints!(container, NodalBalanceActiveConstraint, sys, model)
@@ -307,7 +324,9 @@ function construct_network!(
     template::PowerOperationsProblemTemplate,
     ::ModelConstructStage,
 )
-    _construct_voltage_network!(container, sys, model; reactive = false)
+    _construct_voltage_network!(
+        container, sys, model, get_market_model(template); reactive = false,
+    )
     return
 end
 
@@ -318,8 +337,9 @@ function construct_network!(
     template::PowerOperationsProblemTemplate,
     ::ModelConstructStage,
 )
-    if get_use_slacks(model)
-        add_to_objective_function!(container, sys, model)
+    market_model = get_market_model(template)
+    if _uses_balance_slacks(model, market_model)
+        add_to_objective_function!(container, sys, model, market_model)
     end
     add_constraints!(container, NodalBalanceActiveConstraint, sys, model)
     add_constraint_dual!(container, sys, model)
@@ -333,7 +353,9 @@ function construct_network!(
     template::PowerOperationsProblemTemplate,
     ::ModelConstructStage,
 )
-    _construct_voltage_network!(container, sys, model; reactive = true)
+    _construct_voltage_network!(
+        container, sys, model, get_market_model(template); reactive = true,
+    )
     return
 end
 
@@ -344,8 +366,9 @@ function construct_network!(
     template::PowerOperationsProblemTemplate,
     ::ModelConstructStage,
 )
-    if get_use_slacks(model)
-        add_to_objective_function!(container, sys, model)
+    market_model = get_market_model(template)
+    if _uses_balance_slacks(model, market_model)
+        add_to_objective_function!(container, sys, model, market_model)
     end
     add_constraints!(container, ReferenceBusConstraint, sys, model)
     add_constraints!(container, VoltageMagnitudeConstraint, sys, model)
@@ -362,8 +385,9 @@ function construct_network!(
     template::PowerOperationsProblemTemplate,
     ::ModelConstructStage,
 )
-    if get_use_slacks(model)
-        add_to_objective_function!(container, sys, model)
+    market_model = get_market_model(template)
+    if _uses_balance_slacks(model, market_model)
+        add_to_objective_function!(container, sys, model, market_model)
     end
     add_constraints!(container, ReferenceBusConstraint, sys, model)
     add_constraints!(container, NodalBalanceActiveConstraint, sys, model)

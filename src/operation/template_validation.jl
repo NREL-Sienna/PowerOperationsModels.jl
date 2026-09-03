@@ -114,10 +114,57 @@ function validate_template_impl!(model::IOM.AbstractOptimizationModel)
     _check_voltage_regulation_conflicts!(template, system, network_model)
     _check_branch_rating_time_series_formulation!(template.branches, system)
     validate_network_model(network_model, unmodeled_branch_types, model_has_branch_filters)
+    _check_market_model!(template)
     _build_device_model_outages!(template, system)
     # Must follow `_build_device_model_outages!`: that call is what fills the per-type
     # monitored-name maps this check reads.
     _check_monitored_components(template.branches, system)
+    return
+end
+
+"""
+The market model's `settlement_domain` must be `PSY.System`, and it only makes sense
+against an active-power network. Deferred to here (rather than checked in
+`set_market_model!`) to mirror how `set_network_model!` defers its own network-model
+validation to `validate_network_model` in this function.
+"""
+function _check_market_model!(template::PowerOperationsProblemTemplate)
+    market_model = get_market_model(template)
+    market_model === nothing && return
+    settlement_domain = IOM.get_settlement_domain(market_model)
+    if settlement_domain !== PSY.System
+        throw(
+            ArgumentError(
+                "Market model settlement_domain must be PSY.System (a single system-wide " *
+                "settlement row is the only supported domain), got $(settlement_domain).",
+            ),
+        )
+    end
+    _check_market_network_formulation!(template, market_model)
+    network_model = get_network_model(template)
+    if IOM.get_use_slacks(network_model)
+        throw(
+            ArgumentError(
+                "NetworkModel(...; use_slacks = true) conflicts with a market model: the " *
+                "market rule prices the physical balance slack at 0.0 regardless (the " *
+                "settlement balance is the binding accounting identity), so the " *
+                "requested penalty ($(BALANCE_SLACK_COST)) can never be honored. Remove " *
+                "the market model or set use_slacks = false.",
+            ),
+        )
+    end
+    component_models = IOM.get_market_component_models(market_model)
+    if isempty(component_models)
+        throw(
+            ArgumentError(
+                "Market model $(typeof(market_model)) has no market component models. A " *
+                "market model with zero components is a configuration error (it leaves " *
+                "the physical balance unconstrained and no settlement equality to clear " *
+                "against) -- call set_market_component_model! for at least one component " *
+                "type, or remove the market model.",
+            ),
+        )
+    end
     return
 end
 
@@ -772,6 +819,47 @@ function _warn_unmatched_user_outages(
                    post-contingency constraints." _group =
                 IOM.LOG_GROUP_MODELS_VALIDATION
         end
+    end
+    return
+end
+
+_distributes_nodally(::DeviceModel{<:PSY.Component, NodalRedistribution}) = true
+_distributes_nodally(::DeviceModel) = false
+
+# Without nodal distribution, cleared positions have no nodal footprint: any formulation
+# other than CopperPlate would leave branch or area constraints binding on the physical
+# side alone, silently contaminating the settlement price. Requiring CopperPlate EXACTLY
+# (not merely `<: AbstractActivePowerModel`) is what neutralizes the physical balance.
+# With a NodalRedistribution location model, congestion pricing is the point, so any
+# active-power nodal formulation is admitted.
+function _check_market_network_formulation!(
+    template::PowerOperationsProblemTemplate,
+    market_model::IOM.MarketModel,
+)
+    network_formulation = get_network_formulation(template)
+    component_models = values(IOM.get_market_component_models(market_model))
+    if any(_distributes_nodally, component_models)
+        if !(network_formulation <: AbstractActivePowerModel)
+            throw(
+                ArgumentError(
+                    "NodalRedistribution distributes cleared positions onto the active " *
+                    "power nodal balance and requires an AbstractActivePowerModel " *
+                    "network formulation, got $(network_formulation).",
+                ),
+            )
+        end
+        return
+    end
+    if network_formulation !== CopperPlateNetworkModel
+        throw(
+            ArgumentError(
+                "Market model requires network formulation CopperPlateNetworkModel " *
+                "exactly (any other formulation leaves branch or area constraints " *
+                "binding, silently contaminating the settlement price), got " *
+                "$(network_formulation). Add a NodalRedistribution location model to " *
+                "price congestion from distributed cleared positions.",
+            ),
+        )
     end
     return
 end

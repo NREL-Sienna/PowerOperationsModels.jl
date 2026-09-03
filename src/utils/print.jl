@@ -74,6 +74,29 @@ function _show_method(
         )
     end
 
+    market_model = get_market_model(template)
+    if market_model !== nothing
+        println(io)
+        market_components = IOM.get_market_component_models(market_model)
+        header = ["Component Type", "Formulation", "Slacks"]
+        table = Matrix{String}(undef, length(market_components), length(header))
+        for (ix, model) in enumerate(values(market_components))
+            table[ix, 1] = string(get_component_type(model))
+            table[ix, 2] = string(get_formulation(model))
+            table[ix, 3] = string(model.use_slacks)
+        end
+
+        PrettyTables.pretty_table(
+            io,
+            table;
+            backend = backend,
+            column_labels = header,
+            title = "Market Model ($(IOM.get_settlement_domain(market_model)))",
+            alignment = :l,
+            kwargs...,
+        )
+    end
+
     services = get_service_models(template)
     if !isempty(services)
         println(io)

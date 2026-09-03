@@ -16,14 +16,17 @@ mutable struct PowerOperationsProblemTemplate <: IOM.AbstractProblemTemplate
     devices::DevicesModelContainer
     branches::BranchModelContainer
     services::ServicesModelContainer
+    market_model::Union{Nothing, IOM.MarketModel}
     function PowerOperationsProblemTemplate(
-        network::NetworkModel{T},
+        network::NetworkModel{T};
+        market_model::Union{Nothing, IOM.MarketModel} = nothing,
     ) where {T <: AbstractNetworkModel}
         new(
             network,
             DevicesModelContainer(),
             BranchModelContainer(),
             ServicesModelContainer(),
+            market_model,
         )
     end
 end
@@ -53,6 +56,7 @@ get_network_formulation(template::PowerOperationsProblemTemplate) =
     get_network_formulation(get_network_model(template))
 get_hvdc_network_model(template::PowerOperationsProblemTemplate) =
     template.network_model.hvdc_network_model
+get_market_model(template::PowerOperationsProblemTemplate) = template.market_model
 
 # Returns `Vector{Type}`, not `Vector{DataType}`: a service's component type can be a
 # `UnionAll` rather than a concrete `DataType` when it carries an unapplied type parameter
@@ -99,6 +103,48 @@ function set_network_model!(
     model::NetworkModel{<:AbstractNetworkModel},
 )
     template.network_model = model
+    return
+end
+
+"""
+Sets the market model in a template. Validation (single-settlement domain, network
+formulation compatibility) happens in `validate_template_impl!`, mirroring
+`set_network_model!`.
+"""
+function set_market_model!(
+    template::PowerOperationsProblemTemplate,
+    model::IOM.MarketModel,
+)
+    template.market_model = model
+    return
+end
+
+"""
+Sets a market component model in a template using the component type and formulation.
+Requires a market model to already be set with `set_market_model!`.
+"""
+function set_market_component_model!(
+    template::PowerOperationsProblemTemplate,
+    component_type::Type{<:PSY.Component},
+    formulation::Type{<:IOM.AbstractDeviceFormulation},
+)
+    set_market_component_model!(template, DeviceModel(component_type, formulation))
+    return
+end
+
+"""
+Sets a market component model in a template using a DeviceModel instance.
+Requires a market model to already be set with `set_market_model!`.
+"""
+function set_market_component_model!(
+    template::PowerOperationsProblemTemplate,
+    model::DeviceModel{D},
+) where {D <: PSY.Component}
+    market_model = template.market_model
+    if market_model === nothing
+        throw(ArgumentError("set a market model before adding market component models"))
+    end
+    set_model!(IOM.get_market_component_models(market_model), model)
     return
 end
 

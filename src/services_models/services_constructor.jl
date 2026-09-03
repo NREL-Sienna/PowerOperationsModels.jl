@@ -972,6 +972,7 @@ function construct_service!(
     if !isempty(interfaces) && all(has_ts)
         for interface in interfaces
             name = PSY.get_name(interface)
+            # Thin keys carry no name; count distinct names off the metadata catalog.
             num_ts = length(unique(IS.get_name.(IS.list_time_series_metadata(interface))))
             if num_ts < 2
                 error(
