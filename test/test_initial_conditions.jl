@@ -3,7 +3,7 @@
     template = get_thermal_dispatch_template_network(
         NetworkModel(
             POM.DCPNetworkModel;
-            network_source = NetworkReductionSpec(PNM.RadialReduction()),
+            network_source = SystemNetworkSource(PNM.RadialReduction()),
         ),
     )
     model = DecisionModel(template, sys; optimizer = HiGHS_optimizer)

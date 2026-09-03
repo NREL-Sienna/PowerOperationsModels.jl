@@ -39,7 +39,7 @@ function _network_source_from_flags(radial::Bool, degree_two::Bool)
     if degree_two
         push!(reductions, PNM.DegreeTwoReduction())
     end
-    return NetworkReductionSpec(reductions)
+    return SystemNetworkSource(reductions)
 end
 
 function _solve_case11_native(
@@ -352,7 +352,7 @@ end
     PSY.add_component!(sys, shunt)
     net = NetworkModel(
         ACPNetworkModel;
-        network_source = NetworkReductionSpec(
+        network_source = SystemNetworkSource(
             PNM.RadialReduction(),
             PNM.DegreeTwoReduction(),
         ),
@@ -401,7 +401,7 @@ end
     #
     #    net = NetworkModel(
     #        DCPNetworkModel;
-    #        network_source = NetworkReductionSpec(
+    #        network_source = SystemNetworkSource(
     #            PNM.RadialReduction(),
     #            PNM.DegreeTwoReduction(),
     #        ),
@@ -428,7 +428,7 @@ end
             ACPNetworkModel,
             PSY.TwoWindingTransformer;
             optimizer = ipopt_optimizer,
-            network_source = NetworkReductionSpec([
+            network_source = SystemNetworkSource([
                 PNM.RadialReduction(),
                 PNM.DegreeTwoReduction(),
             ]),
@@ -491,7 +491,7 @@ end
 
     net = NetworkModel(
         ACPNetworkModel;
-        network_source = NetworkReductionSpec(
+        network_source = SystemNetworkSource(
             PNM.RadialReduction(),
             PNM.DegreeTwoReduction(),
         ),
@@ -765,7 +765,7 @@ end
     )
     net = NetworkModel(
         POM.DCPNetworkModel;
-        network_source = NetworkReductionSpec(PNM.RadialReduction()),
+        network_source = SystemNetworkSource(PNM.RadialReduction()),
     )
     template = get_thermal_dispatch_template_network(net)
     set_device_model!(
@@ -800,7 +800,7 @@ end
     function _retained_after_build(exceptions)
         net = NetworkModel(
             POM.DCPNetworkModel;
-            network_source = NetworkReductionSpec(PNM.RadialReduction()),
+            network_source = SystemNetworkSource(PNM.RadialReduction()),
             reduction_exceptions = exceptions,
         )
         template = get_thermal_dispatch_template_network(net)
@@ -847,7 +847,7 @@ end
         sys -> PrebuiltMatrixSource(
             PNM.VirtualPTDF(
                 sys;
-                tol = POM.PTDF_ZERO_TOL,
+                tol = POM.DEFAULT_PTDF_TOLERANCE,
                 network_reductions = reductions,
             ),
         ),
@@ -858,7 +858,7 @@ end
         sys -> PrebuiltCoreSource(
             PNM.VirtualFactorCore(
                 PNM.Ybus(sys; network_reductions = reductions);
-                tol = POM.PTDF_ZERO_TOL,
+                tol = POM.DEFAULT_PTDF_TOLERANCE,
                 system_uuid = PSY.get_system_uuid(sys),
             ),
         ),

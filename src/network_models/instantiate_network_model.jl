@@ -219,8 +219,11 @@ function _reduced_ybus!(
 end
 
 # Every PTDF-family matrix wraps one of these, so the tolerance and uuid are set once.
-_factor_core(ybus::PNM.Ybus, sys::PSY.System) =
-    PNM.VirtualFactorCore(ybus; tol = PTDF_ZERO_TOL, system_uuid = PSY.get_system_uuid(sys))
+_factor_core(ybus::PNM.Ybus, sys::PSY.System, tolerance) =
+    PNM.VirtualFactorCore(ybus; tol = tolerance, system_uuid = PSY.get_system_uuid(sys))
+
+_model_factor_core(ybus::PNM.Ybus, model::NetworkModel, sys::PSY.System) =
+    _factor_core(ybus, sys, _source_tolerance(get_network_source(model)))
 
 #=
 The one source-aware Ybus resolution, dispatched on the source so every formulation
@@ -280,7 +283,7 @@ function _validate_prebuilt_exceptions(
             "The prebuilt network source eliminated buses $(sort!(collect(dropped))), which \
             the template pins as reduction exceptions (outage-monitored components or \
             time-varying branch ratings). Rebuild the matrix with these buses passed as \
-            `irreducible_buses`, or pass a `NetworkReductionSpec` so the build derives the \
+            `irreducible_buses`, or pass a `SystemNetworkSource` so the build derives the \
             reduction itself.",
         ),
     )
@@ -296,7 +299,7 @@ function _prebuilt_ybus(
     sys::PSY.System,
 )
     ybus = _build_ybus(
-        NetworkReductionSpec(_source_reductions(source)),
+        SystemNetworkSource(_source_reductions(source)),
         sys,
         _source_irreducible_buses(reduction),
     )
@@ -308,7 +311,7 @@ function _prebuilt_ybus(
                 different bus set than the source itself ($(length(PNM.get_bus_reduction_map(reproduced))) \
                 vs $(length(PNM.get_bus_reduction_map(reduction))) buses). The source's \
                 reduction is not reproducible from its recorded reduction spec; build the \
-                matrices from a `NetworkReductionSpec` instead.",
+                matrices from a `SystemNetworkSource` instead.",
             ),
         )
     end
@@ -423,7 +426,7 @@ function IOM.instantiate_network_model!(
     ybus = _reduced_ybus!(model, sys, exceptions)
     catalog = _build_catalog(ybus, branch_models)
     if IOM._template_has_outage_aware_branch(branch_models)
-        core = _factor_core(ybus, sys)
+        core = _model_factor_core(ybus, model, sys)
         IOM.set_network_data!(
             model,
             DCPNetworkData(
@@ -479,7 +482,7 @@ function _ptdf_network_data(
     exceptions::Vector{Int},
 )
     ybus = _reduced_ybus!(model, sys, exceptions)
-    core = _factor_core(ybus, sys)
+    core = _model_factor_core(ybus, model, sys)
     return _assemble_ptdf_data(core, PNM.VirtualPTDF(core), sys, branch_models)
 end
 
