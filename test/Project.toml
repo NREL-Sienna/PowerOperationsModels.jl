@@ -50,7 +50,7 @@ UUIDs = "cf7118a7-6976-5b1a-9a39-7adc72f591a4"
 PowerOperationsModels = {path = ".."}
 InfrastructureSystems = {rev = "IS4", url = "https://github.com/Sienna-Platform/InfrastructureSystems.jl"}
 # Still-unmerged market-model work; not yet an ancestor of IOM's main.
-InfrastructureOptimizationModels = {rev = "jd/market_model", url = "https://github.com/Sienna-Platform/InfrastructureOptimizationModels.jl"}
+InfrastructureOptimizationModels = {rev = "jd/market_models2", url = "https://github.com/Sienna-Platform/InfrastructureOptimizationModels.jl"}
 PowerSystems = {rev = "psy6", url = "https://github.com/Sienna-Platform/PowerSystems.jl"}
 PowerSystemCaseBuilder = {rev = "psy6", url = "https://github.com/Sienna-Platform/PowerSystemCaseBuilder.jl"}
 # PSY psy6 depends on these unregistered packages; [sources] of non-root projects are
@@ -68,7 +68,6 @@ PowerOpenAPIModels = {url = "https://github.com/Sienna-Platform/PowerOpenAPIMode
 PowerOperationsOpenAPIModels = {url = "https://github.com/Sienna-Platform/PowerOpenAPIModels.git", rev = "main", subdir = "PowerOperationsOpenAPIModels.jl"}
 PowerFlowFileParser = {rev = "psy6", url = "https://github.com/Sienna-Platform/PowerFlowFileParser.jl"}
 PowerFlows = {rev = "psy6", url = "https://github.com/Sienna-Platform/PowerFlows.jl"}
-PowerNetworkMatrices = {rev = "psy6", url = "https://github.com/Sienna-Platform/PowerNetworkMatrices.jl"}
 PowerTableDataParser = {rev = "psy6", url = "https://github.com/NLR-Sienna/PowerTableDataParser.jl"}
 
 [compat]
