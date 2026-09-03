@@ -344,6 +344,12 @@ _has_unsupported_phase(t::_TRANSFORMERS, m::DeviceModel{<:_TRANSFORMERS}) = any(
     c in PSY.get_circuits(t)
 )
 _has_unsupported_phase(_, ::DeviceModel) = false
+# A transformer carrying an outage need not have a `DeviceModel` in the template. Its
+# control objective is then inert, but a nonzero fixed shift still corrupts the MODF
+# columns of every monitored arc, so the static angle alone is disqualifying.
+_has_unsupported_phase(t::_TRANSFORMERS, ::Nothing) =
+    any(!iszero(PSY.get_α(c)) for c in PSY.get_circuits(t))
+_has_unsupported_phase(_, ::Nothing) = false
 
 _has_unsupported_phase(m::DeviceModel{<:_TRANSFORMERS}) =
     any(_has_unsupported_phase(t, m) for t in get_device_cache(m))
@@ -419,7 +425,7 @@ function _check_monitored_components(
 )
     for branch_model in values(branch_models)
         IOM.supports_outages(IOM.get_formulation(branch_model)) || continue
-        for (outage_id, per_type) in get_outages(branch_model)
+        for outage_id in keys(get_outages(branch_model))
             outage = PSY.get_supplemental_attribute(sys, outage_id)
             for uuid in PSY.get_monitored_components(outage)
                 isnothing(IS.get_component(sys, uuid)) && throw(
@@ -658,12 +664,12 @@ function _monitored_components_by_modeled_type(
     uncovered = Set{DataType}()
     for uuid in PSY.get_monitored_components(outage)
         component = IS.get_component(sys, uuid)
-        if isnothing(component)
-            @warn "Outage $(outage_id) references monitored component \
-                   UUID $(uuid) that is not present in the system; \
-                   skipping." _group = IOM.LOG_GROUP_MODELS_VALIDATION
-            continue
-        end
+        isnothing(component) && throw(
+            IS.ConflictingInputsError(
+                "Outage $(outage_id) references monitored component UUID $(uuid) that is \
+                 not present in the system.",
+            ),
+        )
         comp_type = typeof(component)
         if comp_type <: PSY.ACTransmission && comp_type in modeled_types
             push!(get!(Set{String}, per_type, comp_type), PSY.get_name(component))
