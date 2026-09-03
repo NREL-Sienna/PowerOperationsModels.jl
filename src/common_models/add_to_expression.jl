@@ -133,8 +133,9 @@ function _add_variable_to_balance!(
 end
 
 """
-Add a compact unit-commitment `OnVariable` scaled by per-device `p_min`, with no must-run
-branch (matches PSI; the `On` variable carries the `p_min` scale). Used by the CopperPlate
+Add a compact unit-commitment `OnVariable` scaled by per-device `p_min`. Must-run units
+have `On ≡ 1` and are left out of the `OnVariable` container entirely, so their `p_min`
+contribution enters as a constant; all others scale the variable. Used by the CopperPlate
 and PTDF compact-UC methods.
 """
 function _add_pmin_scaled_on_to_balance!(
@@ -152,8 +153,15 @@ function _add_pmin_scaled_on_to_balance!(
         targets = _balance_expression_targets(container, T, network_model, d)
         name = PSY.get_name(d)
         multiplier = PSY.get_active_power_limits(d, PSY.SU).min * base_multiplier
-        for t in time_steps
-            _apply_term_to_targets!(targets, variable[name, t], multiplier, t)
+        if PSY.get_must_run(d)
+            # On ≡ 1 for must-run units, so the term is the constant p_min * mult.
+            for t in time_steps
+                _apply_term_to_targets!(targets, 1.0, multiplier, t)
+            end
+        else
+            for t in time_steps
+                _apply_term_to_targets!(targets, variable[name, t], multiplier, t)
+            end
         end
     end
     return

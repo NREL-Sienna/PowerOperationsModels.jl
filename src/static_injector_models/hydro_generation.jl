@@ -861,7 +861,6 @@ function add_constraints!(
     names = [PSY.get_name(x) for x in devices]
     initial_conditions = get_initial_condition(container, InitialEnergyLevel(), V)
     energy_var = get_variable(container, EnergyVariable, V)
-    power_var = get_variable(container, ActivePowerVariable, PSY.HydroTurbine)
     spillage_var = get_variable(container, WaterSpillageVariable, V)
     power_in_from_turbines =
         get_expression(container, TotalHydroPowerReservoirIncoming, V)
@@ -1962,11 +1961,10 @@ function add_expressions!(
         time_steps,
     )
 
-    variable = get_variable(container, HydroTurbineFlowRateVariable, PSY.HydroTurbine)
-
     for d in devices
         turbines = get_available_turbines(d, U)
         isempty(turbines) && continue
+        variable = get_variable(container, HydroTurbineFlowRateVariable, PSY.HydroTurbine)
         turbine_names = PSY.get_name.(turbines)
         reservoir_name = PSY.get_name(d)
         for t in time_steps
