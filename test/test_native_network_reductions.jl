@@ -847,7 +847,6 @@ end
         sys -> PrebuiltMatrixSource(
             PNM.VirtualPTDF(
                 sys;
-                tol = POM.DEFAULT_PTDF_TOLERANCE,
                 network_reductions = reductions,
             ),
         ),
@@ -858,7 +857,6 @@ end
         sys -> PrebuiltCoreSource(
             PNM.VirtualFactorCore(
                 PNM.Ybus(sys; network_reductions = reductions);
-                tol = POM.DEFAULT_PTDF_TOLERANCE,
                 system_uuid = PSY.get_system_uuid(sys),
             ),
         ),

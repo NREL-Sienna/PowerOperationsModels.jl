@@ -1167,7 +1167,6 @@ _reduced_entry_kind(::PNM.BranchesParallel) = :parallel
     =#
     pre_service_ptdf = PNM.VirtualPTDF(
         sys_rts_da;
-        tol = POM.DEFAULT_PTDF_TOLERANCE,
         network_reductions = PNM.NetworkReduction[PNM.DegreeTwoReduction()],
     )
     add_service!(sys_rts_da, interface_series_chain, [series_chain_1, series_chain_2])

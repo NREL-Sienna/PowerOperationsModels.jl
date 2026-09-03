@@ -65,11 +65,9 @@ const CONSTRAINT_VIOLATION_SLACK_COST = 2e5
 const SERVICES_SLACK_COST = 1e5
 const COST_EPSILON = 1e-3
 # Structural-zero filter: a PTDF/MODF entry at or below this magnitude contributes no
-# JuMP term to a flow expression.
+# JuMP term to a flow expression. Unrelated to the sparsification cutoff a derived
+# matrix is built with, which `SystemNetworkSource` takes from PNM.
 const PTDF_ZERO_TOL = 1e-9
-# Default per-row sparsification cutoff for derived sensitivity matrices, overridable
-# per build via `SystemNetworkSource(; tolerance = ...)`.
-const DEFAULT_PTDF_TOLERANCE = 1e-9
 const MISSING_INITIAL_CONDITIONS_TIME_COUNT = 999.0
 
 const MAX_START_STAGES = 3

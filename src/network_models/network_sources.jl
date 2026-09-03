@@ -11,7 +11,8 @@ The two are independent knobs on the same construction step.
 
 `tolerance` is the per-row sparsification cutoff handed to `PNM.VirtualFactorCore`: a
 `Float64` is an absolute cutoff, a `PNM.AutoTolerance` a relative, size-adaptive one.
-It reaches every matrix wrapping that core — PTDF and MODF alike.
+It reaches every matrix wrapping that core — PTDF and MODF alike. The default is PNM's
+own auto rule, so POM does not second-guess it with a fixed cutoff of its own.
 
 A zero-impedance branch reduction is always applied first. Include a
 `ZeroImpedanceBranchReduction` to override its parameters; it replaces that step rather than
@@ -22,18 +23,18 @@ struct SystemNetworkSource <: IOM.AbstractNetworkSource
     tolerance::Union{Float64, PNM.AutoTolerance}
 end
 
-SystemNetworkSource(; tolerance = DEFAULT_PTDF_TOLERANCE) =
+SystemNetworkSource(; tolerance = PNM.AutoTolerance()) =
     SystemNetworkSource(PNM.NetworkReduction[], tolerance)
 
 SystemNetworkSource(
     reductions::Vector{PNM.NetworkReduction};
-    tolerance = DEFAULT_PTDF_TOLERANCE,
+    tolerance = PNM.AutoTolerance(),
 ) = SystemNetworkSource(reductions, tolerance)
 
 SystemNetworkSource(
     reduction::PNM.NetworkReduction,
     rest::PNM.NetworkReduction...;
-    tolerance = DEFAULT_PTDF_TOLERANCE,
+    tolerance = PNM.AutoTolerance(),
 ) = SystemNetworkSource(
     collect(PNM.NetworkReduction, (reduction, rest...)),
     tolerance,
@@ -75,10 +76,10 @@ _source_irreducible_buses(reduction::PNM.NetworkReductionData) =
     collect(Int, PNM.get_user_irreducible_buses(PNM.get_reductions(reduction)))
 
 # The sparsification cutoff for a core this build factorizes itself. A prebuilt source
-# carries a core whose cutoff the caller already fixed, so it falls back to the default:
-# the value is consulted only on the paths that factorize a core of their own.
+# carries a core whose cutoff the caller already fixed, so it falls back to PNM's auto
+# rule: the value is consulted only on the paths that factorize a core of their own.
 _source_tolerance(source::SystemNetworkSource) = source.tolerance
-_source_tolerance(::IOM.AbstractNetworkSource) = DEFAULT_PTDF_TOLERANCE
+_source_tolerance(::IOM.AbstractNetworkSource) = PNM.AutoTolerance()
 
 _is_radial_reduction(::PNM.NetworkReduction) = false
 _is_radial_reduction(::PNM.RadialReduction) = true

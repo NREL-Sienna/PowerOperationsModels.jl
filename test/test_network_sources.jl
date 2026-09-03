@@ -45,7 +45,6 @@ end
     ybus = POM._build_ybus(POM.SystemNetworkSource(), sys, Int[])
     core = POM.PNM.VirtualFactorCore(
         ybus;
-        tol = POM.DEFAULT_PTDF_TOLERANCE,
         system_uuid = PSY.get_system_uuid(sys),
     )
     ptdf = POM.PNM.VirtualPTDF(core)
@@ -84,7 +83,6 @@ end
 
     core = POM.PNM.VirtualFactorCore(
         ybus;
-        tol = POM.DEFAULT_PTDF_TOLERANCE,
         system_uuid = PSY.get_system_uuid(sys),
     )
     ptdf_without = POM.PTDFNetworkData(
@@ -104,7 +102,6 @@ end
     )
     core = POM.PNM.VirtualFactorCore(
         ybus;
-        tol = POM.DEFAULT_PTDF_TOLERANCE,
         system_uuid = PSY.get_system_uuid(sys),
     )
     ptdf = POM.PNM.VirtualPTDF(core)
@@ -127,7 +124,6 @@ end
     )
     core = POM.PNM.VirtualFactorCore(
         ybus;
-        tol = POM.DEFAULT_PTDF_TOLERANCE,
         system_uuid = PSY.get_system_uuid(sys),
     )
     source = POM.PrebuiltCoreSource(core)
@@ -158,7 +154,7 @@ end
 
 @testset "A prebuilt VirtualPTDF reuses its own core" begin
     sys = PSB.build_system(PSITestSystems, "c_sys5")
-    vptdf = POM.PNM.VirtualPTDF(sys; tol = POM.DEFAULT_PTDF_TOLERANCE)
+    vptdf = POM.PNM.VirtualPTDF(sys)
     net = NetworkModel(
         POM.PTDFNetworkModel;
         network_source = POM.PrebuiltMatrixSource(vptdf),
@@ -340,7 +336,6 @@ end
     ybus = POM._build_ybus(POM.SystemNetworkSource(zibr), sys, Int[])
     core = POM.PNM.VirtualFactorCore(
         ybus;
-        tol = POM.DEFAULT_PTDF_TOLERANCE,
         system_uuid = PSY.get_system_uuid(sys),
     )
     source = POM.PrebuiltCoreSource(core)
@@ -464,8 +459,9 @@ end
 end
 
 @testset "SystemNetworkSource carries a sparsification tolerance independent of reductions" begin
+    # POM keeps no fixed cutoff of its own: the default is PNM's auto rule.
     default_source = POM.SystemNetworkSource()
-    @test POM._source_tolerance(default_source) == POM.DEFAULT_PTDF_TOLERANCE
+    @test POM._source_tolerance(default_source) isa POM.PNM.AutoTolerance
     @test isempty(POM._source_reductions(default_source))
 
     # The two knobs are set independently: a tolerance with no reduction, and a
@@ -497,13 +493,10 @@ end
 
     # An `AutoTolerance` is a no-op below `PNM.AUTO_TOLERANCE_BUS_LIMIT`, so on a
     # 5-bus case it resolves to an exact-row cutoff rather than a relative one. That
-    # value is still distinct from the default, which is what proves it was threaded.
+    # value is distinct from the absolute cutoff above, which is what proves the
+    # tolerance was threaded rather than fixed.
     auto = POM._factor_core(ybus, sys, POM.PNM.AutoTolerance())
     @test POM.PNM.get_cutoff(auto) == POM.PNM.AbsoluteCutoff(eps(Float64))
-
-    defaulted = POM._factor_core(ybus, sys, POM.DEFAULT_PTDF_TOLERANCE)
-    @test POM.PNM.get_cutoff(defaulted) ==
-          POM.PNM.AbsoluteCutoff(POM.DEFAULT_PTDF_TOLERANCE)
 end
 
 @testset "PTDF build honors the source tolerance" begin
@@ -524,8 +517,9 @@ end
 
     @test _built_ptdf_cutoff(POM.SystemNetworkSource(; tolerance = 1e-4)) ==
           POM.PNM.AbsoluteCutoff(1e-4)
+    # The default build inherits PNM's auto rule, a no-op at this bus count.
     @test _built_ptdf_cutoff(POM.SystemNetworkSource()) ==
-          POM.PNM.AbsoluteCutoff(POM.DEFAULT_PTDF_TOLERANCE)
+          POM.PNM.AbsoluteCutoff(eps(Float64))
 end
 
 @testset "DCP contingency core honors the source tolerance" begin

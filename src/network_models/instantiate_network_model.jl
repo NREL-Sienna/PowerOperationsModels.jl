@@ -219,7 +219,11 @@ function _reduced_ybus!(
 end
 
 # Every PTDF-family matrix wraps one of these, so the tolerance and uuid are set once.
-_factor_core(ybus::PNM.Ybus, sys::PSY.System, tolerance) =
+_factor_core(
+    ybus::PNM.Ybus,
+    sys::PSY.System,
+    tolerance::Union{Float64, PNM.AutoTolerance},
+) =
     PNM.VirtualFactorCore(ybus; tol = tolerance, system_uuid = PSY.get_system_uuid(sys))
 
 _model_factor_core(ybus::PNM.Ybus, model::NetworkModel, sys::PSY.System) =
