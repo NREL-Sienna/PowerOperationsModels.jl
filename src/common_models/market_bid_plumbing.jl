@@ -513,7 +513,9 @@ function IOM.add_variable_cost_to_objective!(
 ) where {T <: VariableType, U <: AbstractDeviceFormulation}
     component_name = IS.get_name(component)
     @debug "Market Bid" _group = LOG_GROUP_COST_FUNCTIONS component_name
-    if IOM.is_nontrivial_offer(get_input_offer_curves(cost_function))
+    # Build-context form, as above: presence-only would reject the inert series a one-sided
+    # bid stores on its unoffered side.
+    if IOM.is_nontrivial_offer(container, component, get_input_offer_curves(cost_function))
         throw(
             ArgumentError(
                 "Component $(component_name) is not allowed to participate as a demand.",
