@@ -42,7 +42,9 @@ InfrastructureOptimizationModels = {rev = "main", url = "https://github.com/Sien
 # rename on PSY's generated cost types is uncommitted on disk, not on the psy6 branch yet.
 # Revert to the git rev pin once pushed/merged.
 PowerSystems = {rev = "psy6", url = "https://github.com/Sienna-Platform/PowerSystems.jl"}
-PowerNetworkMatrices = {rev = "psy6", url = "https://github.com/Sienna-Platform/PowerNetworkMatrices.jl"}
+# TEMPORARY: pinned to the arc-keyed-catalog branch (PNM #356 + #357) until they merge to
+# psy6. Revert to `rev = "psy6"` once they land.
+PowerNetworkMatrices = {rev = "lk/arc-keyed-catalog", url = "https://github.com/Sienna-Platform/PowerNetworkMatrices.jl"}
 # PSY psy6 depends on these unregistered packages; [sources] of non-root projects are
 # ignored by Pkg, so every environment resolving PSY must pin them itself (same rev as
 # PSY's own sources). POM imports none of them: they sit in [deps] only because Pkg

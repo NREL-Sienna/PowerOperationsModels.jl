@@ -1280,11 +1280,12 @@ _reduced_entry_kind(::PNM.BranchesParallel) = :parallel
         ),
     )
     partial_name_to_arc = PNM.get_name_to_arc_maps(partial_catalog)[Line]
-    partial_maps = PNM.get_all_branch_maps_by_type(partial_catalog)
     for name in ("CA-1", "C35")
-        arc, bucket = partial_name_to_arc[name]
-        @test bucket === :direct_branch_map
-        @test _reduced_entry_kind(partial_maps[bucket][Line][arc]) == :single
+        arc = partial_name_to_arc[name]
+        entry = PNM.get_reduction_entry(partial_catalog, arc)
+        # The map-of-origin tag is gone; provenance is read off the entry.
+        @test PNM.arc_provenance(entry) == PNM.DirectArc()
+        @test _reduced_entry_kind(entry) == :single
     end
 end
 
