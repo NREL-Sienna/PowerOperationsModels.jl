@@ -5,9 +5,16 @@ import PowerNetworkMatrices as PNM
 #   - radial:            "1-8-i_1" absorbed entirely (bus 8 -> 1), no arc entry
 #   - series chain:      arc (1,2) = "1-6-i_1" + "6-7-i_1" + "7-2-i_1"
 #   - cross-type chain:  arc (1,5) = Line "1-9-i_1" + TwoWindingTransformer "9-5-i_1"
-#   - parallel:          arc (1,4) = "1-4-i_1" ∥ "1-4-i_2" -> entry "1-4-i_double_circuit"
-#   - parallel-in-chain: arc (2,3) = "10-3-i_1" + ("2-10-i_1" ∥ "2-10-i_2")
+#   - parallel:          arc (1,4) = "1-4-i_1" ∥ "1-4-i_2" -> "1_4_double_circuit"
+#   - parallel-in-chain: arc (2,3) = "10-3-i_1" + ("2-10-i_1" ∥ "2-10-i_2"
+#                                                  -> "2_10_double_circuit")
 #   - direct:            arc (4,5) = "4-5-i_1"
+#
+# A composite's name derives from its arc, `<from>_<to>_double_circuit`; the suffix marks the
+# row as a total across the members. The reporting shape is unchanged: a chain reports one row
+# per segment under the segment's own component name, because each segment carries the arc's
+# flow, while a parallel group reports once at whatever depth it sits.
+#
 # Distinct reduced arcs across both branch types: (1,2), (1,4), (1,5), (2,3), (3,4), (4,5).
 const CASE11_DISTINCT_REDUCED_ARCS = 6
 
@@ -103,7 +110,7 @@ end
     chain_names_present =
         count(in(axes(bfe_line)[1]), ("1-6-i_1", "6-7-i_1", "7-2-i_1"))
     @test chain_names_present == 1
-    @test "1-4-i_double_circuit" in axes(bfe_line)[1]
+    @test "1_4_double_circuit" in axes(bfe_line)[1]
     @test !("1-4-i_1" in axes(bfe_line)[1])
     # Cross-type chain (1,5): the arc is claimed by exactly one branch type, so its name
     # appears in exactly one of the two containers, never both.
@@ -201,7 +208,7 @@ end
     @test !("1-8-i_1" in axes(pft_line)[1])
     @test pft_line["1-6-i_1", t1] === pft_line["6-7-i_1", t1]
     @test pft_line["6-7-i_1", t1] === pft_line["7-2-i_1", t1]
-    @test "1-4-i_double_circuit" in axes(pft_line)[1]
+    @test "1_4_double_circuit" in axes(pft_line)[1]
     pft_xfmr =
         IOM.get_variable(container, FlowActivePowerFromToVariable, TwoWindingTransformer)
     @test pft_line["1-9-i_1", t1] === pft_xfmr["9-5-i_1", t1]
@@ -280,7 +287,7 @@ end
     t1 = first(IOM.get_time_steps(container))
     @test pvar_line["1-6-i_1", t1] === pvar_line["6-7-i_1", t1]
     @test pvar_line["6-7-i_1", t1] === pvar_line["7-2-i_1", t1]
-    @test "1-4-i_double_circuit" in axes(pvar_line)[1]
+    @test "1_4_double_circuit" in axes(pvar_line)[1]
 end
 
 @testset "native DCPLL reduction: one corridor per reduced arc, build and solve" begin
@@ -323,7 +330,7 @@ end
     t1 = first(IOM.get_time_steps(container))
     @test pft_line["1-6-i_1", t1] === pft_line["6-7-i_1", t1]
     @test pft_line["6-7-i_1", t1] === pft_line["7-2-i_1", t1]
-    @test "1-4-i_double_circuit" in axes(pft_line)[1]
+    @test "1_4_double_circuit" in axes(pft_line)[1]
     pft_xfmr =
         IOM.get_variable(container, FlowActivePowerFromToVariable, TwoWindingTransformer)
     @test pft_line["1-9-i_1", t1] === pft_xfmr["9-5-i_1", t1]
@@ -610,10 +617,9 @@ end
     # Directional flow variables carry hard ±(equivalent rating) box bounds, and every
     # slack column is priced. The equivalent rating is read from the reduction entry (the
     # PNM series/parallel aggregate reached exactly as `branch_rate_bounds!` does).
-    all_maps = PNM.get_all_branch_maps_by_type(catalog)
     device_model = get_model(get_template(model), PSY.Line)
-    for (name, (arc, reduction)) in line_entries
-        entry = all_maps[reduction][PSY.Line][arc]
+    for (name, arc) in line_entries
+        entry = PNM.get_reduction_entry(catalog, arc)
         rating = POM._branch_rating(entry, device_model)
         for t in time_steps
             for var in (pft, ptf, qft, qtf)
@@ -642,8 +648,8 @@ end
     # representative row is "1-6-i_1". The bound on that representative equals the chain's
     # equivalent rating (the min = the tightened value), strictly below the representative
     # segment's own raw rating — so the bound is driven by the PNM reduction entry.
-    (arc_12, red_12) = line_entries["1-6-i_1"]
-    entry_12 = all_maps[red_12][PSY.Line][arc_12]
+    arc_12 = line_entries["1-6-i_1"]
+    entry_12 = PNM.get_reduction_entry(catalog, arc_12)
     @test PNM.get_equivalent_rating(entry_12) == tightened_rating
     representative_raw =
         PSY.get_rating(PSY.get_component(PSY.Line, sys, "1-6-i_1"), PSY.SU)
@@ -864,4 +870,52 @@ end
     @test !PNM.has_radial_reduction(
         _dcp_reduction_from(sys -> IOM.DefaultNetworkSource()),
     )
+end
+
+@testset "get_ptdf_orientation_sign resolves every reduction kind" begin
+    # This function had no test coverage, and the reduction tag it switches on is agreed
+    # across a package boundary by convention alone: PNM stores a `Symbol` in the second slot
+    # of `name_to_arc`, and nothing checks that POM reads it as one. When the tag was a
+    # `String` here and a `Symbol` there, every arm below was silently `false` and the
+    # function fell through to its trailing `error()` for every branch on every path. It is
+    # reachable only from area interchange, so the whole suite stayed green.
+    sys = PSB.build_system(PSITestSystems, "case11_network_reductions")
+    ybus = PNM.Ybus(
+        sys;
+        network_reductions = PNM.NetworkReduction[
+            PNM.RadialReduction(), PNM.DegreeTwoReduction(),
+        ],
+    )
+    catalog = PNM.get_branch_catalog(ybus)
+
+    kinds = Set{Symbol}()
+    signs = Float64[]
+    for (T, by_name) in PNM.get_name_to_arc_maps(catalog)
+        for (name, (_, reduction)) in by_name
+            # The contract itself: a `Symbol`, not a `String` and not a provenance object.
+            @test reduction isa Symbol
+            push!(kinds, reduction)
+            # Must resolve rather than reach the "unhandled reduction map" error.
+            sign = PowerOperationsModels.get_ptdf_orientation_sign(catalog, T, name)
+            @test sign == 1.0 || sign == -1.0
+            push!(signs, sign)
+        end
+    end
+
+    # All three tags this fixture produces are exercised, so a regression cannot hide in an
+    # arm the fixture never reaches.
+    @test :direct_branch_map in kinds
+    @test :parallel_branch_map in kinds
+    @test :series_branch_map in kinds
+    @test !isempty(signs)
+
+    # KNOWN GAP: every segment of every chain in `case11_network_reductions` is traversed
+    # `:FromTo`, so all 11 entries return `+1.0`. The series arm is reached, but the
+    # `:ToFrom` -> `-1.0` case -- the only one that reads `get_segment_orientations` for
+    # anything other than its length -- is not distinguished from the trivial path here.
+    # Covering it needs a chain whose interior bus numbering reverses a segment (PNM pins
+    # that shape with `build_reversed_asymmetric_degree_two_chains`); this asserts the
+    # current state so that adding such a fixture visibly flips it rather than passing
+    # silently either way.
+    @test all(==(1.0), signs)
 end

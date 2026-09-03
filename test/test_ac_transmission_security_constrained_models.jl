@@ -80,7 +80,6 @@ end
 
     net_reduction_data = POM.get_branch_catalog(network_model)
     name_to_arc_maps = PNM.get_name_to_arc_maps(net_reduction_data)
-    all_branch_maps_by_type = PNM.get_all_branch_maps_by_type(net_reduction_data)
 
     n_checked = 0
     n_constraints_checked = 0
@@ -100,15 +99,11 @@ end
             outage_id = parse(Int, outage_id_str)
             ctg = ground_truth_registered[outage_id]
 
-            # Resolve the monitored name to its arc and reduction kind.
+            # Resolve the monitored name to its arc.
             arc = nothing
-            reduction_kind = nothing
-            entry_type = nothing
             for (T, n2a) in name_to_arc_maps
                 if haskey(n2a, name)
-                    arc = n2a[name][1]
-                    reduction_kind = n2a[name][2]
-                    entry_type = T
+                    arc = n2a[name]
                     break
                 end
             end
@@ -134,8 +129,7 @@ end
             # to the RHS, so `normalized_rhs == limit - constant(expr)`. Adding
             # the constant back recovers the raw emergency-rating limit and
             # makes this a pure per-unit (system-base) units check.
-            reduction_entry =
-                all_branch_maps_by_type[reduction_kind][entry_type][arc]
+            reduction_entry = PNM.get_reduction_entry(net_reduction_data, arc)
             limits = POM._emergency_flow_limits(reduction_entry)
             expr_const = JuMP.constant(actual)
             @test JuMP.normalized_rhs(con_ub[outage_id_str, name, t]) + expr_const ≈
@@ -239,7 +233,7 @@ end
         name_to_arc_map = collect(PNM.get_name_to_arc_map(net_reduction_data, V))
         isempty(name_to_arc_map) && continue
         n_checked += 1
-        for (name, (arc, _)) in name_to_arc_map
+        for (name, arc) in name_to_arc_map
             ptdf_col = ground_truth_ptdf[arc, :]
             nz_idx = [
                 i for i in eachindex(ptdf_col) if abs(ptdf_col[i]) > POM.PTDF_ZERO_TOL
@@ -345,7 +339,7 @@ end
             arc = nothing
             for n2a in values(name_to_arc_maps)
                 if haskey(n2a, name)
-                    arc = n2a[name][1]
+                    arc = n2a[name]
                     break
                 end
             end
@@ -561,8 +555,8 @@ end
     tracker = IOM.get_reduced_branch_tracker(network_model)
     net_reduction_data = POM.get_branch_catalog(network_model)
 
-    # Derive the representative name from the reduction map (PNM names it, e.g.
-    # "<name>double_circuit"; not hard-coded so the test tracks PNM naming).
+    # Derive the representative name from the reduction map (PNM names it after the arc,
+    # e.g. "<from>_<to>_double_circuit"; not hard-coded so the test tracks PNM naming).
     c2r = PNM.get_component_to_reduction_name_map(net_reduction_data)
     @test haskey(c2r, PSY.Line)
     representative_name = c2r[PSY.Line][parallel_line_name]
@@ -773,13 +767,12 @@ end
 
     net_reduction_data = POM.get_branch_catalog(network_model)
     name_to_arc_map = PNM.get_name_to_arc_maps(net_reduction_data)[PSY.Line]
-    all_branch_maps_by_type = PNM.get_all_branch_maps_by_type(net_reduction_data)
 
     n_checked = 0
     for (outage_id_str, name, t) in keys(pcbf.data)
         outage_id = parse(Int, outage_id_str)
         ctg = ground_truth_registered[outage_id]
-        arc, reduction_kind = name_to_arc_map[name]
+        arc = name_to_arc_map[name]
 
         modf_col = ground_truth_modf[arc, ctg]
         expected = zero(JuMP.AffExpr)
@@ -795,7 +788,7 @@ end
         @test _affexpr_approx_equal(actual, expected)
 
         # RHS = +/- emergency rating in system per-unit.
-        reduction_entry = all_branch_maps_by_type[reduction_kind][PSY.Line][arc]
+        reduction_entry = PNM.get_reduction_entry(net_reduction_data, arc)
         limits = POM._emergency_flow_limits(reduction_entry)
         expr_const = JuMP.constant(actual)
         @test JuMP.normalized_rhs(con_ub[outage_id_str, name, t]) + expr_const ≈

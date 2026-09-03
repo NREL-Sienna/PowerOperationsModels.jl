@@ -163,12 +163,12 @@ function _branches_for_var(
 ) where {T}
     members = RepresentativeBranch[]
     _foreach_branch(_all_branches(network_model, T)) do branch
-        if branch.reduction !== DIRECT_BRANCH_MAP
+        if !(_provenance(branch) isa PNM.DirectArc)
             names = _controlled_circuit_names(branch, device_model, network_model)
             isempty(names) && return
             error(
                 "Controlled transformer circuit $(join(names, ", ")) was merged into the \
-                 reduced arc $(branch.name) ($(branch.reduction)). Either remove the parallel \
+                 reduced arc $(branch.name) ($(_reduction_label(branch))). Either remove the parallel \
                  branch or disable control for this circuit.",
             )
         end
@@ -353,7 +353,7 @@ function add_variables!(
             for t in time_steps
                 var = JuMP.@variable(
                     jump_model,
-                    base_name = "$(nameof(V))_$(nameof(T))_$(branch.reduction)_{$(branch.name), $(t)}",
+                    base_name = "$(nameof(V))_$(nameof(T))_$(_reduction_label(branch))_{$(branch.name), $(t)}",
                 )
                 lb !== nothing && JuMP.set_lower_bound(var, lb)
                 ub !== nothing && JuMP.set_upper_bound(var, ub)
@@ -799,9 +799,11 @@ function add_expressions!(
 
     ptdf = get_network_matrix(network_model)
     nodal_balance_expressions = get_expression(container, ActivePowerBalance, PSY.ACBus)
+    # `ptdf[arc, :]` is a KLU solve; libklu is not concurrency-safe, so the solves run
+    # serially on the dispatcher and only the JuMP `AffExpr` build is parallelized via
+    # `Threads.@spawn`. The try/catch below surfaces the inner exception -- the default
+    # handler shows only the wrapping `TaskFailedException`.
     tasks = map(branches) do rep
-        # ptdf[arc, :] is a KLU solve; libklu is not concurrency safe, so this
-        # happens in the main thread.
         ptdf_col = ptdf[rep.arc, :]
         Threads.@spawn try
             if _phase_controlled(rep, device_model, network_model)

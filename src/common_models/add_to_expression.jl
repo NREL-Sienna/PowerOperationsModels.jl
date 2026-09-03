@@ -415,7 +415,7 @@ function _add_terminal_flow_to_nodal!(
     nodal_expr = get_expression(container, T, PSY.ACBus)
     tracker = get_reduced_branch_tracker(network_model)
     time_steps = get_time_steps(container)
-    for (name, (arc_tuple, _)) in
+    for (name, arc_tuple) in
         PNM.get_name_to_arc_map(get_branch_catalog(network_model), V)
         if search_for_reduced_branch_expression!(tracker, arc_tuple, T, U)
             continue
@@ -493,7 +493,7 @@ function _add_both_terminals_to_nodal!(
     expression = get_expression(container, T, PSY.ACBus)
     tracker = get_reduced_branch_tracker(network_model)
     time_steps = get_time_steps(container)
-    for (name, (arc_tuple, _)) in
+    for (name, arc_tuple) in
         PNM.get_name_to_arc_map(get_branch_catalog(network_model), V)
         if search_for_reduced_branch_expression!(tracker, arc_tuple, T, U)
             continue
@@ -2055,11 +2055,9 @@ function _handle_nodal_or_zonal_interfaces(
     variable::DenseAxisArray,
     expression::DenseAxisArray, # There is no good type for a DenseAxisArray slice
 ) where {V <: PSY.ACTransmission}
-    all_branch_maps_by_type = PNM.get_all_branch_maps_by_type(branch_catalog)
     net_reduction_data = PNM.get_network_reduction_data(branch_catalog)
-    for (name, (arc, reduction)) in
-        PNM.get_name_to_arc_map(branch_catalog, br_type)
-        reduction_entry = all_branch_maps_by_type[reduction][br_type][arc]
+    for (name, arc) in PNM.get_name_to_arc_map(branch_catalog, br_type)
+        reduction_entry = PNM.get_reduction_entry(branch_catalog, arc)
         if _reduced_entry_in_interface(reduction_entry, contributing_devices)
             if isempty(direction_map)
                 direction = 1.0
@@ -2232,9 +2230,8 @@ function add_to_expression!(
         # nearly identical to _handle_nodal_or_zonal_interfaces: differences are
         # expression[service_name, t] vs expression[t], flow_expression[name, t] vs variable[name, t]
         catalog = get_branch_catalog(network_model)
-        all_branch_maps_by_type = PNM.get_all_branch_maps_by_type(catalog)
-        for (name, (arc, reduction)) in PNM.get_name_to_arc_map(catalog, br_type)
-            reduction_entry = all_branch_maps_by_type[reduction][br_type][arc]
+        for (name, arc) in PNM.get_name_to_arc_map(catalog, br_type)
+            reduction_entry = PNM.get_reduction_entry(catalog, arc)
             if _reduced_entry_in_interface(reduction_entry, contributing_devices)
                 if isempty(direction_map)
                     direction = 1.0
@@ -2259,36 +2256,61 @@ function add_to_expression!(
     return
 end
 
+# A reduced arc's own entry is defined in the arc frame, so its flow needs no sign; only a
+# series member can run against the merged path. Dispatched on provenance rather than
+# branched on it, so an unhandled kind is a MethodError at the call, not a silent +1.0.
+_ptdf_orientation_sign(
+    ::Union{PNM.DirectArc, PNM.ParallelArc, PNM.SyntheticArc},
+    ::Any,
+    ::Tuple{Int, Int},
+    ::AbstractString,
+) = 1.0
+
+function _ptdf_orientation_sign(
+    ::PNM.SeriesArc,
+    entry,
+    arc::Tuple{Int, Int},
+    name::AbstractString,
+)
+    PNM.get_name(entry) == name && return 1.0
+    orientations = PNM.get_segment_orientations(entry, arc)
+    for (i, segment) in enumerate(entry)
+        if PNM.get_name(segment) == name
+            return orientations[i] == :FromTo ? 1.0 : -1.0
+        end
+    end
+    return error(
+        "get_ptdf_orientation_sign: segment '$name' not found in series " *
+        "reduction for arc $arc",
+    )
+end
+
 """
 Sign relating a branch's native from→to flow to the PTDF column used for its
 `PTDFBranchFlow`. Returns `-1.0` only for a series-reduction member whose native
-orientation is `:ToFrom` relative to the merged path; `+1.0` otherwise. Errors
-on an unknown reduction kind rather than returning a silently wrong sign.
+orientation is `:ToFrom` relative to the merged path; `+1.0` otherwise. `name` may be a
+reduced-arc entry name or the name of a component absorbed into one.
 """
 function get_ptdf_orientation_sign(
     branch_catalog::PNM.BranchCatalog,
     ::Type{T},
     name::AbstractString,
 ) where {T <: PSY.ACTransmission}
-    arc, reduction = PNM.get_name_to_arc_maps(branch_catalog)[T][name]
-    if reduction === :direct_branch_map || reduction === :parallel_branch_map
-        return 1.0
-    elseif reduction === :series_branch_map
-        series = PNM.get_all_branch_maps_by_type(branch_catalog)[reduction][T][arc]
-        for (i, segment) in enumerate(series)
-            if PNM.get_name(segment) == name
-                return series.segment_orientations[i] == :FromTo ? 1.0 : -1.0
-            end
-        end
+    arc_map = PNM.get_name_to_arc_map(branch_catalog, T)
+    entry_name = get(
+        PNM.get_component_to_reduction_name_map(branch_catalog, T),
+        name,
+        name,
+    )
+    if !haskey(arc_map, entry_name)
         error(
-            "get_ptdf_orientation_sign: segment '$name' not found in series " *
-            "reduction for arc $arc ($T)",
+            "get_ptdf_orientation_sign: branch '$name' ($T) belongs to no reduced arc; " *
+            "cannot determine flow orientation",
         )
     end
-    return error(
-        "get_ptdf_orientation_sign: unhandled reduction map '$reduction' for " *
-        "branch '$name' ($T); cannot determine flow orientation",
-    )
+    arc = arc_map[entry_name]
+    entry = PNM.get_reduction_entry(branch_catalog, arc)
+    return _ptdf_orientation_sign(PNM.arc_provenance(entry), entry, arc, name)
 end
 
 function _get_direction(

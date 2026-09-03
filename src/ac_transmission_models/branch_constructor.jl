@@ -2554,7 +2554,6 @@ end
 function _get_branch_map(network_model::NetworkModel)
     @assert !isempty(network_model.modeled_branch_types)
     catalog = get_branch_catalog(network_model)
-    all_branch_maps_by_type = PNM.get_all_branch_maps_by_type(catalog)
     inter_area_branch_map =
     # This method uses ACBranch to support HVDC
         Dict{Tuple{String, String}, Dict{DataType, Vector{String}}}()
@@ -2562,8 +2561,8 @@ function _get_branch_map(network_model::NetworkModel)
     for br_type in network_model.modeled_branch_types
         !haskey(name_to_arc_maps, br_type) && continue
         name_to_arc_map = PNM.get_name_to_arc_map(catalog, br_type)
-        for (name, (arc, reduction)) in name_to_arc_map
-            reduction_entry = all_branch_maps_by_type[reduction][br_type][arc]
+        for (name, arc) in name_to_arc_map
+            reduction_entry = PNM.get_reduction_entry(catalog, arc)
             area_from, area_to = _get_area_from_to(reduction_entry)
             if area_from != area_to
                 branch_typed_dict = get!(
