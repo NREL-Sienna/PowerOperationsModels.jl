@@ -149,3 +149,16 @@ function build_hydro_with_both_pump_and_turbine()
     set_upstream_turbines!(tail_res, [hpump])
     return sys
 end
+
+"""Reservoir system with no `HydroTurbine` at all — head reservoir feeds only a
+`HydroPumpTurbine`. Regression system for reservoir formulations that must not assume a
+`HydroTurbine` is always present."""
+function build_hydro_pump_only()
+    sys = build_hydro_with_both_pump_and_turbine()
+    turbine = only(get_components(HydroTurbine, sys))
+    head_res = get_component(HydroReservoir, sys, "HydroEnergyReservoir__reservoir")
+    hpump = get_component(HydroPumpTurbine, sys, "PumpTurbine")
+    set_downstream_turbines!(head_res, [hpump])
+    remove_component!(sys, turbine)
+    return sys
+end

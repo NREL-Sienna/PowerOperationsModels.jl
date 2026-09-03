@@ -1258,6 +1258,35 @@ end
     @test solve!(model) == IS.Simulation.RunStatus.SUCCESSFULLY_FINALIZED
 end
 
+@testset "Solve Energy model with a Reservoir connected only to a HydroPumpTurbine" begin
+    sys = build_hydro_pump_only()
+    template = PowerOperationsProblemTemplate()
+    res_model = DeviceModel(
+        HydroReservoir,
+        HydroEnergyModelReservoir;
+        use_slacks = true,
+        attributes = Dict{String, Any}(
+            "energy_target" => false,
+            "hydro_budget" => true,
+        ),
+    )
+    set_device_model!(template, res_model)
+    set_device_model!(template, HydroPumpTurbine, HydroPumpEnergyDispatch)
+    set_device_model!(template, ThermalStandard, ThermalDispatchNoMin)
+    set_device_model!(template, PowerLoad, StaticPowerLoad)
+
+    model = DecisionModel(
+        template,
+        sys;
+        optimizer = HiGHS_optimizer,
+        store_variable_names = true,
+        calculate_conflict = true,
+    )
+
+    @test build!(model; output_dir = mktempdir()) == ModelBuildStatus.BUILT
+    @test solve!(model) == IS.Simulation.RunStatus.SUCCESSFULLY_FINALIZED
+end
+
 @testset "Hydro breakpoint multiplier and market-bid commitment traits" begin
     # Regression for the hydro market-bid breakpoint mis-scaling bug (2026-07
     # diagnosis); breakpoints are system-units so the multiplier must be 1.0 like every

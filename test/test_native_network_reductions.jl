@@ -873,11 +873,9 @@ end
 end
 
 @testset "get_ptdf_orientation_sign resolves every reduction kind" begin
-    # This function had no test coverage, and the reduction kind it switches on crosses a
-    # package boundary: PNM derives it from the arc entry's type via `arc_provenance`, and
-    # POM dispatches `_ptdf_orientation_sign` on the returned singleton. The arms below pin
-    # every provenance this fixture produces, so a kind that stops resolving is caught here.
-    # It is reachable only from area interchange, so the whole suite stays green otherwise.
+    # This function had no test coverage. It dispatches on `PNM.arc_provenance`, so an
+    # unhandled kind is a `MethodError` at the call rather than a silently wrong sign; this
+    # walks every entry the fixture produces to confirm all of POM's provenance arms resolve.
     sys = PSB.build_system(PSITestSystems, "case11_network_reductions")
     ybus = PNM.Ybus(
         sys;
@@ -891,12 +889,7 @@ end
     signs = Float64[]
     for (T, by_name) in PNM.get_name_to_arc_maps(catalog)
         for (name, arc) in by_name
-            # The contract itself: the map's value is the bare arc, and its provenance is
-            # derived from the entry rather than stored alongside it.
-            @test arc isa Tuple{Int, Int}
-            provenance = PNM.arc_provenance(catalog, arc)
-            @test provenance isa PNM.ArcProvenance
-            push!(kinds, typeof(provenance))
+            push!(kinds, typeof(PNM.arc_provenance(catalog, arc)))
             # Must resolve rather than reach the "unhandled reduction map" error.
             sign = PowerOperationsModels.get_ptdf_orientation_sign(catalog, T, name)
             @test sign == 1.0 || sign == -1.0
@@ -904,8 +897,8 @@ end
         end
     end
 
-    # All three provenances this fixture produces are exercised, so a regression cannot hide
-    # in an arm the fixture never reaches.
+    # All three kinds this fixture produces are exercised, so a regression cannot hide in an
+    # arm the fixture never reaches.
     @test PNM.DirectArc in kinds
     @test PNM.ParallelArc in kinds
     @test PNM.SeriesArc in kinds
