@@ -706,6 +706,27 @@ function add_constraints!(
         limits = get_min_max_limits(device, T, W) # depends on constraint type and formulation type
         startup_shutdown_limits = get_startup_shutdown_limits(device, T, W)
         @assert !isnothing(startup_shutdown_limits) "$(name)"
+        # A must-run unit is in none of the On/Start/Stop containers: On is identically 1
+        # and Start and Stop identically 0, so both start-up and shut-down ramp terms drop
+        # out and the ceiling is the plain range.
+        if PSY.get_must_run(device)
+            for t in time_steps
+                if JuMP.has_lower_bound(varp[name, t])
+                    JuMP.set_lower_bound(varp[name, t], 0.0)
+                end
+                con_on[name, t] = JuMP.@constraint(
+                    get_jump_model(container),
+                    expression_products[name, t] <= limits.max - limits.min
+                )
+                if t != length(time_steps)
+                    con_off[name, t] = JuMP.@constraint(
+                        get_jump_model(container),
+                        expression_products[name, t] <= limits.max - limits.min
+                    )
+                end
+            end
+            continue
+        end
         for t in time_steps
             if JuMP.has_lower_bound(varp[name, t])
                 JuMP.set_lower_bound(varp[name, t], 0.0)
@@ -1394,6 +1415,13 @@ function _get_data_for_tdc(
         IS.@assert_op g == IOM.get_component(initial_conditions_off[ix])
         time_limits = PSY.get_time_limits(g)
         name = PSY.get_name(g)
+        # A must-run unit never starts or stops, so its up/down durations are vacuous —
+        # and it is in none of the On/Start/Stop containers the duration constraints
+        # index, so including it here is a KeyError, not a redundant constraint.
+        if PSY.get_must_run(g)
+            @debug "Generator $(name) is must-run. Duration constraints skipped"
+            continue
+        end
         if !isnothing(time_limits)
             if (time_limits.up <= fraction_of_hour) & (time_limits.down <= fraction_of_hour)
                 @debug "Generator $(name) has a nonbinding time limits. Constraints Skipped"
