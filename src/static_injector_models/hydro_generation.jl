@@ -1417,13 +1417,6 @@ This function define the budget constraint for the
 active power budget formulation.
 `` sum(f[t]) <= Budget ``
 """
-# Level limits ride on the component as either a fixed min/max or a time series key.
-# The time-varying form has no constraint formulation yet, so it is refused here rather
-# than reaching `.max`/`.min` on a key and failing with a field error.
-_fixed_level_limits(limits) = limits
-_fixed_level_limits(::IS.TimeSeriesKey) =
-    error("Level limits are not supported with timeseries yet")
-
 function add_constraints!(
     container::OptimizationContainer,
     sys::PSY.System,
