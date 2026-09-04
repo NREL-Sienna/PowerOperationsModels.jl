@@ -82,11 +82,11 @@ end
     @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
           IOM.ModelBuildStatus.BUILT
 
-    # Discovery populated the map: attribute uuid -> device type -> names
+    # Discovery populated the map: attribute id -> device type -> names
     map_ = get_attribute_device_map(em)
-    uuid = IS.get_uuid(outage)
-    @test haskey(map_, uuid)
-    @test map_[uuid][PSY.ThermalStandard] == Set([PSY.get_name(thermal)])
+    attribute_id = IS.get_id(outage)
+    @test haskey(map_, attribute_id)
+    @test map_[attribute_id][PSY.ThermalStandard] == Set([PSY.get_name(thermal)])
 
     # The caller's template DeviceModels were not mutated (build-copy isolation)
     caller_dm = get_model(template, PSY.ThermalStandard)

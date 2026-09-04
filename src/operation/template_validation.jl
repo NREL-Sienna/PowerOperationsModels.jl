@@ -766,7 +766,7 @@ end
 
 """
 For each event model attached to the template: validate its time-series mapping,
-populate `attribute_device_map` (attribute UUID → concrete device type → device names)
+populate `attribute_device_map` (attribute id → concrete device type → device names)
 from the system's supplemental attributes, and distribute the event model to every
 `DeviceModel` in the template whose device type carries the attribute and supports
 events.
@@ -787,9 +787,9 @@ function _build_device_model_events!(
         end
         for event in attributes
             _validate_event_timeseries_data(sys, event, event_model)
-            event_uuid = IS.get_uuid(event)
+            event_id = IS.get_id(event)
             attribute_device_map = get_attribute_device_map(event_model)
-            attribute_device_map[event_uuid] = Dict{DataType, Set{String}}()
+            attribute_device_map[event_id] = Dict{DataType, Set{String}}()
             device_types_with_attribute = Set{DataType}()
             for device in PSY.get_associated_components(sys, event)
                 dtype = typeof(device)
@@ -802,7 +802,7 @@ function _build_device_model_events!(
                 end
                 push!(device_types_with_attribute, dtype)
                 name_set = get!(
-                    attribute_device_map[event_uuid],
+                    attribute_device_map[event_id],
                     dtype,
                     Set{String}(),
                 )

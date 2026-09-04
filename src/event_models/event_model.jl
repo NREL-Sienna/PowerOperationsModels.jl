@@ -92,14 +92,14 @@ get_condition_function(c::DiscreteEventCondition) = c.condition_function
 Container binding a `PSY.Contingency` supplemental-attribute type to a trigger condition
 and time-series mapping. Attach to a template with
 `set_event_model!(template, event_model)`; build-time discovery populates
-`attribute_device_map` (outage attribute UUID → device type → device names) and
+`attribute_device_map` (outage attribute id → device type → device names) and
 distributes the event to the matching `DeviceModel`s.
 """
 mutable struct EventModel{D <: PSY.Contingency, B <: AbstractEventCondition} <:
                IOM.AbstractEventModel
     condition::B
     timeseries_mapping::Dict{Symbol, Union{String, Nothing}}
-    attribute_device_map::Dict{Base.UUID, Dict{DataType, Set{String}}}
+    attribute_device_map::Dict{Int, Dict{DataType, Set{String}}}
     attributes::Dict{String, Any}
 
     function EventModel(
@@ -111,7 +111,7 @@ mutable struct EventModel{D <: PSY.Contingency, B <: AbstractEventCondition} <:
         new{D, B}(
             condition,
             timeseries_mapping,
-            Dict{Base.UUID, Dict{DataType, Set{String}}}(),
+            Dict{Int, Dict{DataType, Set{String}}}(),
             attributes,
         )
     end
@@ -147,7 +147,7 @@ get_event_condition(
 ) where {D <: PSY.Contingency, B <: AbstractEventCondition} = e.condition
 
 """
-Return `e`'s outage attribute UUID → device type → device names map, populated by
+Return `e`'s outage attribute id → device type → device names map, populated by
 build-time discovery.
 """
 get_attribute_device_map(e::EventModel) = e.attribute_device_map
