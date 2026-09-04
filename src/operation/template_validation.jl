@@ -585,7 +585,7 @@ function _build_device_model_outages!(
     sc_models = _sc_branch_models(template)
     isempty(sc_models) && return
 
-    modeled_types = Set{DataType}(get_component_types(template))
+    modeled_types = Set{Type}(get_component_types(template))
     selection = _take_outage_selection!(sc_models)
     uncovered_types = Dict{DataType, Set{Int}}()
 
@@ -658,7 +658,7 @@ function _monitored_components_by_modeled_type(
     outage::PSY.Outage,
     outage_id::Int,
     sys::PSY.System,
-    modeled_types::Set{DataType},
+    modeled_types::Set{Type},
 )
     per_type = Dict{DataType, Set{String}}()
     uncovered = Set{DataType}()
