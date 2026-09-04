@@ -49,7 +49,6 @@ UUIDs = "cf7118a7-6976-5b1a-9a39-7adc72f591a4"
 [sources]
 PowerOperationsModels = {path = ".."}
 InfrastructureSystems = {rev = "IS4", url = "https://github.com/Sienna-Platform/InfrastructureSystems.jl"}
-# Still-unmerged market-model work; not yet an ancestor of IOM's main.
 InfrastructureOptimizationModels = {rev = "jd/market_models2", url = "https://github.com/Sienna-Platform/InfrastructureOptimizationModels.jl"}
 PowerSystems = {rev = "psy6", url = "https://github.com/Sienna-Platform/PowerSystems.jl"}
 PowerSystemCaseBuilder = {rev = "psy6", url = "https://github.com/Sienna-Platform/PowerSystemCaseBuilder.jl"}
@@ -63,7 +62,7 @@ PowerDynamicsOpenAPIModels = {url = "https://github.com/Sienna-Platform/PowerOpe
 PowerInvestmentsOpenAPIModels = {url = "https://github.com/Sienna-Platform/PowerOpenAPIModels.git", rev = "main", subdir = "PowerInvestmentsOpenAPIModels.jl"}
 # TEMPORARY: pinned to the arc-keyed-catalog branch (PNM #356 + #357) until they merge to
 # psy6. Revert to `rev = "psy6"` once they land.
-PowerNetworkMatrices = {rev = "lk/arc-keyed-catalog", url = "https://github.com/Sienna-Platform/PowerNetworkMatrices.jl"}
+PowerNetworkMatrices = {rev = "psy6", url = "https://github.com/Sienna-Platform/PowerNetworkMatrices.jl"}
 PowerOpenAPIModels = {url = "https://github.com/Sienna-Platform/PowerOpenAPIModels.git", rev = "main", subdir = "PowerOpenAPIModels.jl"}
 PowerOperationsOpenAPIModels = {url = "https://github.com/Sienna-Platform/PowerOpenAPIModels.git", rev = "main", subdir = "PowerOperationsOpenAPIModels.jl"}
 PowerFlowFileParser = {rev = "psy6", url = "https://github.com/Sienna-Platform/PowerFlowFileParser.jl"}

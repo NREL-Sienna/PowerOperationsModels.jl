@@ -1,11 +1,11 @@
-@testset "NetworkReductionSpec builds a Ybus with the requested reductions" begin
+@testset "SystemNetworkSource builds a Ybus with the requested reductions" begin
     sys = PSB.build_system(PSITestSystems, "case11_network_reductions")
 
-    plain = POM._build_ybus(POM.NetworkReductionSpec(), sys, Int[])
+    plain = POM._build_ybus(POM.SystemNetworkSource(), sys, Int[])
     @test isempty(POM.PNM.get_reductions(POM.PNM.get_network_reduction_data(plain)))
 
     radial = POM._build_ybus(
-        POM.NetworkReductionSpec(POM.PNM.RadialReduction()),
+        POM.SystemNetworkSource(POM.PNM.RadialReduction()),
         sys,
         Int[],
     )
@@ -24,12 +24,12 @@ end
     sys = PSB.build_system(PSITestSystems, "case11_network_reductions")
     # Bus 8 is absorbed by the radial reduction when nothing pins it.
     unpinned = POM._build_ybus(
-        POM.NetworkReductionSpec(POM.PNM.RadialReduction()),
+        POM.SystemNetworkSource(POM.PNM.RadialReduction()),
         sys,
         Int[],
     )
     pinned = POM._build_ybus(
-        POM.NetworkReductionSpec(POM.PNM.RadialReduction()),
+        POM.SystemNetworkSource(POM.PNM.RadialReduction()),
         sys,
         [8],
     )
@@ -42,10 +42,9 @@ end
 
 @testset "PTDFNetworkData shares one reduction between PTDF and MODF" begin
     sys = PSB.build_system(PSITestSystems, "c_sys5")
-    ybus = POM._build_ybus(POM.NetworkReductionSpec(), sys, Int[])
+    ybus = POM._build_ybus(POM.SystemNetworkSource(), sys, Int[])
     core = POM.PNM.VirtualFactorCore(
         ybus;
-        tol = POM.PTDF_ZERO_TOL,
         system_uuid = PSY.get_system_uuid(sys),
     )
     ptdf = POM.PNM.VirtualPTDF(core)
@@ -73,7 +72,7 @@ end
 
 @testset "get_network_data_contingency_matrix errors without a contingency matrix" begin
     sys = PSB.build_system(PSITestSystems, "c_sys5")
-    ybus = POM._build_ybus(POM.NetworkReductionSpec(), sys, Int[])
+    ybus = POM._build_ybus(POM.SystemNetworkSource(), sys, Int[])
 
     dcp_without = POM.DCPNetworkData(
         ybus,
@@ -84,7 +83,6 @@ end
 
     core = POM.PNM.VirtualFactorCore(
         ybus;
-        tol = POM.PTDF_ZERO_TOL,
         system_uuid = PSY.get_system_uuid(sys),
     )
     ptdf_without = POM.PTDFNetworkData(
@@ -98,13 +96,12 @@ end
 @testset "PrebuiltMatrixSource forwards its VirtualPTDF's own reduction" begin
     sys = PSB.build_system(PSITestSystems, "case11_network_reductions")
     ybus = POM._build_ybus(
-        POM.NetworkReductionSpec(POM.PNM.RadialReduction()),
+        POM.SystemNetworkSource(POM.PNM.RadialReduction()),
         sys,
         Int[],
     )
     core = POM.PNM.VirtualFactorCore(
         ybus;
-        tol = POM.PTDF_ZERO_TOL,
         system_uuid = PSY.get_system_uuid(sys),
     )
     ptdf = POM.PNM.VirtualPTDF(core)
@@ -121,13 +118,12 @@ end
 @testset "PrebuiltCoreSource forwards the wrapped core's own reduction" begin
     sys = PSB.build_system(PSITestSystems, "case11_network_reductions")
     ybus = POM._build_ybus(
-        POM.NetworkReductionSpec(POM.PNM.RadialReduction()),
+        POM.SystemNetworkSource(POM.PNM.RadialReduction()),
         sys,
         Int[],
     )
     core = POM.PNM.VirtualFactorCore(
         ybus;
-        tol = POM.PTDF_ZERO_TOL,
         system_uuid = PSY.get_system_uuid(sys),
     )
     source = POM.PrebuiltCoreSource(core)
@@ -143,7 +139,7 @@ end
     sys = PSB.build_system(PSITestSystems, "c_sys5")
     net = NetworkModel(
         POM.PTDFNetworkModel;
-        network_source = POM.NetworkReductionSpec(POM.PNM.RadialReduction()),
+        network_source = POM.SystemNetworkSource(POM.PNM.RadialReduction()),
     )
     template = get_thermal_dispatch_template_network(net)
     model = DecisionModel(template, sys; optimizer = HiGHS_optimizer)
@@ -158,7 +154,7 @@ end
 
 @testset "A prebuilt VirtualPTDF reuses its own core" begin
     sys = PSB.build_system(PSITestSystems, "c_sys5")
-    vptdf = POM.PNM.VirtualPTDF(sys; tol = POM.PTDF_ZERO_TOL)
+    vptdf = POM.PNM.VirtualPTDF(sys)
     net = NetworkModel(
         POM.PTDFNetworkModel;
         network_source = POM.PrebuiltMatrixSource(vptdf),
@@ -298,25 +294,25 @@ _bus_map(y) = POM.PNM.get_bus_reduction_map(POM.PNM.get_network_reduction_data(y
 @testset "ZeroImpedanceBranchReduction is accepted in the spec and reaches the Ybus" begin
     sys = PSB.build_system(PSITestSystems, "case11_network_reductions")
     zibr = _zibr(0.002)
-    ybus = POM._build_ybus(POM.NetworkReductionSpec(zibr), sys, Int[])
+    ybus = POM._build_ybus(POM.SystemNetworkSource(zibr), sys, Int[])
     @test POM.PNM.get_zero_impedance_reduction(_reductions(ybus)) == zibr
 end
 
 @testset "The zero-impedance setting selects, rather than merely toggling" begin
     sys = PSB.build_system(PSITestSystems, "case11_network_reductions")
     n(rt) =
-        length(_bus_map(POM._build_ybus(POM.NetworkReductionSpec(_zibr(rt)), sys, Int[])))
+        length(_bus_map(POM._build_ybus(POM.SystemNetworkSource(_zibr(rt)), sys, Int[])))
 
     # The smallest branch resistance here is 0.00064, and the default tolerance is 0.0, so
     # the default and 0.0005 must both merge nothing while 0.002 merges only some.
-    @test length(_bus_map(POM._build_ybus(POM.NetworkReductionSpec(), sys, Int[]))) == 11
+    @test length(_bus_map(POM._build_ybus(POM.SystemNetworkSource(), sys, Int[]))) == 11
     @test n(0.0005) == 11
     @test n(0.002) == 7
 end
 
 @testset "More than one ZeroImpedanceBranchReduction is rejected" begin
     sys = PSB.build_system(PSITestSystems, "case11_network_reductions")
-    spec = POM.NetworkReductionSpec(_zibr(0.001), _zibr(0.002))
+    spec = POM.SystemNetworkSource(_zibr(0.001), _zibr(0.002))
     @test_throws IS.ConflictingInputsError POM._build_ybus(spec, sys, Int[])
 end
 
@@ -324,8 +320,8 @@ end
     sys = PSB.build_system(PSITestSystems, "case11_network_reductions")
     zibr = _zibr(0.001)
     radial = POM.PNM.RadialReduction()
-    first_ybus = POM._build_ybus(POM.NetworkReductionSpec(zibr, radial), sys, Int[])
-    last_ybus = POM._build_ybus(POM.NetworkReductionSpec(radial, zibr), sys, Int[])
+    first_ybus = POM._build_ybus(POM.SystemNetworkSource(zibr, radial), sys, Int[])
+    last_ybus = POM._build_ybus(POM.SystemNetworkSource(radial, zibr), sys, Int[])
 
     for y in (first_ybus, last_ybus)
         @test POM.PNM.has_radial_reduction(_reductions(y))
@@ -337,10 +333,9 @@ end
 @testset "A non-default zero-impedance setting round-trips through a prebuilt source" begin
     sys = PSB.build_system(PSITestSystems, "case11_network_reductions")
     zibr = _zibr(0.002)
-    ybus = POM._build_ybus(POM.NetworkReductionSpec(zibr), sys, Int[])
+    ybus = POM._build_ybus(POM.SystemNetworkSource(zibr), sys, Int[])
     core = POM.PNM.VirtualFactorCore(
         ybus;
-        tol = POM.PTDF_ZERO_TOL,
         system_uuid = PSY.get_system_uuid(sys),
     )
     source = POM.PrebuiltCoreSource(core)
@@ -379,7 +374,7 @@ function _aggregated_template(formulation, needs_interchange, source)
 end
 
 @testset "Aggregated formulations reject a network source they cannot honor" begin
-    source = POM.NetworkReductionSpec(POM.PNM.RadialReduction())
+    source = POM.SystemNetworkSource(POM.PNM.RadialReduction())
     for formulation in (POM.CopperPlateNetworkModel, POM.AreaBalanceNetworkModel)
         @test !POM.honors_network_reduction(formulation)
         @test_throws IS.ConflictingInputsError POM._validate_network_source(
@@ -401,7 +396,7 @@ end
 end
 
 @testset "The aggregated guard blocks a build, and the default source still builds" begin
-    source = POM.NetworkReductionSpec(POM.PNM.RadialReduction())
+    source = POM.SystemNetworkSource(POM.PNM.RadialReduction())
     for formulation in (POM.CopperPlateNetworkModel, POM.AreaBalanceNetworkModel)
         sys, needs_interchange = _aggregated_case(formulation)
 
@@ -431,7 +426,7 @@ end
     @test POM.honors_network_reduction(POM.DCPNetworkModel)
     net = NetworkModel(
         POM.PTDFNetworkModel;
-        network_source = POM.NetworkReductionSpec(POM.PNM.RadialReduction()),
+        network_source = POM.SystemNetworkSource(POM.PNM.RadialReduction()),
     )
     template = get_thermal_dispatch_template_network(net)
     model = DecisionModel(template, sys; optimizer = HiGHS_optimizer)
@@ -461,4 +456,98 @@ end
         PSY.get_number(b) for b in PSY.get_available_components(PSY.ACBus, sys)
     )
     @test !isempty(setdiff(all_buses, buses))
+end
+
+@testset "SystemNetworkSource carries a sparsification tolerance independent of reductions" begin
+    # POM keeps no fixed cutoff of its own: the default is PNM's auto rule.
+    default_source = POM.SystemNetworkSource()
+    @test POM._source_tolerance(default_source) isa POM.PNM.AutoTolerance
+    @test isempty(POM._source_reductions(default_source))
+
+    # The two knobs are set independently: a tolerance with no reduction, and a
+    # reduction with a non-default tolerance.
+    tol_only = POM.SystemNetworkSource(; tolerance = 1e-4)
+    @test POM._source_tolerance(tol_only) == 1e-4
+    @test isempty(POM._source_reductions(tol_only))
+
+    both = POM.SystemNetworkSource(POM.PNM.RadialReduction(); tolerance = 1e-4)
+    @test POM._source_tolerance(both) == 1e-4
+    @test any(r -> r isa POM.PNM.RadialReduction, POM._source_reductions(both))
+
+    vector_form = POM.SystemNetworkSource(
+        POM.PNM.NetworkReduction[POM.PNM.RadialReduction()];
+        tolerance = 1e-4,
+    )
+    @test POM._source_tolerance(vector_form) == 1e-4
+
+    auto = POM.SystemNetworkSource(; tolerance = POM.PNM.AutoTolerance())
+    @test POM._source_tolerance(auto) isa POM.PNM.AutoTolerance
+end
+
+@testset "Source tolerance reaches the factorization core" begin
+    sys = PSB.build_system(PSITestSystems, "c_sys5")
+    ybus = POM._build_ybus(POM.SystemNetworkSource(), sys, Int[])
+
+    absolute = POM._factor_core(ybus, sys, 1e-4)
+    @test POM.PNM.get_cutoff(absolute) == POM.PNM.AbsoluteCutoff(1e-4)
+
+    # An `AutoTolerance` is a no-op below `PNM.AUTO_TOLERANCE_BUS_LIMIT`, so on a
+    # 5-bus case it resolves to an exact-row cutoff rather than a relative one. That
+    # value is distinct from the absolute cutoff above, which is what proves the
+    # tolerance was threaded rather than fixed.
+    auto = POM._factor_core(ybus, sys, POM.PNM.AutoTolerance())
+    @test POM.PNM.get_cutoff(auto) == POM.PNM.AbsoluteCutoff(eps(Float64))
+end
+
+@testset "PTDF build honors the source tolerance" begin
+    sys = PSB.build_system(PSITestSystems, "c_sys5")
+
+    function _built_ptdf_cutoff(source)
+        net = NetworkModel(POM.PTDFNetworkModel; network_source = source)
+        model = DecisionModel(
+            get_thermal_dispatch_template_network(net),
+            sys;
+            optimizer = HiGHS_optimizer,
+        )
+        @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
+              IOM.ModelBuildStatus.BUILT
+        matrix = IOM.get_network_matrix(get_network_model(get_template(model)))
+        return POM.PNM.get_cutoff(POM.PNM.get_core(matrix))
+    end
+
+    @test _built_ptdf_cutoff(POM.SystemNetworkSource(; tolerance = 1e-4)) ==
+          POM.PNM.AbsoluteCutoff(1e-4)
+    # The default build inherits PNM's auto rule, a no-op at this bus count.
+    @test _built_ptdf_cutoff(POM.SystemNetworkSource()) ==
+          POM.PNM.AbsoluteCutoff(eps(Float64))
+end
+
+@testset "DCP contingency core honors the source tolerance" begin
+    sys = PSB.build_system(PSITestSystems, "c_sys5")
+    # The DCP path factorizes a core only when the template carries an outage-aware
+    # branch formulation; without one there is no MODF to sparsify.
+    line = first(PSY.get_available_components(PSY.Line, sys))
+    PSY.add_supplemental_attribute!(
+        sys,
+        line,
+        PSY.GeometricDistributionForcedOutage(;
+            mean_time_to_recovery = 10,
+            outage_transition_probability = 0.9999,
+            monitored_components = [line],
+        ),
+    )
+
+    net = NetworkModel(
+        POM.DCPNetworkModel;
+        network_source = POM.SystemNetworkSource(; tolerance = 1e-4),
+    )
+    template = get_thermal_dispatch_template_network(net)
+    set_device_model!(template, PSY.Line, POM.SecurityConstrainedStaticBranch)
+    model = DecisionModel(template, sys; optimizer = HiGHS_optimizer)
+    @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
+          IOM.ModelBuildStatus.BUILT
+
+    nm = get_network_model(get_template(model))
+    modf = IOM.get_contingency_matrix(nm)
+    @test POM.PNM.get_cutoff(POM.PNM.get_core(modf)) == POM.PNM.AbsoluteCutoff(1e-4)
 end

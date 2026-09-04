@@ -365,7 +365,7 @@ end
             model, status = _build_controlled(
                 fixture.sys, ACPNetworkModel, case.device_type;
                 optimizer = ipopt_optimizer,
-                network_source = NetworkReductionSpec([
+                network_source = SystemNetworkSource([
                     PNM.RadialReduction(),
                     PNM.DegreeTwoReduction(),
                 ]),

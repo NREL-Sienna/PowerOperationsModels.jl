@@ -83,11 +83,11 @@ function IOM.validate_occ_component(
     return _validate_startup_eltype(startup, device)
 end
 
-# A TS-backed startup is a bare time-series key referencing NTuple{3, Float64}
-# stages. Keys carry no element type (`eltype(typeof(key))` is `Any` for every key
-# type, so any check against it is unsatisfiable); the referenced series' element
-# type is validated when the parameter is populated (IOM `time_series_utils`).
-_validate_startup_eltype(::IS.TimeSeriesKey, ::PSY.ThermalMultiStart) = return
+# A TS-backed startup is a bare time-series key referencing NTuple{3, Float64} stages.
+# Keys carry no element type (`eltype(typeof(key))` is `Any` for every key type, so any
+# check against it is unsatisfiable); the referenced series' element type is validated
+# when the parameter is populated (IOM `time_series_utils`).
+_validate_startup_eltype(::IS.TimeSeriesKey, ::PSY.ThermalMultiStart) = nothing
 
 function _validate_startup_eltype(startup, device::PSY.ThermalMultiStart)
     _validate_eltype(
@@ -361,6 +361,9 @@ function add_variable_cost_to_objective!(
 ) where {T <: VariableType, U <: AbstractControllablePowerLoadFormulation}
     component_name = PSY.get_name(component)
     @debug "Market Bid" _group = LOG_GROUP_COST_FUNCTIONS component_name
+    # Build-context form: the 1-argument predicate is presence-only and reports every
+    # time-series-backed side as nontrivial, so it rejects the inert all-zero-span series a
+    # one-sided bid stores on its unoffered side.
     if IOM.is_nontrivial_offer(container, component, get_output_offer_curves(cost_function))
         throw(
             ArgumentError(

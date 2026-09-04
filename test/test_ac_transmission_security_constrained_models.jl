@@ -1093,7 +1093,7 @@ end
         template = get_thermal_dispatch_template_network(
             NetworkModel(
                 PTDFNetworkModel;
-                network_source = NetworkReductionSpec(nr),
+                network_source = SystemNetworkSource(nr),
             ),
         )
         set_device_model!(template, PSY.Line, POM.SecurityConstrainedStaticBranch)
@@ -1208,7 +1208,7 @@ end
         template = get_thermal_dispatch_template_network(
             NetworkModel(
                 PTDFNetworkModel;
-                network_source = NetworkReductionSpec(nr),
+                network_source = SystemNetworkSource(nr),
             ),
         )
         set_device_model!(template, PSY.Line, POM.SecurityConstrainedStaticBranch)
@@ -1427,7 +1427,7 @@ _sc_retained_buses(nrd) = Set(keys(PNM.get_bus_reduction_map(nrd)))
     template = get_thermal_dispatch_template_network(
         NetworkModel(
             PTDFNetworkModel;
-            network_source = NetworkReductionSpec(nr),
+            network_source = SystemNetworkSource(nr),
         ),
     )
     set_device_model!(template, PSY.Line, POM.SecurityConstrainedStaticBranch)

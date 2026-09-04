@@ -12,7 +12,7 @@ import Logging
 import PowerNetworkMatrices
 # Brought into namespace so the `export PTDF` / `export VirtualPTDF` below resolve (re-export to POM users)
 import PowerNetworkMatrices: PTDF, VirtualPTDF
-# Brought into namespace so `NetworkReductionSpec(RadialReduction())` resolves unqualified
+# Brought into namespace so `SystemNetworkSource(RadialReduction())` resolves unqualified
 # after `using PowerOperationsModels` (re-export to POM users)
 import PowerNetworkMatrices:
     RadialReduction, DegreeTwoReduction, WardReduction, ZeroImpedanceBranchReduction
@@ -1026,7 +1026,7 @@ export DCPLLNetworkModel
 
 # Network source declarations (network_models/network_sources.jl); the derived
 # network-data containers stay unexported — they are build outputs, not user inputs.
-export NetworkReductionSpec
+export SystemNetworkSource
 export PrebuiltMatrixSource
 export PrebuiltCoreSource
 

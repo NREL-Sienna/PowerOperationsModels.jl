@@ -40,17 +40,20 @@ function get_default_time_series_names(
     return Dict{Type{<:TimeSeriesParameter}, String}()
 end
 
-const ENABLE_CONTROLS_KEY = "enable_controls"
 const _TRANSFORMERS = Union{PSY.TwoWindingTransformer, PSY.ThreeWindingTransformer}
-const _CONTROL_FORMULATIONS = Union{StaticBranch, StaticBranchBounds}
+const _CONTROL_FORMULATIONS =
+    Union{StaticBranch, StaticBranchBounds, AbstractSecurityConstrainedStaticBranch}
 
-_control_attribute(::Type{<:_TRANSFORMERS}, ::Type{<:_CONTROL_FORMULATIONS}) =
-    (ENABLE_CONTROLS_KEY => false,)
-_control_attribute(::Type{<:PSY.ACTransmission}, ::Type{<:AbstractBranchFormulation}) = ()
-
-_control_enabled(m::DeviceModel{<:_TRANSFORMERS, <:_CONTROL_FORMULATIONS}) =
-    get_attribute(m, ENABLE_CONTROLS_KEY) === true
-_control_enabled(::DeviceModel) = false
+_control_supported(::Type{<:_TRANSFORMERS}, ::Type{<:_CONTROL_FORMULATIONS}) = true
+_control_supported(::Type{<:PSY.ACTransmission}, ::Type{<:AbstractBranchFormulation}) =
+    false
+_control_supported(
+    ::DeviceModel{U, V},
+) where {U <: PSY.ACTransmission, V <: AbstractBranchFormulation} =
+    _control_supported(U, V)
+# Total fallback: `_control_enabled` is called from constraint and objective builders whose
+# signatures leave the formulation parameter unconstrained.
+_control_supported(::DeviceModel) = false
 
 """
 DeviceModel attribute key selecting which `PowerNetworkMatrices` function aggregates
@@ -60,6 +63,18 @@ capacity), `"sum_of_max"` (plain Σ Sᵢ), `"impedance_averaged"` (susceptance-w
 average). `PNM.MixedBranchesParallel` groups always use `sum_of_max`.
 """
 const PARALLEL_BRANCH_MAX_RATING_KEY = "parallel_branch_max_rating_method"
+
+"""
+Attribute key indicating if transformer controls are enabled. Available on
+any DeviceModel where `_control_supported` is `true`.
+"""
+const ENABLE_CONTROLS_KEY = "enable_controls"
+
+_control_attribute(
+    ::Type{U},
+    ::Type{V},
+) where {U <: PSY.ACTransmission, V <: AbstractBranchFormulation} =
+    _control_supported(U, V) ? (ENABLE_CONTROLS_KEY => false,) : ()
 
 function get_default_attributes(
     ::Type{U},
@@ -112,6 +127,9 @@ function get_default_attributes(
         MODEL_ALL_BRANCHES_KEY => false,
     )
 end
+
+_control_enabled(m::DeviceModel) =
+    _control_supported(m) && get_attribute(m, ENABLE_CONTROLS_KEY) === true
 
 #################################### Flow Variable Bounds ##################################################
 
@@ -732,13 +750,17 @@ function _ptdf_branch_flow(
     return rep.name, expressions
 end
 
+# One branch's `PhaseShifterAngle` row as a concrete vector indexed by time step.
+_phase_row(phase_var, name::String) =
+    JuMP.VariableRef[phase_var[name, t] for t in axes(phase_var)[2]]
+
 # Variable shift path
 function _ptdf_branch_flow(
     rep::RepresentativeBranch,
     time_steps::UnitRange{Int},
     ptdf_col::Union{Vector{Float64}, SparseArrays.SparseVector{Float64, Int}},
     nodal_balance_expressions::Matrix{JuMP.AffExpr},
-    phase_var::DenseAxisArray{JuMP.VariableRef, 2},
+    phase_row::Vector{JuMP.VariableRef},
 )
     @debug "Making Flow Expression on thread $(Threads.threadid()) for branch $(rep.name)"
     _assert_flow_expression_dimensions(
@@ -759,7 +781,7 @@ function _ptdf_branch_flow(
                 nodal_balance_expressions[nz_idx[k], t],
             )
         end
-        JuMP.add_to_expression!(acc, -b, phase_var[rep.name, t])
+        JuMP.add_to_expression!(acc, -b, phase_row[t])
         expressions[t] = acc
     end
     return rep.name, expressions
@@ -790,14 +812,21 @@ function add_expressions!(
     # handler shows only the wrapping `TaskFailedException`.
     tasks = map(branches) do rep
         ptdf_col = ptdf[rep.arc, :]
+        # The variable row is materialized on the dispatcher: the container lookup and the
+        # `DenseAxisArray` slice are both type-unstable, and keeping them out of the task
+        # leaves the spawned body monomorphic.
+        phase_row = if _phase_controlled(rep, device_model, network_model)
+            _phase_row(get_variable(container, PhaseShifterAngle, B), rep.name)
+        else
+            nothing
+        end
         Threads.@spawn try
-            if _phase_controlled(rep, device_model, network_model)
+            if isnothing(phase_row)
                 _ptdf_branch_flow(
                     rep,
                     time_steps,
                     ptdf_col,
                     nodal_balance_expressions.data,
-                    get_variable(container, PhaseShifterAngle, B),
                 )
             else
                 _ptdf_branch_flow(
@@ -805,6 +834,7 @@ function add_expressions!(
                     time_steps,
                     ptdf_col,
                     nodal_balance_expressions.data,
+                    phase_row,
                 )
             end
         catch e
@@ -1662,6 +1692,22 @@ _flow_array(
     ::Type{ActivePowerFlowControlConstraint},
     ::DeviceModel{T, StaticBranchBounds},
     ::NetworkModel{<:Union{DCPNetworkModel, AbstractPTDFNetworkModel}},
+) where {T <: _TRANSFORMERS} = get_variable(container, FlowActivePowerVariable, T)
+
+# Security-constrained models carry the base-case flow in the same object the rating
+# constraints bind: the `PTDFBranchFlow` expression on PTDF networks, the flow variable
+# itself on DCP.
+_flow_array(
+    container::OptimizationContainer,
+    ::Type{ActivePowerFlowControlConstraint},
+    ::DeviceModel{T, <:AbstractSecurityConstrainedStaticBranch},
+    ::NetworkModel{<:AbstractPTDFNetworkModel},
+) where {T <: _TRANSFORMERS} = get_expression(container, PTDFBranchFlow, T)
+_flow_array(
+    container::OptimizationContainer,
+    ::Type{ActivePowerFlowControlConstraint},
+    ::DeviceModel{T, <:AbstractSecurityConstrainedStaticBranch},
+    ::NetworkModel{DCPNetworkModel},
 ) where {T <: _TRANSFORMERS} = get_variable(container, FlowActivePowerVariable, T)
 
 function _add_flow_control_constraints!(

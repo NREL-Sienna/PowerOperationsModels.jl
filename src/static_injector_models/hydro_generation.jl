@@ -1289,6 +1289,13 @@ function add_constraints!(
 end
 
 ##################################### Water/Energy Budget Constraint ############################
+# Level limits ride on the component as either a fixed min/max or a time series key. The
+# time-varying form has no constraint formulation yet, so refuse it here rather than
+# reaching `.max`/`.min` on a key and failing with a field error.
+_fixed_level_limits(limits) = limits
+_fixed_level_limits(::IS.TimeSeriesKey) =
+    error("Level limits are not supported with timeseries yet")
+
 """
 This function define the budget constraint for the
 active power budget formulation.
