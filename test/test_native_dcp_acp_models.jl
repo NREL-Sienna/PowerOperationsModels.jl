@@ -67,7 +67,7 @@ end
     sys = PSB.build_system(PSITestSystems, "c_sys14")
     net = NetworkModel(
         DCPNetworkModel;
-        network_source = NetworkReductionSpec(
+        network_source = SystemNetworkSource(
             PNM.RadialReduction(),
             PNM.DegreeTwoReduction(),
         ),
@@ -84,7 +84,7 @@ end
     sys = PSB.build_system(PSITestSystems, "c_sys14")
     net = NetworkModel(
         ACPNetworkModel;
-        network_source = NetworkReductionSpec(
+        network_source = SystemNetworkSource(
             PNM.RadialReduction(),
             PNM.DegreeTwoReduction(),
         ),

@@ -448,7 +448,7 @@ end
             template = get_thermal_dispatch_template_network(
                 NetworkModel(
                     PTDFNetworkModel;
-                    network_source = NetworkReductionSpec(nr),
+                    network_source = SystemNetworkSource(nr),
                 ),
             )
             set_device_model!(template, line_device_model)

@@ -5,19 +5,40 @@ build means one reduction, so every matrix derived from it agrees by constructio
 =#
 
 """
-Build the network from the system, applying `reductions` and honoring the build's
-reduction exceptions.
+Build the network from the system, applying `reductions`, honoring the build's
+reduction exceptions, and sparsifying the derived sensitivity matrices at `tolerance`.
+The two are independent knobs on the same construction step.
+
+`tolerance` is the per-row sparsification cutoff handed to `PNM.VirtualFactorCore`: a
+`Float64` is an absolute cutoff, a `PNM.AutoTolerance` a relative, size-adaptive one.
+It reaches every matrix wrapping that core — PTDF and MODF alike. The default is PNM's
+own auto rule, so POM does not second-guess it with a fixed cutoff of its own.
 
 A zero-impedance branch reduction is always applied first. Include a
 `ZeroImpedanceBranchReduction` to override its parameters; it replaces that step rather than
 adding one, so its position in the vector is irrelevant. More than one errors.
 """
-struct NetworkReductionSpec <: IOM.AbstractNetworkSource
+struct SystemNetworkSource <: IOM.AbstractNetworkSource
     reductions::Vector{PNM.NetworkReduction}
+    tolerance::Union{Float64, PNM.AutoTolerance}
 end
 
-NetworkReductionSpec(reductions::PNM.NetworkReduction...) =
-    NetworkReductionSpec(collect(PNM.NetworkReduction, reductions))
+SystemNetworkSource(; tolerance = PNM.AutoTolerance()) =
+    SystemNetworkSource(PNM.NetworkReduction[], tolerance)
+
+SystemNetworkSource(
+    reductions::Vector{PNM.NetworkReduction};
+    tolerance = PNM.AutoTolerance(),
+) = SystemNetworkSource(reductions, tolerance)
+
+SystemNetworkSource(
+    reduction::PNM.NetworkReduction,
+    rest::PNM.NetworkReduction...;
+    tolerance = PNM.AutoTolerance(),
+) = SystemNetworkSource(
+    collect(PNM.NetworkReduction, (reduction, rest...)),
+    tolerance,
+)
 
 """
 Reuse a `VirtualPTDF` the caller already built, including its populated row cache.
@@ -43,7 +64,7 @@ end
 get_matrix(source::PrebuiltMatrixSource) = source.matrix
 get_core(source::PrebuiltCoreSource) = source.core
 
-_source_reductions(source::NetworkReductionSpec) = source.reductions
+_source_reductions(source::SystemNetworkSource) = source.reductions
 _source_reductions(::IOM.DefaultNetworkSource) = PNM.NetworkReduction[]
 _source_reductions(source::PrebuiltMatrixSource) =
     PNM.get_applied_reductions(PNM.get_network_reduction_data(get_matrix(source)))
@@ -54,11 +75,17 @@ _source_reductions(source::PrebuiltCoreSource) =
 _source_irreducible_buses(reduction::PNM.NetworkReductionData) =
     collect(Int, PNM.get_user_irreducible_buses(PNM.get_reductions(reduction)))
 
+# The sparsification cutoff for a core this build factorizes itself. A prebuilt source
+# carries a core whose cutoff the caller already fixed, so it falls back to PNM's auto
+# rule: the value is consulted only on the paths that factorize a core of their own.
+_source_tolerance(source::SystemNetworkSource) = source.tolerance
+_source_tolerance(::IOM.AbstractNetworkSource) = PNM.AutoTolerance()
+
 _is_radial_reduction(::PNM.NetworkReduction) = false
 _is_radial_reduction(::PNM.RadialReduction) = true
 
 function _build_ybus(
-    source::NetworkReductionSpec,
+    source::SystemNetworkSource,
     sys::PSY.System,
     exceptions::Vector{Int},
 )

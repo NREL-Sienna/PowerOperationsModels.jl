@@ -1167,14 +1167,13 @@ _reduced_entry_kind(::PNM.BranchesParallel) = :parallel
     =#
     pre_service_ptdf = PNM.VirtualPTDF(
         sys_rts_da;
-        tol = POM.PTDF_ZERO_TOL,
         network_reductions = PNM.NetworkReduction[PNM.DegreeTwoReduction()],
     )
     add_service!(sys_rts_da, interface_series_chain, [series_chain_1, series_chain_2])
     template = PowerOperationsProblemTemplate(
         NetworkModel(
             AreaPTDFNetworkModel;
-            network_source = NetworkReductionSpec(PNM.DegreeTwoReduction()),
+            network_source = SystemNetworkSource(PNM.DegreeTwoReduction()),
             use_slacks = true,
         ),
     )

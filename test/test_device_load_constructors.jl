@@ -52,7 +52,7 @@ end
     transform_single_time_series!(c_sys, Hour(24), Hour(1))
     network = NetworkModel(
         DCPNetworkModel;
-        network_source = NetworkReductionSpec(
+        network_source = SystemNetworkSource(
             PNM.RadialReduction(),
             PNM.DegreeTwoReduction(),
         ),

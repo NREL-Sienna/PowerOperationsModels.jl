@@ -19,7 +19,7 @@ function _reduced_ptdf_duals_template()
 
     template = PowerOperationsProblemTemplate(
         NetworkModel(PTDFNetworkModel;
-            network_source = NetworkReductionSpec(nr),
+            network_source = SystemNetworkSource(nr),
             duals = [CopperPlateBalanceConstraint],
             use_slacks = false),
     )

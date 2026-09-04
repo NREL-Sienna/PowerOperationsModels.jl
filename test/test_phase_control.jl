@@ -336,7 +336,7 @@ end
         model, status = _build_controlled(
             fixture.sys, DCPNetworkModel, PSY.TwoWindingTransformer;
             optimizer = ipopt_optimizer,
-            network_source = NetworkReductionSpec([
+            network_source = SystemNetworkSource([
                 PNM.RadialReduction(),
                 PNM.DegreeTwoReduction(),
             ]),
