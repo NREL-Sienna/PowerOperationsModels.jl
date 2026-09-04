@@ -80,17 +80,23 @@ function IOM.validate_occ_component(
     device::PSY.ThermalMultiStart,
 )
     startup = PSY.get_start_up(PSY.get_operation_cost(device))
-    # A TS-backed startup is a bare time-series key referencing NTuple{3, Float64}
-    # stages. Keys carry no element type (`eltype(typeof(key))` is `Any` for every key
-    # type, so any check against it is unsatisfiable); the referenced series' element
-    # type is validated when the parameter is populated (IOM `time_series_utils`).
-    startup isa IS.TimeSeriesKey && return
+    return _validate_startup_eltype(startup, device)
+end
+
+# A TS-backed startup is a bare time-series key referencing NTuple{3, Float64} stages.
+# Keys carry no element type (`eltype(typeof(key))` is `Any` for every key type, so any
+# check against it is unsatisfiable); the referenced series' element type is validated
+# when the parameter is populated (IOM `time_series_utils`).
+_validate_startup_eltype(::IS.TimeSeriesKey, ::PSY.ThermalMultiStart) = nothing
+
+function _validate_startup_eltype(startup, device::PSY.ThermalMultiStart)
     _validate_eltype(
         Union{Float64, NTuple{3, Float64}, PSY.StartUpStages},
         device,
         startup,
         " startup cost",
     )
+    return
 end
 
 # Renewable / Storage: warn on nonzero startup, shutdown, and no-load costs
@@ -311,7 +317,10 @@ function add_variable_cost_to_objective!(
 ) where {T <: VariableType, U <: AbstractControllablePowerLoadFormulation}
     component_name = PSY.get_name(component)
     @debug "Market Bid" _group = LOG_GROUP_COST_FUNCTIONS component_name
-    if IOM.is_nontrivial_offer(get_output_offer_curves(cost_function))
+    # Build-context form: the 1-argument predicate is presence-only and reports every
+    # time-series-backed side as nontrivial, so it rejects the inert all-zero-span series a
+    # one-sided bid stores on its unoffered side.
+    if IOM.is_nontrivial_offer(container, component, get_output_offer_curves(cost_function))
         throw(
             ArgumentError(
                 "Component $(component_name) is not allowed to participate as a supply.",
