@@ -692,3 +692,331 @@ end
         network_model,
     )
 end
+
+#################################################################################
+# Semantic checks beyond constraint counts.
+#
+# The shared path (`add_parameterized_upper_bound_range_constraints` ->
+# IOM `_bound_range_with_parameter!` -> `IOM.get_max_active_power`, whose single
+# POM method passes `PSY.SU`) is component-neutral, so the thermal RHS check
+# above covers units for thermal/renewable/load/hydro alike. What is *not*
+# shared, and is checked here:
+#
+#   - which variable each constraint bounds (a swapped LHS is invisible to counts),
+#   - the three hand-written builders that compute their own right-hand sides
+#     (reactive, hydro pump, storage input/output),
+#   - that an outage actually forces output to zero, which is the intended
+#     behavior rather than a restatement of the builder.
+#################################################################################
+
+@testset "Outage constraints bound the intended variable" begin
+    # A wrong LHS array passes every count and set-type assertion. Each outage
+    # constraint must carry its own device's power variable with coefficient 1;
+    # for thermal/hydro the LHS is an expression wrapping that variable, which
+    # has the same coefficient, so one assertion covers both shapes.
+    for (dtype, formulation, sysname, var_type) in (
+        (PSY.ThermalStandard, ThermalBasicUnitCommitment, "c_sys5_uc", ActivePowerVariable),
+        (PSY.RenewableDispatch, RenewableFullDispatch, "c_sys5_re", ActivePowerVariable),
+        (
+            PSY.InterruptiblePowerLoad,
+            PowerLoadDispatch,
+            "c_sys5_il",
+            ActivePowerVariable,
+        ),
+        (PSY.HydroDispatch, HydroDispatchRunOfRiver, "c_sys5_hy", ActivePowerVariable),
+    )
+        device_model = DeviceModel(dtype, formulation)
+        sys = PSB.build_system(PSITestSystems, sysname)
+        model = DecisionModel(MockOperationProblem, DCPNetworkModel, sys)
+        mock_construct_device!(model, device_model; add_event_model = true)
+        container = IOM.get_optimization_container(model)
+        cons = IOM.get_constraint(container, ActivePowerOutageConstraint(), dtype, "ub")
+        var = IOM.get_variable(container, var_type, dtype)
+        name = axes(cons)[1][1]
+        t = first(IOM.get_time_steps(container))
+        c = JuMP.constraint_object(cons[name, t])
+        @test JuMP.coefficient(c.func, var[name, t]) ≈ 1.0
+    end
+end
+
+@testset "Storage outage constraints are not swapped between charge and discharge" begin
+    device_model = DeviceModel(EnergyReservoirStorage, StorageDispatchWithReserves)
+    sys = PSB.build_system(PSITestSystems, "c_sys5_bat")
+    model = DecisionModel(MockOperationProblem, DCPNetworkModel, sys)
+    mock_construct_device!(model, device_model; add_event_model = true)
+    container = IOM.get_optimization_container(model)
+    p_in = IOM.get_variable(container, ActivePowerInVariable, EnergyReservoirStorage)
+    p_out = IOM.get_variable(container, ActivePowerOutVariable, EnergyReservoirStorage)
+    cons_in = IOM.get_constraint(
+        container,
+        ActivePowerOutageConstraint(),
+        EnergyReservoirStorage,
+        "input",
+    )
+    cons_out = IOM.get_constraint(
+        container,
+        ActivePowerOutageConstraint(),
+        EnergyReservoirStorage,
+        "output",
+    )
+    name = axes(cons_in)[1][1]
+    t = first(IOM.get_time_steps(container))
+    c_in = JuMP.constraint_object(cons_in[name, t])
+    c_out = JuMP.constraint_object(cons_out[name, t])
+    @test JuMP.coefficient(c_in.func, p_in[name, t]) ≈ 1.0
+    @test JuMP.coefficient(c_in.func, p_out[name, t]) ≈ 0.0
+    @test JuMP.coefficient(c_out.func, p_out[name, t]) ≈ 1.0
+    @test JuMP.coefficient(c_out.func, p_in[name, t]) ≈ 0.0
+    # Bounds are recomputed from the fixture, in system base, rather than read back
+    # from whatever the builder read.
+    device = first(
+        d for d in PSY.get_components(EnergyReservoirStorage, sys) if
+        PSY.get_name(d) == name
+    )
+    @test c_in.set.upper ≈ PSY.get_input_active_power_limits(device, PSY.SU).max
+    @test c_out.set.upper ≈ PSY.get_output_active_power_limits(device, PSY.SU).max
+end
+
+@testset "Reactive outage constraint bounds q^2 by the squared reactive limit" begin
+    # `q^2 <= ub * status` with a pre-squared `ub`. A missing or doubled square
+    # survives every count assertion, so check the quadratic form directly:
+    # tight exactly at the reactive limit, satisfied inside it, violated outside.
+    device_model = DeviceModel(PSY.ThermalStandard, ThermalBasicUnitCommitment)
+    sys = PSB.build_system(PSITestSystems, "c_sys5_uc")
+    model = DecisionModel(MockOperationProblem, ACPNetworkModel, sys)
+    mock_construct_device!(model, device_model; add_event_model = true)
+    container = IOM.get_optimization_container(model)
+    cons = IOM.get_constraint(
+        container,
+        ReactivePowerOutageConstraint(),
+        PSY.ThermalStandard,
+        "ub",
+    )
+    q = IOM.get_variable(container, ReactivePowerVariable, PSY.ThermalStandard)
+    name = axes(cons)[1][1]
+    t = first(IOM.get_time_steps(container))
+    c = JuMP.constraint_object(cons[name, t])
+    device = first(
+        d for d in PSY.get_components(PSY.ThermalStandard, sys) if PSY.get_name(d) == name
+    )
+    limits = PSY.get_reactive_power_limits(device, PSY.SU)
+    q_limit = max(abs(limits.max), abs(limits.min))
+
+    # The LHS is q^2, not q.
+    @test JuMP.coefficient(c.func, q[name, t], q[name, t]) ≈ 1.0
+    @test JuMP.coefficient(c.func, q[name, t]) ≈ 0.0
+
+    # Endpoint behavior: with status = 1 the constraint must bind exactly at the
+    # reactive limit and be sign-symmetric about zero.
+    at(val) = JuMP.value(v -> (v == q[name, t] ? val : 0.0), c.func)
+    @test at(q_limit) ≈ c.set.upper
+    @test at(-q_limit) ≈ c.set.upper
+    @test at(0.5 * q_limit) < c.set.upper
+    @test at(1.5 * q_limit) > c.set.upper
+end
+
+@testset "Outage forces storage charge and discharge to zero" begin
+    device_model = DeviceModel(EnergyReservoirStorage, StorageDispatchWithReserves)
+    sys = PSB.build_system(PSITestSystems, "c_sys5_bat")
+    model = DecisionModel(MockOperationProblem, DCPNetworkModel, sys)
+    mock_construct_device!(
+        model,
+        device_model;
+        add_event_model = true,
+        built_for_recurrent_solves = true,
+    )
+    container = IOM.get_optimization_container(model)
+    param_array = IOM.get_parameter_array(
+        container,
+        AvailableStatusParameter(),
+        EnergyReservoirStorage,
+    )
+    name = axes(param_array)[1][1]
+    for t in axes(param_array)[2]
+        JuMP.fix(param_array[name, t], 0.0; force = true)
+    end
+    p_in = IOM.get_variable(container, ActivePowerInVariable, EnergyReservoirStorage)
+    p_out = IOM.get_variable(container, ActivePowerOutVariable, EnergyReservoirStorage)
+    jm = IOM.get_jump_model(container)
+    # Maximize what the outage is supposed to suppress, so the test fails if either
+    # constraint is missing, swapped, or bounded by something other than status.
+    JuMP.@objective(
+        jm,
+        Max,
+        sum(p_in[name, t] + p_out[name, t] for t in axes(p_in)[2])
+    )
+    JuMP.set_optimizer(jm, HiGHS.Optimizer)
+    JuMP.set_silent(jm)
+    JuMP.optimize!(jm)
+    @test JuMP.termination_status(jm) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED)
+    @test all(abs(JuMP.value(p_in[name, t])) <= 1e-6 for t in axes(p_in)[2])
+    @test all(abs(JuMP.value(p_out[name, t])) <= 1e-6 for t in axes(p_out)[2])
+end
+
+@testset "Outage forces hydro pump turbine and pump output to zero" begin
+    device_model = DeviceModel(
+        HydroPumpTurbine,
+        HydroPumpEnergyDispatch;
+        attributes = Dict{String, Any}(
+            "reservation" => true,
+            "energy_target" => true,
+        ),
+    )
+    sys = PSB.build_system(
+        PSITestSystems,
+        "c_sys5_hydro_pump_energy";
+        add_reserves = true,
+        add_single_time_series = true,
+    )
+    transform_single_time_series!(sys, Hour(24), Hour(24))
+    model = DecisionModel(MockOperationProblem, CopperPlateNetworkModel, sys)
+    mock_construct_device!(
+        model,
+        device_model;
+        add_event_model = true,
+        built_for_recurrent_solves = true,
+    )
+    container = IOM.get_optimization_container(model)
+    param_array =
+        IOM.get_parameter_array(container, AvailableStatusParameter(), HydroPumpTurbine)
+    name = axes(param_array)[1][1]
+    for t in axes(param_array)[2]
+        JuMP.fix(param_array[name, t], 0.0; force = true)
+    end
+    p = IOM.get_variable(container, ActivePowerVariable, HydroPumpTurbine)
+    p_pump = IOM.get_variable(container, ActivePowerPumpVariable, HydroPumpTurbine)
+    jm = IOM.get_jump_model(container)
+    JuMP.@objective(jm, Max, sum(p[name, t] + p_pump[name, t] for t in axes(p)[2]))
+    JuMP.set_optimizer(jm, HiGHS.Optimizer)
+    JuMP.set_silent(jm)
+    JuMP.optimize!(jm)
+    @test JuMP.termination_status(jm) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED)
+    @test all(abs(JuMP.value(p[name, t])) <= 1e-6 for t in axes(p)[2])
+    @test all(abs(JuMP.value(p_pump[name, t])) <= 1e-6 for t in axes(p_pump)[2])
+end
+
+@testset "Load outage offsets enter the balance with the event-parameter multiplier" begin
+    # The offset is the load's only outage mechanism (no variable to bound), so the
+    # one thing the build must get right is that the parameter reaches the balance
+    # row with multiplier 1.0: `get_parameter_multiplier(::EventParameter, ...)` is
+    # 1.0 by design in both PSI and POM, which is what makes the runtime's
+    # `offset = -1 * <time series value>` cancel the injection rather than scale it.
+    # A coefficient of 0 means `add_to_expression!` never ran; anything else means
+    # the offset is being rescaled on the way in.
+    #
+    # The cancellation itself is a runtime property (POM never writes a nonzero
+    # offset), so it is not assertable here; PSI owns that test.
+    device_model = DeviceModel(PSY.PowerLoad, StaticPowerLoad)
+    sys = PSB.build_system(PSITestSystems, "c_sys5_uc")
+    model = DecisionModel(MockOperationProblem, ACPNetworkModel, sys)
+    mock_construct_device!(
+        model,
+        device_model;
+        add_event_model = true,
+        built_for_recurrent_solves = true,
+    )
+    container = IOM.get_optimization_container(model)
+    # The mock attributes one load and `get_components` iteration order is not
+    # stable across calls, so read the attributed device back off the parameter
+    # container rather than picking `first` from the system a second time.
+    offsets =
+        IOM.get_parameter_array(container, ActivePowerOffsetParameter(), PSY.PowerLoad)
+    name = axes(offsets)[1][1]
+    load = first(
+        d for d in PSY.get_components(PSY.PowerLoad, sys) if PSY.get_name(d) == name
+    )
+    network_model = IOM.get_network_model(IOM.get_template(model))
+    bus_no =
+        PNM.get_mapped_bus_number(get_network_reduction(network_model), PSY.get_bus(load))
+    t = first(IOM.get_time_steps(container))
+
+    for (balance, offset_type) in (
+        (ActivePowerBalance, ActivePowerOffsetParameter),
+        (ReactivePowerBalance, ReactivePowerOffsetParameter),
+    )
+        row = IOM.get_expression(container, balance, PSY.ACBus)[bus_no, t]
+        offset_ref =
+            IOM.get_parameter_array(container, offset_type(), PSY.PowerLoad)[name, t]
+        @test JuMP.coefficient(row, offset_ref) ≈ 1.0
+    end
+end
+
+@testset "A thermal outage costs the same as forcing the unit off" begin
+    # Independent formulation of the same physics: driving the availability
+    # parameter to zero must leave the copperplate unit-commitment problem with
+    # exactly the optimal cost of a system where the same unit is held off by
+    # fixing its commitment variable. That checks the constraint's effect on the
+    # optimum, not its structure -- a bound that is too loose, too tight, or
+    # attached to the wrong device all change the cost.
+    #
+    # A commitment template is required, not a dispatch one: the outage bounds
+    # active power from above only, so under a formulation that also enforces
+    # `p >= p_min` with no on/off variable the outaged unit makes the model
+    # infeasible. (That is what PSI's `has_outage` feedforward override exists to
+    # relax, and it is a real constraint on where events can be used.)
+    function _solve_uc(sys; outaged = nothing, force_off = nothing)
+        template = get_thermal_standard_uc_template()
+        if !isnothing(outaged)
+            attach_fixed_forced_outage!(sys, outaged)
+            set_event_model!(
+                template,
+                EventModel(
+                    PSY.FixedForcedOutage,
+                    ContinuousCondition();
+                    timeseries_mapping = Dict{Symbol, Union{String, Nothing}}(
+                        :outage_status => "outage_profile",
+                    ),
+                ),
+            )
+        end
+        model = DecisionModel(template, sys; optimizer = HiGHS_optimizer)
+        # Event parameters are only JuMP parameters -- and so only fixable to an
+        # outage value -- in recurrent-solve mode; see `get_param_eltype`.
+        IOM.get_optimization_container(model).built_for_recurrent_solves = true
+        @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
+              IOM.ModelBuildStatus.BUILT
+        container = IOM.get_optimization_container(model)
+        if !isnothing(outaged)
+            status = IOM.get_parameter_array(
+                container,
+                AvailableStatusParameter(),
+                PSY.ThermalStandard,
+            )
+            for idx in eachindex(status)
+                JuMP.fix(status[idx], 0.0; force = true)
+            end
+        end
+        if !isnothing(force_off)
+            on = IOM.get_variable(container, OnVariable, PSY.ThermalStandard)
+            for t in axes(on)[2]
+                JuMP.fix(on[force_off, t], 0.0; force = true)
+            end
+        end
+        jm = IOM.get_jump_model(container)
+        JuMP.set_optimizer(jm, HiGHS.Optimizer)
+        JuMP.set_silent(jm)
+        JuMP.optimize!(jm)
+        @test JuMP.termination_status(jm) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED)
+        return JuMP.objective_value(jm)
+    end
+
+    sys_event = PSB.build_system(PSB.PSITestSystems, "c_sys5_uc")
+    outaged_name =
+        PSY.get_name(first(PSY.get_components(PSY.ThermalStandard, sys_event)))
+    cost_with_outage = _solve_uc(
+        sys_event;
+        outaged = first(
+            d for d in PSY.get_components(PSY.ThermalStandard, sys_event) if
+            PSY.get_name(d) == outaged_name
+        ),
+    )
+
+    sys_forced_off = PSB.build_system(PSB.PSITestSystems, "c_sys5_uc")
+    cost_forced_off = _solve_uc(sys_forced_off; force_off = outaged_name)
+
+    @test cost_with_outage ≈ cost_forced_off rtol = 1e-6
+    # Guard against a degenerate fixture where the unit never ran anyway: losing it
+    # has to actually cost something relative to the intact system.
+    sys_intact = PSB.build_system(PSB.PSITestSystems, "c_sys5_uc")
+    @test cost_with_outage > _solve_uc(sys_intact)
+end
