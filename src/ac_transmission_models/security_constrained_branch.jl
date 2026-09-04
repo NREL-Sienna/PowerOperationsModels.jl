@@ -449,21 +449,43 @@ function add_constraints!(
     return
 end
 
+# Each controlled branch's variable row is materialized once, concretely typed, so the
+# threaded expression build below dispatches statically.
+function _phase_variables(container::OptimizationContainer)
+    phase_vars = Dict{String, Vector{JuMP.VariableRef}}()
+    for T in (PSY.TwoWindingTransformer, PSY.ThreeWindingTransformer)
+        has_container_key(container, PhaseShifterAngle, T) || continue
+        phase_var = get_variable(container, PhaseShifterAngle, T)
+        for name in axes(phase_var)[1]
+            phase_vars[name] = _phase_row(phase_var, name)
+        end
+    end
+    return phase_vars
+end
+
 function _build_post_contingency_flow_expressions_for_outage(
     time_steps::UnitRange{Int},
     outage_id::String,
     modf_cols::Dict{Tuple{String, Tuple{Int64, Int64}}, Vector{Float64}},
     nodal_balance_expressions::Matrix{JuMP.AffExpr},
     reps::Vector{RepresentativeBranch},
+    phase_vars::Dict{String, Vector{JuMP.VariableRef}},
 )
     results = Vector{Tuple{String, Vector{JuMP.AffExpr}}}(undef, length(reps))
     for (i, rep) in enumerate(reps)
-        _, expressions = _ptdf_branch_flow(
-            rep,
-            time_steps,
-            modf_cols[(outage_id, rep.arc)],
-            nodal_balance_expressions,
-        )
+        modf_col = modf_cols[(outage_id, rep.arc)]
+        phase_row = get(phase_vars, rep.name, nothing)
+        _, expressions = if isnothing(phase_row)
+            _ptdf_branch_flow(rep, time_steps, modf_col, nodal_balance_expressions)
+        else
+            _ptdf_branch_flow(
+                rep,
+                time_steps,
+                modf_col,
+                nodal_balance_expressions,
+                phase_row,
+            )
+        end
         results[i] = (rep.name, expressions)
     end
     return results
@@ -521,6 +543,8 @@ function _add_modf_post_contingency_flow_expressions!(
         end
     end
 
+    phase_vars = _phase_variables(container)
+
     # Parallel JuMP `AffExpr` build (no libklu): tasks return results, the main
     # thread does the serial writes. The try/catch surfaces the inner exception.
     tasks = map(fresh_resolved) do (uuid, reps)
@@ -532,6 +556,7 @@ function _add_modf_post_contingency_flow_expressions!(
                 modf_cols,
                 nodal_injection_expressions,
                 reps,
+                phase_vars,
             )
         catch e
             @error "Post-contingency flow-expression task failed" outage_id =
@@ -749,7 +774,6 @@ function construct_device!(
             network_model,
         )
     end
-
     if haskey(
         get_time_series_names(device_model),
         PostContingencyBranchRatingTimeSeriesParameter,
@@ -762,8 +786,7 @@ function construct_device!(
         )
     end
 
-    add_feedforward_arguments!(container, device_model, devices)
-
+    _add_transformer_control_variables!(container, devices, device_model, network_model)
     add_expressions!(
         container,
         PTDFBranchFlow,
@@ -771,7 +794,7 @@ function construct_device!(
         device_model,
         network_model,
     )
-
+    add_feedforward_arguments!(container, device_model, devices)
     return
 end
 
@@ -789,6 +812,9 @@ function construct_device!(
     devices = get_available_components(device_model, sys)
 
     add_constraints!(container, FlowRateConstraint, devices, device_model, network_model)
+    _add_transformer_control_constraints!(
+        container, sys, devices, device_model, network_model,
+    )
     add_feedforward_constraints!(container, device_model, devices)
     add_to_objective_function!(container, devices, device_model, X)
 
@@ -885,6 +911,9 @@ function construct_device!(
     )
     add_constraints!(
         container, sys, AngleDifferenceConstraint, devices, device_model, network_model,
+    )
+    _add_transformer_control_constraints!(
+        container, sys, devices, device_model, network_model,
     )
     add_feedforward_constraints!(container, device_model, devices)
     add_to_objective_function!(container, devices, device_model, DCPNetworkModel)

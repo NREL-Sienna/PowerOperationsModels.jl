@@ -126,13 +126,13 @@ function _pin_outage_buses!(buses::Set{Int}, m::DeviceModel, sys::PSY.System)
         outage = PSY.get_supplemental_attribute(sys, outage_id)
         for uuid in PSY.get_monitored_components(outage)
             component = IS.get_component(sys, uuid)
-            if isnothing(component)
-                throw(
-                    IS.ConflictingInputsError(
-                        "Monitored component with UUID $(uuid) on outage $(IS.get_id(outage)) not found in system. Data requires correction",
-                    ),
-                )
-            end
+            # Also checked in template validation, but a `validate_template` override can
+            # skip that; a missing component here would surface as a `MethodError`.
+            isnothing(component) && throw(
+                IS.ConflictingInputsError(
+                    "Monitored component with UUID $uuid on outage $outage_id is not found in the system.",
+                ),
+            )
             _push_component_buses!(buses, component)
         end
         for component in PSY.get_associated_components(sys, outage)

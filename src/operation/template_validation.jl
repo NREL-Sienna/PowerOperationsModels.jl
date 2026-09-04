@@ -334,66 +334,42 @@ function _check_flow_slack_support(
     )
 end
 
-# Circuits this model puts in ACTIVE_POWER_FLOW control, named as `_controlled_circuit_names`
-# names them. Read off the device cache: the network reduction does not exist yet at
-# validation time, so the `RepresentativeBranch` API is unavailable here.
-function _phase_controlled_circuit_names(
-    device_model::DeviceModel{<:_TRANSFORMERS, <:_CONTROL_FORMULATIONS},
-    network_model::NetworkModel,
-)
-    names = String[]
-    _control_enabled(device_model) || return names
-    _supports_phase_control(network_model) || return names
-    for transformer in get_device_cache(device_model)
-        circuits = PSY.get_circuits(transformer)
-        for (i, circuit) in enumerate(circuits)
-            _control_objective(circuit, device_model) in _PHASE_CONTROLS || continue
-            if length(circuits) == 1
-                push!(names, PSY.get_name(transformer))
-            else
-                push!(names, "$(PSY.get_name(transformer))_winding_$(i)")
-            end
-        end
-    end
-    return names
-end
-
-_phase_controlled_circuit_names(::DeviceModel, ::NetworkModel) = String[]
-
 _is_security_constrained(
     ::DeviceModel{<:PSY.ACTransmission, <:AbstractSecurityConstrainedStaticBranch},
 ) = true
 _is_security_constrained(::DeviceModel) = false
 
-# `_build_post_contingency_flow_expressions_for_outage` builds every post-contingency flow
-# from the FIXED `_dc_shift_injection`, never from `PhaseShifterAngle`. A variable angle
-# would therefore move only the base case, leaving the N-1 rows silently wrong, so reject
-# the pair instead of building it.
+_has_unsupported_phase(t::_TRANSFORMERS, m::DeviceModel{<:_TRANSFORMERS}) = any(
+    _control_objective(c, m) in _PHASE_CONTROLS || !iszero(PSY.get_α(c)) for
+    c in PSY.get_circuits(t)
+)
+_has_unsupported_phase(_, ::DeviceModel) = false
+# A transformer carrying an outage need not have a `DeviceModel` in the template. Its
+# control objective is then inert, but a nonzero fixed shift still corrupts the MODF
+# columns of every monitored arc, so the static angle alone is disqualifying.
+_has_unsupported_phase(t::_TRANSFORMERS, ::Nothing) =
+    any(!iszero(PSY.get_α(c)) for c in PSY.get_circuits(t))
+_has_unsupported_phase(_, ::Nothing) = false
+
+_has_unsupported_phase(m::DeviceModel{<:_TRANSFORMERS}) =
+    any(_has_unsupported_phase(t, m) for t in get_device_cache(m))
+_has_unsupported_phase(::DeviceModel) = false
+
 function _check_security_constrained_phase_control(
     branch_models::IOM.BranchModelContainer,
-    network_model::NetworkModel,
+    network_model::NetworkModel{<:Union{DCPNetworkModel, AbstractDCPLLNetworkModel}},
 )
-    sc_types = [
-        get_component_type(m) for m in values(branch_models) if
-        _is_security_constrained(m)
-    ]
-    isempty(sc_types) && return
-    controlled = reduce(
-        vcat,
-        (_phase_controlled_circuit_names(m, network_model) for m in values(branch_models));
-        init = String[],
-    )
-    isempty(controlled) && return
-    throw(
+    any(_is_security_constrained(m) for m in values(branch_models)) || return
+    any(_has_unsupported_phase(m) for m in values(branch_models)) && throw(
         IS.ConflictingInputsError(
-            "Phase-controlled transformer circuit(s) $(join(controlled, ", ")) cannot be \
-             combined with the security-constrained branch model(s) for \
-             $(join(sc_types, ", ")): post-contingency MODF flows are built from the fixed \
-             phase shift, so a variable phase-shifter angle would make them wrong. Disable \
-             the circuit control or drop the security-constrained formulation.",
+            "N-1 DCP/DCPLL networks do not support any transformers with phase-control or nonzero phase.",
         ),
     )
+    return
 end
+
+_check_security_constrained_phase_control(::IOM.BranchModelContainer, ::NetworkModel) =
+    nothing
 
 function _check_security_constrained_network(
     branch_model::DeviceModel{<:PSY.ACTransmission, B},
@@ -426,36 +402,42 @@ function _check_security_constrained_network(
     return
 end
 
-function _check_monitored_components(
-    branch_model::DeviceModel{
-        <:PSY.ACTransmission,
-        <:AbstractSecurityConstrainedStaticBranch,
-    },
-    sys::PSY.System,
-)
-    for (uuid, per_type) in get_outages(branch_model)
-        for (T, names) in per_type
-            for name in names
-                !PSY.has_component(sys, T, name) && error(
-                    "Monitored component \"$name\" (type $T) for outage $uuid is " *
-                    "absent from both the network-reduction name-to-arc map and the " *
-                    "component-to-reduction map. Verify the component exists in the " *
-                    "system and is modeled with a security-constrained branch formulation.",
-                )
-            end
-        end
-    end
+function _assert_transformer_outages(
+    transformer::T,
+    branch_models::IOM.BranchModelContainer,
+) where {T <: _TRANSFORMERS}
+    model = get(branch_models, nameof(T), nothing)
+    _has_unsupported_phase(transformer, model) && throw(
+        IS.ConflictingInputsError(
+            "Phase-shifting transformers and transformers with non-zero angle may not be outages.",
+        ),
+    )
     return
 end
 
-_check_monitored_components(::DeviceModel, ::PSY.System) = nothing
+_assert_transformer_outages(::PSY.Device, ::IOM.BranchModelContainer) =
+    nothing
 
+# Monitored components exist; no controlled transformer outages
 function _check_monitored_components(
     branch_models::IOM.BranchModelContainer,
     sys::PSY.System,
 )
     for branch_model in values(branch_models)
-        _check_monitored_components(branch_model, sys)
+        IOM.supports_outages(IOM.get_formulation(branch_model)) || continue
+        for outage_id in keys(get_outages(branch_model))
+            outage = PSY.get_supplemental_attribute(sys, outage_id)
+            for uuid in PSY.get_monitored_components(outage)
+                isnothing(IS.get_component(sys, uuid)) && throw(
+                    IS.ConflictingInputsError(
+                        "Monitored component with UUID $uuid on outage $outage_id is not found in the system.",
+                    ),
+                )
+            end
+            for component in PSY.get_associated_components(sys, outage)
+                _assert_transformer_outages(component, branch_models)
+            end
+        end
     end
     return
 end
@@ -682,12 +664,12 @@ function _monitored_components_by_modeled_type(
     uncovered = Set{DataType}()
     for uuid in PSY.get_monitored_components(outage)
         component = IS.get_component(sys, uuid)
-        if isnothing(component)
-            @warn "Outage $(outage_id) references monitored component \
-                   UUID $(uuid) that is not present in the system; \
-                   skipping." _group = IOM.LOG_GROUP_MODELS_VALIDATION
-            continue
-        end
+        isnothing(component) && throw(
+            IS.ConflictingInputsError(
+                "Outage $(outage_id) references monitored component UUID $(uuid) that is \
+                 not present in the system.",
+            ),
+        )
         comp_type = typeof(component)
         if comp_type <: PSY.ACTransmission && comp_type in modeled_types
             push!(get!(Set{String}, per_type, comp_type), PSY.get_name(component))
