@@ -9,8 +9,6 @@ function _deactivate_unmodeled_ordc!(sys)
     return sys
 end
 
-# TODO these all error due to add_event_model = true, which isn't supported in POM.
-#=
 @testset "Storage Basic Storage With DC - PF" begin
     device_model = DeviceModel(
         EnergyReservoirStorage,
@@ -170,11 +168,13 @@ end
     @test JuMP.num_constraints(get_jump_model(model), GQEVF, MOI.LessThan{Float64}) ==
           24
 end
-=#
 
 ### Feedforward Test ###
-# TODO: EnergyTargetFeedforward is from StorageSystemsSimulations.jl, not available here
-#= @testset "Test EnergyTargetFeedforward to EnergyReservoirStorage with StorageDispatch model" begin
+# TODO: blocked on the StorageSystemsSimulations feedforward port, not on events:
+# `EnergyTargetFeedforward` does not exist in POM yet. The event assertions inside are
+# ported from SSS and should be re-enabled with the rest of the block.
+#=
+@testset "Test EnergyTargetFeedforward to EnergyReservoirStorage with StorageDispatch model" begin
     device_model = DeviceModel(
         EnergyReservoirStorage,
         StorageDispatchWithReserves;
@@ -244,7 +244,8 @@ end
         add_event_model = true,
     )
     moi_tests(model, 170, 0, 120, 73, 24, true)
-end =#
+end
+=#
 
 @testset "Test Reserves from Storage" begin
     template = get_thermal_dispatch_template_network(CopperPlateNetworkModel)
