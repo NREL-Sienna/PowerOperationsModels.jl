@@ -13,8 +13,8 @@ function _push_component_buses!(
     branch::Union{PSY.Branch, PSY.TransformerCircuit},
 )
     arc = PSY.get_arc(branch)
-    push!(buses, PSY.get_number(PSY.get_from(arc)))
-    push!(buses, PSY.get_number(PSY.get_to(arc)))
+    _push_component_buses!(buses, PSY.get_from(arc))
+    _push_component_buses!(buses, PSY.get_to(arc))
     return
 end
 
