@@ -164,6 +164,27 @@ end
     last = event_step_values(outage, em, t0 + 2 * resolution, next.countdown;
         resolution = resolution)
     @test last.countdown == 0.0
+    # A condition that does not hold blocks a new outage but never freezes a running one:
+    # the countdown decays either way, so a runtime calls this every step.
+    blocked = event_step_values(
+        outage,
+        em,
+        t0,
+        0.0;
+        resolution = resolution,
+        may_start = false,
+    )
+    @test !blocked.occurred
+    @test blocked.countdown == 0.0
+    still_decaying = event_step_values(
+        outage,
+        em,
+        t0,
+        3.0;
+        resolution = resolution,
+        may_start = false,
+    )
+    @test still_decaying.countdown == 2.0
     @test last.availability == 1.0
     @test last.active_power_offset == 0.0
 end

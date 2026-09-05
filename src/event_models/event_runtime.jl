@@ -288,6 +288,11 @@ Everything one runtime step needs for one device, as a named tuple of `occurred`
 `active_power_injection` / `reactive_power_injection` are the device's own time-series
 contributions to the balance, needed only for devices that carry offset parameters;
 they default to zero, which is what a device bounded by an outage constraint wants.
+
+`may_start` is the event condition's verdict for this step (see [`is_triggered`](@ref)).
+It gates only whether a *new* outage can begin: a running countdown decays either way, so
+a runtime calls this once per device per step rather than skipping it when the condition
+does not hold — skipping would freeze the outage instead of letting it recover.
 """
 function event_step_values(
     event::PSY.Contingency,
@@ -297,12 +302,13 @@ function event_step_values(
     resolution::Dates.Period,
     rng::Union{Nothing, Random.AbstractRNG} = nothing,
     mttr_units = Dates.Minute,
+    may_start::Bool = true,
     active_power_injection::Real = 0.0,
     reactive_power_injection::Real = 0.0,
 )
     occurred = false
     duration_steps = 0
-    if previous_countdown <= 0
+    if may_start && previous_countdown <= 0
         occurred = outage_occurred(event, event_model, current_time; rng = rng)
         if occurred
             duration_steps = countdown_steps(
