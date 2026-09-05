@@ -1,8 +1,9 @@
 """
 Concrete implementations of `instantiate_network_model!` for specific network formulations.
 
-These methods extend the generic dispatch from IOM's `operation_model_interface.jl`, which
-calls `instantiate_network_model!(network_model, branch_models, number_of_steps, sys)`.
+These methods extend the generic dispatch from IOM's `optimization_model_interface.jl`, which
+calls
+`instantiate_network_model!(network_model, branch_models, service_models, number_of_steps, sys)`.
 Each method here handles the formulation-specific setup: computing PTDF/MODF matrices,
 discovering subnetworks, applying network reductions, etc.
 """
@@ -285,8 +286,11 @@ function _validate_prebuilt_exceptions(
     throw(
         IS.ConflictingInputsError(
             "The prebuilt network source eliminated buses $(sort!(collect(dropped))), which \
-            the template pins as reduction exceptions (outage-monitored components or \
-            time-varying branch ratings). Rebuild the matrix with these buses passed as \
+            the model pins as reduction exceptions: the NetworkModel's own \
+            `reduction_exceptions`, plus the buses of DC converter terminals, branches with \
+            rating time series, outaged and monitored components, `model_all_branches` \
+            monitored lines, controlled transformer circuits and their regulated buses, and \
+            transmission interface branches. Rebuild the matrix with these buses passed as \
             `irreducible_buses`, or pass a `SystemNetworkSource` so the build derives the \
             reduction itself.",
         ),
@@ -401,11 +405,12 @@ end
 function IOM.instantiate_network_model!(
     model::NetworkModel{T},
     branch_models::BranchModelContainer,
+    service_models::ServicesModelContainer,
     number_of_steps::Int,
     sys::PSY.System,
 ) where {T <: AbstractNetworkModel}
     _validate_network_and_branches(model, branch_models, sys)
-    exceptions = _collect_reduction_exceptions(sys, model, branch_models)
+    exceptions = _collect_reduction_exceptions(sys, model, branch_models, service_models)
     ybus = _reduced_ybus!(model, sys, exceptions)
     IOM.set_network_data!(
         model,
@@ -422,11 +427,12 @@ end
 function IOM.instantiate_network_model!(
     model::NetworkModel{DCPNetworkModel},
     branch_models::BranchModelContainer,
+    service_models::ServicesModelContainer,
     number_of_steps::Int,
     sys::PSY.System,
 )
     _validate_network_and_branches(model, branch_models, sys)
-    exceptions = _collect_reduction_exceptions(sys, model, branch_models)
+    exceptions = _collect_reduction_exceptions(sys, model, branch_models, service_models)
     ybus = _reduced_ybus!(model, sys, exceptions)
     catalog = _build_catalog(ybus, branch_models)
     if IOM._template_has_outage_aware_branch(branch_models)
@@ -453,11 +459,12 @@ end
 function IOM.instantiate_network_model!(
     model::NetworkModel{T},
     branch_models::BranchModelContainer,
+    service_models::ServicesModelContainer,
     number_of_steps::Int,
     sys::PSY.System,
 ) where {T <: AbstractPTDFNetworkModel}
     _validate_network_and_branches(model, branch_models, sys)
-    exceptions = _collect_reduction_exceptions(sys, model, branch_models)
+    exceptions = _collect_reduction_exceptions(sys, model, branch_models, service_models)
     IOM.set_network_data!(
         model,
         _ptdf_network_data(

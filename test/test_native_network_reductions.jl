@@ -785,12 +785,77 @@ end
         sys,
         get_network_model(get_template(model)),
         branch_models,
+        get_service_models(get_template(model)),
     )
     # "4-5-i_1" carries the rating time series; its endpoint buses (4, 5) must be
     # pinned so the reduction can't merge them away.
     @test 4 in exceptions
     @test 5 in exceptions
     @test length(exceptions) == 2
+end
+
+@testset "Interface branches are pinned from the build's reduction" begin
+    # "1-8-i_1" is the radial branch to leaf bus 8, which RadialReduction folds into bus 1
+    # unless something pins it. An interface over that branch reads its flow, so modeling
+    # the interface must keep the branch (and bus 8) in the reduced network.
+    function _build_with_interface(model_interface::Bool)
+        sys = _case11_with_forecast()
+        interface = TransmissionInterface(;
+            name = "leaf_interface",
+            available = true,
+            active_power_flow_limits = (min = -100.0, max = 100.0),
+        )
+        add_service!(sys, interface, [get_component(Line, sys, "1-8-i_1")])
+        net = NetworkModel(
+            POM.DCPNetworkModel;
+            network_source = SystemNetworkSource(PNM.RadialReduction()),
+        )
+        template = get_thermal_dispatch_template_network(net)
+        if model_interface
+            set_service_model!(
+                template,
+                ServiceModel(TransmissionInterface, ConstantMaxInterfaceFlow),
+            )
+        end
+        model = DecisionModel(template, sys; optimizer = HiGHS_optimizer)
+        @test build!(
+            model;
+            output_dir = mktempdir(; cleanup = true),
+            console_level = Logging.Error,
+        ) == IOM.ModelBuildStatus.BUILT
+        return model
+    end
+
+    unpinned = _build_with_interface(false)
+    unpinned_network = get_network_model(get_template(unpinned))
+    @test !(8 in keys(PNM.get_bus_reduction_map(get_network_reduction(unpinned_network))))
+
+    pinned = _build_with_interface(true)
+    pinned_template = get_template(pinned)
+    pinned_network = get_network_model(pinned_template)
+    exceptions = POM._collect_reduction_exceptions(
+        get_system(pinned),
+        pinned_network,
+        get_branch_models(pinned_template),
+        get_service_models(pinned_template),
+    )
+    @test Set(exceptions) == Set([1, 8])
+    @test 8 in keys(PNM.get_bus_reduction_map(get_network_reduction(pinned_network)))
+
+    # The retained branch is what the interface reads: its flow and the interface flow agree.
+    @test solve!(pinned) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
+    container = IOM.get_optimization_container(pinned)
+    line_flow = IOM.get_expression(container, POM.BThetaBranchFlow, Line)
+    interface_flow =
+        IOM.get_expression(container, POM.InterfaceTotalFlow, TransmissionInterface)
+    @test "1-8-i_1" in axes(line_flow)[1]
+    for t in axes(interface_flow)[2]
+        @test isapprox(
+            JuMP.value(interface_flow["leaf_interface", t]),
+            JuMP.value(line_flow["1-8-i_1", t]);
+            atol = POM.ABSOLUTE_TOLERANCE,
+        )
+    end
 end
 
 @testset "Caller-supplied reduction_exceptions survive the build's reduction" begin

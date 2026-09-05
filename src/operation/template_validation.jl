@@ -108,6 +108,7 @@ function validate_template_impl!(model::IOM.AbstractOptimizationModel)
     for k in branch_keys_to_delete
         delete!(template.branches, k)
     end
+    _check_interface_branches(template, system, network_model)
     _check_security_constrained_three_winding_transformer(template.branches)
     _check_security_constrained_network(template.branches, network_model)
     _check_security_constrained_phase_control(template.branches, network_model)
@@ -118,6 +119,102 @@ function validate_template_impl!(model::IOM.AbstractOptimizationModel)
     # Must follow `_build_device_model_outages!`: that call is what fills the per-type
     # monitored-name maps this check reads.
     _check_monitored_components(template.branches, system)
+    return
+end
+
+#################################################################################
+# Transmission interface contributors
+#################################################################################
+
+# Whether the network formulation builds a flow for this interface contributor, so that the
+# interface's flow expression reads it. Aggregated formulations carry no AC branch flow (the
+# AreaBalance interface constructor warns that it ignores them); an AreaInterchange is modeled
+# wherever its branch model is.
+_interface_contributor_has_flow(
+    ::PSY.ACTransmission,
+    ::Type{N},
+) where {N <: AbstractNetworkModel} = branches_modeled(N)
+_interface_contributor_has_flow(::PSY.AreaInterchange, ::Type{<:AbstractNetworkModel}) =
+    true
+_interface_contributor_has_flow(::PSY.Device, ::Type{<:AbstractNetworkModel}) = false
+
+"""
+Reject a template whose transmission interfaces include a branch the model builds no flow
+for: either the branch's type has no branch model in the template, or that branch model's
+`filter_function` (or subsystem) excludes the branch. Either way the interface's flow
+expression would silently omit the branch, so the template is rejected and the user must
+make the filter and the interface definitions consistent.
+"""
+function _check_interface_branches(
+    template::PowerOperationsProblemTemplate,
+    sys::PSY.System,
+    ::NetworkModel{N},
+) where {N <: AbstractNetworkModel}
+    problems = String[]
+    modeled_names = Dict{DataType, Set{String}}()
+    for service_model in values(get_service_models(template))
+        get_component_type(service_model) <: PSY.TransmissionInterface || continue
+        for interface in get_available_components(service_model, sys)
+            _interface_branch_problems!(
+                problems,
+                modeled_names,
+                template,
+                sys,
+                interface,
+                N,
+            )
+        end
+    end
+    isempty(problems) && return
+    throw(IS.ConflictingInputsError(join(problems, "\n")))
+end
+
+function _interface_branch_problems!(
+    problems::Vector{String},
+    modeled_names::Dict{DataType, Set{String}},
+    template::PowerOperationsProblemTemplate,
+    sys::PSY.System,
+    interface::PSY.TransmissionInterface,
+    ::Type{N},
+) where {N <: AbstractNetworkModel}
+    unmodeled = Dict{DataType, Vector{String}}()
+    excluded = Dict{DataType, Vector{String}}()
+    for branch in PSY.get_contributing_devices(sys, interface)
+        PSY.get_available(branch) || continue
+        _interface_contributor_has_flow(branch, N) || continue
+        T = typeof(branch)
+        branch_model = get_model(template, T)
+        name = PSY.get_name(branch)
+        if branch_model === nothing
+            push!(get!(Vector{String}, unmodeled, T), name)
+            continue
+        end
+        names = get!(modeled_names, T) do
+            Set{String}(PSY.get_name(b) for b in get_device_cache(branch_model))
+        end
+        name ∈ names || push!(get!(Vector{String}, excluded, T), name)
+    end
+    interface_name = PSY.get_name(interface)
+    for (T, names) in unmodeled
+        push!(
+            problems,
+            "TransmissionInterface \"$(interface_name)\" includes $(T) branches \
+            $(sort!(names)) but the template has no branch model for $(T); their flow would \
+            be omitted from the interface. Add a branch model for $(T), remove the \
+            TransmissionInterface service model from the template, or remove the branches \
+            from the interface in the system data.",
+        )
+    end
+    for (T, names) in excluded
+        push!(
+            problems,
+            "TransmissionInterface \"$(interface_name)\" includes $(T) branches \
+            $(sort!(names)) that the template's $(T) branch model excludes through its \
+            filter_function or subsystem; their flow would be omitted from the interface. \
+            Change the filter_function to admit every branch in the interface, or remove \
+            the TransmissionInterface service model from the template.",
+        )
+    end
     return
 end
 

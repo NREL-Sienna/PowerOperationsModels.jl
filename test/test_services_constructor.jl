@@ -1873,3 +1873,189 @@ end
         @test sum(awards[t, c] for c in sub_cols) ≈ demand[t, "UP_GROUP"] atol = 1e-3
     end
 end
+
+# The interface spans lines "1", "2" and "6", but the branch filter admits only line "1". The
+# interface flow would silently omit the other two, so the template must be rejected until the
+# filter admits every branch in the interface.
+@testset "Interface branch excluded by a branch filter is rejected" begin
+    c_sys5_uc = PSB.build_system(PSITestSystems, "c_sys5_uc")
+    interface = TransmissionInterface(;
+        name = "west_east",
+        available = true,
+        active_power_flow_limits = (min = 0.0, max = 400.0),
+    )
+    interface_line_names = ["1", "2", "6"]
+    add_service!(
+        c_sys5_uc,
+        interface,
+        [get_component(Line, c_sys5_uc, n) for n in interface_line_names],
+    )
+
+    function _filtered_template(net, filter_function)
+        template = get_thermal_dispatch_template_network(net)
+        set_device_model!(
+            template,
+            DeviceModel(
+                Line,
+                StaticBranch;
+                attributes = Dict("filter_function" => filter_function),
+            ),
+        )
+        set_service_model!(
+            template,
+            ServiceModel(TransmissionInterface, ConstantMaxInterfaceFlow),
+        )
+        return template
+    end
+
+    for net in (DCPNetworkModel, PTDFNetworkModel)
+        template = _filtered_template(net, x -> PSY.get_name(x) == "1")
+        model = DecisionModel(template, c_sys5_uc; optimizer = HiGHS_optimizer)
+        err = try
+            POM.validate_template(model)
+            nothing
+        catch e
+            e
+        end
+        @test err isa IS.ConflictingInputsError
+        message = err.msg
+        @test occursin("west_east", message)
+        @test occursin("filter_function", message)
+        @test occursin("\"2\", \"6\"", message)
+        @test !occursin("\"1\"", message)
+    end
+
+    # A filter consistent with the interface builds, and the interface flow is the sum over
+    # every line in the interface.
+    template = _filtered_template(
+        PTDFNetworkModel,
+        x -> PSY.get_name(x) in ("1", "2", "3", "6"),
+    )
+    model = DecisionModel(template, c_sys5_uc; optimizer = HiGHS_optimizer)
+    @test build!(model; output_dir = mktempdir(; cleanup = true)) ==
+          IOM.ModelBuildStatus.BUILT
+    @test solve!(model) == IOM.RunStatus.SUCCESSFULLY_FINALIZED
+    container = IOM.get_optimization_container(model)
+    branch_flow = IOM.get_expression(container, POM.PTDFBranchFlow, Line)
+    @test Set(axes(branch_flow)[1]) == Set(["1", "2", "3", "6"])
+    interface_flow =
+        IOM.get_expression(container, POM.InterfaceTotalFlow, TransmissionInterface)
+    for t in axes(interface_flow)[2]
+        expected = sum(JuMP.value(branch_flow[name, t]) for name in interface_line_names)
+        @test isapprox(
+            JuMP.value(interface_flow["west_east", t]),
+            expected;
+            atol = POM.ABSOLUTE_TOLERANCE,
+        )
+    end
+end
+
+# A transformer in the interface with no TwoWindingTransformer branch model has no flow to
+# read: the interface would silently omit it, so the template is rejected instead.
+@testset "Interface branch with no branch model is rejected" begin
+    c_sys14 = PSB.build_system(PSITestSystems, "c_sys14")
+    line = get_component(Line, c_sys14, "Line1")
+    transformer = first(PSY.get_components(TwoWindingTransformer, c_sys14))
+    interface = TransmissionInterface(;
+        name = "mixed_types",
+        available = true,
+        active_power_flow_limits = (min = -400.0, max = 400.0),
+    )
+    add_service!(c_sys14, interface, [line, transformer])
+
+    template = PowerOperationsProblemTemplate(PTDFNetworkModel)
+    set_device_model!(template, ThermalStandard, ThermalBasicDispatch)
+    set_device_model!(template, PowerLoad, StaticPowerLoad)
+    set_device_model!(template, Line, StaticBranch)
+    set_service_model!(
+        template,
+        ServiceModel(TransmissionInterface, ConstantMaxInterfaceFlow),
+    )
+
+    model = DecisionModel(template, c_sys14; optimizer = HiGHS_optimizer)
+    err = try
+        POM.validate_template(model)
+        nothing
+    catch e
+        e
+    end
+    @test err isa IS.ConflictingInputsError
+    message = err.msg
+    @test occursin("TwoWindingTransformer", message)
+    @test occursin(PSY.get_name(transformer), message)
+    @test occursin("mixed_types", message)
+    @test occursin("no branch model", message)
+
+    set_device_model!(template, TwoWindingTransformer, StaticBranch)
+    ok_model = DecisionModel(template, c_sys14; optimizer = HiGHS_optimizer)
+    @test build!(ok_model; output_dir = mktempdir(; cleanup = true)) ==
+          IOM.ModelBuildStatus.BUILT
+end
+
+@testset "Interface interchange excluded by a branch filter is rejected" begin
+    sys_rts_da = build_system(PSISystems, "modified_RTS_GMLC_DA_sys")
+    transform_single_time_series!(sys_rts_da, Hour(24), Hour(1))
+    interchange1 = AreaInterchange(;
+        name = "interchange1_2",
+        available = true,
+        active_power_flow = 100.0,
+        flow_limits = (from_to = 1.0, to_from = 1.0),
+        from_area = get_component(Area, sys_rts_da, "1"),
+        to_area = get_component(Area, sys_rts_da, "2"),
+    )
+    interchange2 = AreaInterchange(;
+        name = "interchange1_3",
+        available = true,
+        active_power_flow = 100.0,
+        flow_limits = (from_to = 1.0, to_from = 1.0),
+        from_area = get_component(Area, sys_rts_da, "1"),
+        to_area = get_component(Area, sys_rts_da, "3"),
+    )
+    add_components!(sys_rts_da, [interchange1, interchange2])
+    interface = TransmissionInterface(;
+        name = "interface1_2_3",
+        available = true,
+        active_power_flow_limits = (min = 0.0, max = 1.0),
+        direction_mapping = Dict("interchange1_2" => 1, "interchange1_3" => -1),
+    )
+    add_service!(sys_rts_da, interface, [interchange1, interchange2])
+
+    template = PowerOperationsProblemTemplate(NetworkModel(AreaBalanceNetworkModel))
+    set_device_model!(template, ThermalStandard, ThermalDispatchNoMin)
+    set_device_model!(template, RenewableDispatch, RenewableFullDispatch)
+    set_device_model!(template, PowerLoad, StaticPowerLoad)
+    set_device_model!(template, RenewableNonDispatch, FixedOutput)
+    set_device_model!(template, HydroDispatch, HydroDispatchRunOfRiver)
+    set_device_model!(
+        template,
+        DeviceModel(
+            AreaInterchange,
+            StaticBranch;
+            attributes = Dict(
+                "filter_function" => x -> PSY.get_name(x) == "interchange1_2",
+            ),
+        ),
+    )
+    set_service_model!(
+        template,
+        ServiceModel(TransmissionInterface, ConstantMaxInterfaceFlow),
+    )
+    model = DecisionModel(
+        template,
+        sys_rts_da;
+        resolution = Hour(1),
+        optimizer = HiGHS_optimizer,
+    )
+    err = try
+        POM.validate_template(model)
+        nothing
+    catch e
+        e
+    end
+    @test err isa IS.ConflictingInputsError
+    message = err.msg
+    @test occursin("interface1_2_3", message)
+    @test occursin("AreaInterchange", message)
+    @test occursin("interchange1_3", message)
+    @test !occursin("\"interchange1_2\"", message)
+end
