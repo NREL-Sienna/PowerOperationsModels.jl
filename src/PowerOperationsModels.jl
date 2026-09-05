@@ -4,6 +4,7 @@ module PowerOperationsModels
 # Package imports
 #################################################################################
 import Dates
+import Random
 import InfrastructureSystems
 import InfrastructureSystems: @assert_op, TableFormat
 import JuMP
@@ -259,6 +260,7 @@ include("core/initial_conditions.jl")
 
 include("event_models/event_model.jl")
 include("event_models/event_traits.jl")
+include("event_models/event_runtime.jl")
 
 # Common models - expression infrastructure
 # Expression container creation (add_expressions!) and helpers
@@ -441,6 +443,21 @@ export get_attribute_device_map
 export set_event_model!
 export get_event_models
 export supports_events
+export event_parameter_keys
+export outage_occurred
+export time_to_recover
+export countdown_steps
+export advance_countdown
+export countdown_trajectory
+export availability_from_countdown
+export availability_trajectory
+export outage_power_offset
+export event_step_values
+export AbstractConditionInput
+export StateValueInput
+export RuntimeStateInput
+export required_inputs
+export is_triggered
 export AvailableStatusParameter
 export ActivePowerOffsetParameter
 export ReactivePowerOffsetParameter
