@@ -49,6 +49,7 @@ function _collect_reduction_exceptions(
     sys::PSY.System,
     network_model::NetworkModel,
     branch_models::BranchModelContainer,
+    service_models::ServicesModelContainer,
 )
     @debug "Collecting reduction exceptions" _group =
         IOM.LOG_GROUP_NETWORK_CONSTRUCTION
@@ -61,8 +62,28 @@ function _collect_reduction_exceptions(
         _pin_model_all_branches!(buses, m)
         _pin_transformer_controls!(buses, m, sys, network_model)
     end
+    for m in values(service_models)
+        _pin_interface_branch_buses!(buses, m)
+    end
     return collect(buses)
 end
+
+# A branch in a modeled TransmissionInterface pins both its endpoints: the interface's flow
+# expression reads the branch's own flow, and a reduction that merged the branch into a
+# series or parallel equivalent (or eliminated it as radial) would leave that flow with no
+# term to read. Reads the contributing devices `finalize_template!` populated, so only the
+# interfaces the template models are pinned, and only their branch-typed contributors.
+function _pin_interface_branch_buses!(
+    buses::Set{Int},
+    m::ServiceModel{<:PSY.TransmissionInterface},
+)
+    for branch in get_contributing_devices(m)
+        _push_component_buses!(buses, branch)
+    end
+    return
+end
+
+_pin_interface_branch_buses!(::Set{Int}, ::ServiceModel) = nothing
 
 # A converter's AC terminal must survive the reduction. Merging one away drops the
 # converter from the model without a word, so this is keyed on the system rather than on a
