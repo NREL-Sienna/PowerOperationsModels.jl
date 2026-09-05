@@ -444,6 +444,7 @@ export set_event_model!
 export get_event_models
 export supports_events
 export event_parameter_keys
+export EVENT_PARAMETER_UPDATE_ORDER
 export outage_occurred
 export time_to_recover
 export countdown_steps
