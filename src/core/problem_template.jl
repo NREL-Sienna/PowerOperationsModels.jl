@@ -16,6 +16,7 @@ mutable struct PowerOperationsProblemTemplate <: IOM.AbstractProblemTemplate
     devices::DevicesModelContainer
     branches::BranchModelContainer
     services::ServicesModelContainer
+    events::Vector{IOM.AbstractEventModel}
     function PowerOperationsProblemTemplate(
         network::NetworkModel{T},
     ) where {T <: AbstractNetworkModel}
@@ -24,6 +25,7 @@ mutable struct PowerOperationsProblemTemplate <: IOM.AbstractProblemTemplate
             DevicesModelContainer(),
             BranchModelContainer(),
             ServicesModelContainer(),
+            Vector{IOM.AbstractEventModel}(),
         )
     end
 end
@@ -53,6 +55,11 @@ get_network_formulation(template::PowerOperationsProblemTemplate) =
     get_network_formulation(get_network_model(template))
 get_hvdc_network_model(template::PowerOperationsProblemTemplate) =
     template.network_model.hvdc_network_model
+
+"""
+Return the outage-event models attached to `template` via `set_event_model!`.
+"""
+get_event_models(template::PowerOperationsProblemTemplate) = template.events
 
 # Returns `Vector{Type}`, not `Vector{DataType}`: a service's component type can be a
 # `UnionAll` rather than a concrete `DataType` when it carries an unapplied type parameter
@@ -159,6 +166,46 @@ function set_device_model!(
 ) where {D <: PSY.Branch}
     set_model!(template.branches, model)
     return
+end
+
+"""
+    set_event_model!(template::PowerOperationsProblemTemplate, event_model)
+
+Attach an outage-event model to the template. At build time the event is validated,
+its `attribute_device_map` is populated from the system's supplemental attributes, and
+it is distributed to every matching `DeviceModel`.
+"""
+function IOM.set_event_model!(
+    template::PowerOperationsProblemTemplate,
+    event_model::IOM.AbstractEventModel,
+)
+    if any(e -> e === event_model, template.events)
+        error("This event model is already attached to the template")
+    end
+    push!(template.events, event_model)
+    return
+end
+
+# `IOM._deepcopy_template` already shares the network model's PNM matrices by reference
+# across the template/copy boundary because their solver caches hold raw factorization
+# handles that error on deepcopy; the matrices are read-only inputs, so sharing them is
+# safe. Event models need the same treatment for a different reason: build-time discovery
+# (`_build_device_model_events!`) mutates `EventModel.attribute_device_map`, and callers
+# inspect that mutation on the exact object they passed to `set_event_model!`. A plain
+# `deepcopy` of the template would clone each event model, so the mutation performed on
+# the copy used to build the model would be invisible on the caller's original object.
+# Null the field before delegating to the generic (PNM-matrix-aware) implementation, then
+# restore identity on both sides so discovery writes land on the caller's own objects.
+function IOM._deepcopy_template(template::PowerOperationsProblemTemplate)
+    events = template.events
+    template.events = IOM.AbstractEventModel[]
+    template_ = try
+        invoke(IOM._deepcopy_template, Tuple{IOM.AbstractProblemTemplate}, template)
+    finally
+        template.events = events
+    end
+    template_.events = copy(events)
+    return template_
 end
 
 """

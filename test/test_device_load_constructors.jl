@@ -536,10 +536,9 @@ end
         mock_construct_device!(model, device_model)
         moi_tests(model, 0, 0, 0, 0, 0, false)
         psi_checkobjfun_test(model, GAEVF)
-        # TODO: Event model tests will move to PSI
-        #= model = DecisionModel(MockOperationProblem, n, c_sys5_il)
+        model = DecisionModel(MockOperationProblem, n, c_sys5_il)
         mock_construct_device!(model, device_model; add_event_model = true)
-        moi_tests(model, 0, 0, 0, 0, 0, false) =#
+        moi_tests(model, 0, 0, 0, 0, 0, false)
     end
 end
 
@@ -553,10 +552,9 @@ end
         mock_construct_device!(model, device_model)
         moi_tests(model, 24, 0, 24, 0, 0, false)
         psi_checkobjfun_test(model, GAEVF)
-        # TODO: Event model tests will move to PSI
-        #= model = DecisionModel(MockOperationProblem, n, c_sys5_il)
+        model = DecisionModel(MockOperationProblem, n, c_sys5_il)
         mock_construct_device!(model, device_model; add_event_model = true)
-        moi_tests(model, 24, 0, 48, 0, 0, false) =#
+        moi_tests(model, 24, 0, 48, 0, 0, false)
     end
 end
 
@@ -570,10 +568,9 @@ end
         mock_construct_device!(model, device_model)
         moi_tests(model, 48, 0, 24, 0, 24, false)
         psi_checkobjfun_test(model, GAEVF)
-        # TODO: Event model tests will move to PSI
-        #= model = DecisionModel(MockOperationProblem, n, c_sys5_il)
+        model = DecisionModel(MockOperationProblem, n, c_sys5_il)
         mock_construct_device!(model, device_model; add_event_model = true)
-        moi_tests(model, 48, 0, 48, 0, 24, false, 24) =#
+        moi_tests(model, 48, 0, 48, 0, 24, false, 24)
     end
 end
 
@@ -654,10 +651,9 @@ end
         mock_construct_device!(model, device_model)
         moi_tests(model, 48, 0, 48, 0, 0, true)
         psi_checkobjfun_test(model, GAEVF)
-        # TODO: Event model tests will move to PSI
-        #= model = DecisionModel(MockOperationProblem, n, c_sys5_il)
+        model = DecisionModel(MockOperationProblem, n, c_sys5_il)
         mock_construct_device!(model, device_model; add_event_model = true)
-        moi_tests(model, 48, 0, 72, 0, 0, true) =#
+        moi_tests(model, 48, 0, 72, 0, 0, true)
     end
 end
 
@@ -671,10 +667,9 @@ end
         mock_construct_device!(model, device_model)
         moi_tests(model, 72, 0, 48, 0, 24, true)
         psi_checkobjfun_test(model, GAEVF)
-        # TODO: Event model tests will move to PSI
-        #= model = DecisionModel(MockOperationProblem, n, c_sys5_il)
+        model = DecisionModel(MockOperationProblem, n, c_sys5_il)
         mock_construct_device!(model, device_model; add_event_model = true)
-        moi_tests(model, 72, 0, 72, 0, 24, true), 24 =#
+        moi_tests(model, 72, 0, 72, 0, 24, true), 24
     end
 end
 
