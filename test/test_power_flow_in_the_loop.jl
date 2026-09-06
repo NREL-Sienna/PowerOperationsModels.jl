@@ -1,3 +1,23 @@
+@testset "pf_aux_var_types enumerates every PowerFlowAuxVariableType" begin
+    # `_provided_aux_vars` walks the `pf_aux_var_types` tuples rather than reflecting over
+    # the type tree at runtime, so that the `_pf_provides_aux_var` trait calls resolve and
+    # fold at compile time. This test guards the gap that trade opens: a new
+    # `PowerFlowAuxVariableType` left out of the tuples would silently never be registered
+    # by any power flow evaluator.
+    branch_types = POM.pf_aux_var_types(PSY.ACBranch)
+    bus_types = POM.pf_aux_var_types(PSY.ACBus)
+    declared = union(Set(branch_types), Set(bus_types))
+    defined = Set(IS.get_all_concrete_subtypes(POM.PowerFlowAuxVariableType))
+
+    @test setdiff(defined, declared) == Set{DataType}()   # a type nothing would register
+    @test setdiff(declared, defined) == Set{DataType}()   # a stale/removed entry
+    # No type may be claimed as both branch- and bus-indexed.
+    @test isempty(intersect(Set(branch_types), Set(bus_types)))
+    # Tuples, not vectors: the compile-time folding depends on it.
+    @test branch_types isa Tuple
+    @test bus_types isa Tuple
+end
+
 @testset "AC Power Flow in the loop with headroom-proportional slack" begin
     system = build_system(PSITestSystems, "c_sys5_uc")
 

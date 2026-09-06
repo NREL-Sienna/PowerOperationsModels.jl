@@ -88,6 +88,36 @@ convert_output_to_natural_units(
     },
 ) = true
 
+"""
+The `PowerFlowAuxVariableType`s that are defined over components of type `C` — i.e. whose
+values are indexed by branch or by bus. This is the complete universe of power flow
+auxiliary variables; which *subset* of it a particular power flow evaluator actually
+provides is the `_pf_provides_aux_var` trait in the `PowerFlowsExt`.
+
+Returns a tuple rather than a `Vector` deliberately: callers iterate it with `map`, so each
+element keeps its concrete `Type{T}` and the `_pf_provides_aux_var` calls resolve at
+compile time. Adding a `PowerFlowAuxVariableType` means adding it here and giving it
+`_pf_provides_aux_var` methods; `test_power_flow_in_the_loop.jl` asserts by reflection that
+no concrete subtype is missing from these tuples, so a forgotten entry fails in CI rather
+than silently never registering.
+"""
+function pf_aux_var_types end
+
+pf_aux_var_types(::Type{PSY.ACBranch}) = (
+    PowerFlowBranchReactivePowerFromTo,
+    PowerFlowBranchReactivePowerToFrom,
+    PowerFlowBranchActivePowerFromTo,
+    PowerFlowBranchActivePowerToFrom,
+    PowerFlowBranchActivePowerLoss,
+)
+
+pf_aux_var_types(::Type{PSY.ACBus}) = (
+    PowerFlowVoltageAngle,
+    PowerFlowVoltageMagnitude,
+    PowerFlowLossFactors,
+    PowerFlowVoltageStabilityFactors,
+)
+
 "Whether the auxiliary variable is calculated using a `PowerFlowEvaluationModel`"
 # Default is_from_evaluator(::Type{<:AuxVariableType}) = false is in IOM interfaces.jl
 is_from_evaluator(::Type{<:PowerFlowAuxVariableType}) = true
